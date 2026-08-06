@@ -14,12 +14,12 @@ import (
 
 // Config holds the application configuration parameters.
 type Config struct {
-	ServerPort          string `koanf:"server_port"`
-	DatabaseURL         string `koanf:"database_url"`
-	RedisURL            string `koanf:"redis_url"`
-	JWTSecret           string `koanf:"jwt_secret"`
-	ClerkSecretKey      string `koanf:"clerk_secret_key"`
-	NewRelicLicenseKey  string `koanf:"new_relic_license_key"`
+	ServerPort         string `koanf:"server_port"`
+	DatabaseURL        string `koanf:"database_url"`
+	RedisURL           string `koanf:"redis_url"`
+	JWTSecret          string `koanf:"jwt_secret"`
+	ClerkSecretKey     string `koanf:"clerk_secret_key"`
+	NewRelicLicenseKey string `koanf:"new_relic_license_key"`
 }
 
 // LoadConfig initializes application configuration from environment variables with defaults using koanf/v2.
@@ -36,7 +36,11 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	port := k.String("server_port")
+	// 1. Server Port
+	port := k.String("protask_server.port")
+	if port == "" {
+		port = k.String("server_port")
+	}
 	if port == "" {
 		port = os.Getenv("PORT")
 	}
@@ -44,23 +48,55 @@ func LoadConfig() (*Config, error) {
 		port = "8080"
 	}
 
+	// 2. Database URL
 	dbURL := k.String("database_url")
+	if dbURL == "" {
+		dbHost := k.String("protask_database.host")
+		dbPort := k.String("protask_database.port")
+		dbUser := k.String("protask_database.user")
+		dbPass := k.String("protask_database.password")
+		dbName := k.String("protask_database.name")
+		dbSSL := k.String("protask_database.ssl_mode")
+
+		if dbHost != "" && dbUser != "" && dbName != "" {
+			if dbPort == "" {
+				dbPort = "5432"
+			}
+			if dbSSL == "" {
+				dbSSL = "disable"
+			}
+			dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPort, dbName, dbSSL)
+		}
+	}
 	if dbURL == "" {
 		dbURL = "postgres://postgres:postgrespassword@localhost:5432/flux?sslmode=disable"
 	}
 
-	redisURL := k.String("redis_url")
+	// 3. Redis Address / URL
+	redisURL := k.String("protask_redis.address")
+	if redisURL == "" {
+		redisURL = k.String("redis_url")
+	}
 	if redisURL == "" {
 		redisURL = "localhost:6379"
 	}
 
-	jwtSecret := k.String("jwt_secret")
+	// 4. Auth & JWT Secret
+	jwtSecret := k.String("protask_auth.secret_key")
+	if jwtSecret == "" {
+		jwtSecret = k.String("jwt_secret")
+	}
 	if jwtSecret == "" {
 		jwtSecret = "super-secret-default-flux-key-change-in-prod"
 	}
 
 	clerkSecretKey := k.String("clerk_secret_key")
-	nrLicenseKey := k.String("new_relic_license_key")
+
+	// 5. New Relic APM License Key
+	nrLicenseKey := k.String("protask_observability.new_relic.license_key")
+	if nrLicenseKey == "" {
+		nrLicenseKey = k.String("new_relic_license_key")
+	}
 
 	cfg := &Config{
 		ServerPort:         port,
