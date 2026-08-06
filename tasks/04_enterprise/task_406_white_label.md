@@ -1,0 +1,71 @@
+---id: TASK-406
+title: Enterprise White-Label Customization
+layer: Level 5 (Executable Task Unit)
+status: Ready
+owner: Feature Engineer
+depends_on:
+  - docs/enterprise/white_label_engine.md
+references:
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+agent_mode: TDD-Execution
+token_budget_est: ~1.8KB
+tags:
+  - white-label
+  - branding
+  - dkim-signing
+---
+
+# TASK-406: Enterprise White-Label Customization
+
+## 1. Goal
+Implement custom branding isolation, custom CSS rendering, and DKIM/SPF domain signing.
+
+## 2. Scope & Target Boundaries
+Target source files modified during this task:
+- `internal/modules/whitelabel/`
+
+## 3. Dependencies & Prerequisites
+This task relies on specifications and schema contracts in:
+  - docs/enterprise/white_label_engine.md
+
+## 4. Referenced Architecture & Product Specs
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+
+## 5. Acceptance Criteria
+- [ ] Isolates tenant branding and signs transactional emails with custom DKIM signatures.
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+
+## 6. Target Deliverables
+- `internal/modules/whitelabel/branding.go`
+
+## 7. Definition of Done (DoD)
+- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [ ] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/whitelabel/...`.
+- [ ] **Step 3: Write minimal implementation** inside target files.
+- [ ] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/whitelabel/...`.
+- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+
+## 8. Testing Strategy
+- **Unit Tests**: Test pure domain logic in isolation.
+- **Verification Command**: `go test -v ./internal/modules/whitelabel/...`
+
+## 9. Documentation Updates
+- [ ] Mark task status as `Done` in this document frontmatter upon completion.
+- [ ] Update function/package docstrings if signatures were extended.
+
+<!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
+---
+### 🧭 Knowledge Graph & Navigation
+| Dimension | Link / Reference |
+| :--- | :--- |
+| **Parent** | [docs/enterprise/white_label_engine.md](file:///home/logan78/Desktop/plan/docs/enterprise/white_label_engine.md) |
+| **Previous** | [tasks/04_enterprise/task_405_saml_scim.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_405_saml_scim.md) |
+| **Next** | [tasks/04_enterprise/task_407_abuse_malware.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_407_abuse_malware.md) |
+| **Children** | None |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+---
+<!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

@@ -1,0 +1,48 @@
+# AI Agent Runtimes, Brain & Local State
+.gemini/
+.antigravity/
+.system_generated/
+brain/
+scratch/
+.cursor/
+.claude/
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Node.js & Monorepo Workspaces
+node_modules/
+.turbo/
+dist/
+.next/
+out/
+build/
+.cache/
+
+# Go Build Outputs & Binaries
+apps/backend/bin/
+apps/backend/tmp/
+*.exe
+*.exe.ignore
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Log Files
+*.log
+
+# System Files
+.DS_Store
+Thumbs.db

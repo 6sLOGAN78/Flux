@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Run API server in development mode
+    cmds:
+      - go run ./cmd/api/main.go
+
+  build:
+    desc: Build API binary
+    cmds:
+      - go build -o bin/api ./cmd/api
+
+  test:
+    desc: Run all Go unit tests
+    cmds:
+      - go test -v ./...
+
+  lint:
+    desc: Run static analysis check
+    cmds:
+      - go vet ./...
+
+  migrate:up:
+    desc: Run database migrations via Tern
+    cmds:
+      - tern migrate -m ./internal/database/migrations

@@ -1,0 +1,1 @@
+-- Placeholder SQL Schema for clickhouse_analytics_schema.sql
