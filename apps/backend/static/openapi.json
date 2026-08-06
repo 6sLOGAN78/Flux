@@ -26,6 +26,69 @@
           }
         }
       }
+    },
+    "/{slug}": {
+      "get": {
+        "summary": "High-Performance Link Redirect Engine",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "301": { "description": "Moved Permanently" },
+          "302": { "description": "Found" },
+          "403": { "description": "Link Disabled" },
+          "404": { "description": "Slug Not Found" },
+          "410": { "description": "Link Expired / Deleted" }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "summary": "Current Authenticated User Profile",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Authenticated Profile Payload" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/analytics/summary": {
+      "get": {
+        "summary": "Dashboard Aggregated Analytics",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Aggregated Clicks, Countries, Browsers & Devices breakdown" }
+        }
+      }
+    },
+    "/api/v1/analytics/links/{id}": {
+      "get": {
+        "summary": "Per-Link Analytics Breakdown",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Link Total Clicks and Daily Breakdown" },
+          "404": { "description": "Link Metrics Not Found" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
     }
   }
 }
