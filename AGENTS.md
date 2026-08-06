@@ -65,8 +65,23 @@ Step 5: Verify & Commit (Done)    ◄──  Step 4: Verify Test Passes (Green) 
 
 ## 6. Architecture Rules
 
+- **Strict Layered Package Structure**: All backend code MUST strictly follow the layered `internal/` package structure:
+  - `internal/config/`: Application configuration & environment loader (`config.go`)
+  - `internal/database/`: PostgreSQL pool initialization (`database.go`) & versioned SQL migrations (`migrations/`)
+  - `internal/errs/`: Domain errors (`types.go`) & HTTP error mappers (`http.go`)
+  - `internal/handler/`: Controller HTTP handlers (`base.go`, `health.go`, domain handlers)
+  - `internal/lib/`: Reusable utilities (`aws/`, `email/`, `job/`, `utils/`)
+  - `internal/logger/`: Structured Zerolog logger setup (`logger.go`)
+  - `internal/middleware/`: HTTP middlewares (`auth.go`, `global.go`, `rate_limit.go`, `request_id.go`, `tracing.go`)
+  - `internal/model/`: Pure domain entities & DTO payloads (`base.go`, subpackage models)
+  - `internal/repository/`: SQL persistence & Redis cache implementations (`repositories.go`, domain repos)
+  - `internal/router/`: Echo route registration (`router.go`, `system.go`, `v1/`)
+  - `internal/server/`: Server lifecycle & dependency injection (`server.go`)
+  - `internal/service/`: Framework-agnostic business logic services (`services.go`, domain services)
+  - `internal/testing/`: Testcontainers-go integration test suites (`container.go`, `assertions.go`, `helpers.go`, `server.go`)
+  - `internal/validation/`: Request payload validation utilities (`utils.go`)
 - **Decoupled Domain Logic**: Keep core business logic pure and framework-agnostic. Separate HTTP handlers, database queries, and domain entities.
-- **No Cyclic Dependencies**: Dependencies flow inward (Handlers ➔ Services ➔ Domain Models ➔ Repositories). Circular imports are illegal.
+- **No Cyclic Dependencies**: Dependencies flow strictly inward: `router` ➔ `handler` ➔ `service` ➔ `repository` / `model`. Circular imports are illegal.
 - **Idempotent State Operations**: Database mutations, queue message processing, and cache writes MUST be idempotent and safe for retries.
 
 ---

@@ -126,18 +126,26 @@ protask/
 ├── apps/
 │   ├── backend/               # Go (Echo v4) Service
 │   │   ├── cmd/               # Executable main entrypoints
-│   │   │   ├── protask/       # Server binary (main.go)
+│   │   │   ├── api/           # Server binary (main.go)
 │   │   │   └── cron/          # Cron job binary (main.go)
-│   │   ├── internal/          # Application modules
-│   │   │   ├── config/        # Environment settings parser (koanf)
+│   │   ├── internal/          # Layered Application Modules
+│   │   │   ├── config/        # Environment loader & observability loader (config.go)
+│   │   │   ├── cron/          # Scheduled job registry (base.go, jobs.go, registry.go)
 │   │   │   ├── database/      # Postgres connection pool & Tern migrations
 │   │   │   │   └── migrations/# Versioned SQL migration files (.sql)
-│   │   │   ├── handler/       # Echo HTTP controllers
-│   │   │   ├── middleware/    # Auth (Clerk), Tracing (NewRelic), CORS, Rate Limit
-│   │   │   ├── repository/    # Raw SQL persistence queries
-│   │   │   ├── router/        # Echo routes setup (/api/v1, /docs, /status)
-│   │   │   └── service/       # Core business logic layer
-│   │   ├── static/            # Static assets (openapi.json, openapi.html for Scalar UI)
+│   │   │   ├── errs/          # Domain error types & HTTP status mappers (http.go, types.go)
+│   │   │   ├── handler/       # Controller HTTP handlers (base.go, health.go, openapi.go, domain handlers)
+│   │   │   ├── lib/           # Reusable libraries (aws/, email/, job/, utils/)
+│   │   │   ├── logger/        # Zerolog structured logging setup (logger.go)
+│   │   │   ├── middleware/    # Auth (Clerk), Tracing (NewRelic), CORS, Rate Limit, Request ID
+│   │   │   ├── model/         # Pure domain entities & DTOs (base.go, domain subpackages)
+│   │   │   ├── repository/    # SQL persistence & Redis cache implementations
+│   │   │   ├── router/        # Echo routes setup (router.go, system.go, v1/)
+│   │   │   ├── server/        # HTTP server lifecycle wrapper (server.go)
+│   │   │   ├── service/       # Pure business logic services (services.go, domain services)
+│   │   │   ├── testing/       # Testcontainers-go integration test suites (container.go, assertions.go, helpers.go)
+│   │   │   └── validation/    # Payload validation utilities (utils.go)
+│   │   ├── static/            # Static assets (openapi.json, openapi.html for Swagger UI)
 │   │   ├── Taskfile.yml       # Go task automation scripts
 │   │   ├── Dockerfile         # Multi-stage Go build Dockerfile
 │   │   └── go.mod             # Go module manifest & dependencies
