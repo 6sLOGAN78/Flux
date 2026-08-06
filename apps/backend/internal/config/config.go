@@ -37,7 +37,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// 1. Server Port
-	port := k.String("protask_server.port")
+	port := k.String("flux_server.port")
 	if port == "" {
 		port = k.String("server_port")
 	}
@@ -51,12 +51,12 @@ func LoadConfig() (*Config, error) {
 	// 2. Database URL
 	dbURL := k.String("database_url")
 	if dbURL == "" {
-		dbHost := k.String("protask_database.host")
-		dbPort := k.String("protask_database.port")
-		dbUser := k.String("protask_database.user")
-		dbPass := k.String("protask_database.password")
-		dbName := k.String("protask_database.name")
-		dbSSL := k.String("protask_database.ssl_mode")
+		dbHost := k.String("flux_database.host")
+		dbPort := k.String("flux_database.port")
+		dbUser := k.String("flux_database.user")
+		dbPass := k.String("flux_database.password")
+		dbName := k.String("flux_database.name")
+		dbSSL := k.String("flux_database.ssl_mode")
 
 		if dbHost != "" && dbUser != "" && dbName != "" {
 			if dbPort == "" {
@@ -73,7 +73,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// 3. Redis Address / URL
-	redisURL := k.String("protask_redis.address")
+	redisURL := k.String("flux_redis.address")
 	if redisURL == "" {
 		redisURL = k.String("redis_url")
 	}
@@ -82,7 +82,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// 4. Auth & JWT Secret
-	jwtSecret := k.String("protask_auth.secret_key")
+	jwtSecret := k.String("flux_auth.secret_key")
 	if jwtSecret == "" {
 		jwtSecret = k.String("jwt_secret")
 	}
@@ -93,7 +93,7 @@ func LoadConfig() (*Config, error) {
 	clerkSecretKey := k.String("clerk_secret_key")
 
 	// 5. New Relic APM License Key
-	nrLicenseKey := k.String("protask_observability.new_relic.license_key")
+	nrLicenseKey := k.String("flux_observability.new_relic.license_key")
 	if nrLicenseKey == "" {
 		nrLicenseKey = k.String("new_relic_license_key")
 	}
