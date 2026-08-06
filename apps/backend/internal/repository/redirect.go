@@ -1,10 +1,12 @@
-package redirect
+package repository
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"flux/apps/backend/internal/model/redirect"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,14 +21,14 @@ func NewRedisRedirectCache(client *redis.Client) *RedisRedirectCache {
 	return &RedisRedirectCache{client: client}
 }
 
-func (r *RedisRedirectCache) Get(ctx context.Context, slug string) (*LinkRedirectTarget, error) {
+func (r *RedisRedirectCache) Get(ctx context.Context, slug string) (*redirect.LinkRedirectTarget, error) {
 	key := fmt.Sprintf("link:%s", slug)
 	val, err := r.client.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var target LinkRedirectTarget
+	var target redirect.LinkRedirectTarget
 	if err := json.Unmarshal([]byte(val), &target); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cached link: %w", err)
 	}
@@ -34,7 +36,7 @@ func (r *RedisRedirectCache) Get(ctx context.Context, slug string) (*LinkRedirec
 	return &target, nil
 }
 
-func (r *RedisRedirectCache) Set(ctx context.Context, slug string, target *LinkRedirectTarget, ttl time.Duration) error {
+func (r *RedisRedirectCache) Set(ctx context.Context, slug string, target *redirect.LinkRedirectTarget, ttl time.Duration) error {
 	key := fmt.Sprintf("link:%s", slug)
 	data, err := json.Marshal(target)
 	if err != nil {

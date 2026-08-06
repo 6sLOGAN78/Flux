@@ -1,25 +1,24 @@
-// Package redirect provides the high-performance HTTP redirect engine and caching layer.
-package redirect
+package handler
 
 import (
 	"errors"
 	"net/http"
 	"time"
 
+	"flux/apps/backend/internal/repository"
+	"flux/apps/backend/internal/service"
+
 	"github.com/labstack/echo/v4"
 )
 
-// RedirectHandler handles HTTP redirect requests.
 type RedirectHandler struct {
-	svc *RedirectService
+	svc *service.RedirectService
 }
 
-// NewRedirectHandler initializes a RedirectHandler instance.
-func NewRedirectHandler(svc *RedirectService) *RedirectHandler {
+func NewRedirectHandler(svc *service.RedirectService) *RedirectHandler {
 	return &RedirectHandler{svc: svc}
 }
 
-// HandleRedirect processes GET /:slug requests and performs HTTP 301/302 redirects.
 func (h *RedirectHandler) HandleRedirect(c echo.Context) error {
 	slug := c.Param("slug")
 	if slug == "" {
@@ -28,13 +27,12 @@ func (h *RedirectHandler) HandleRedirect(c echo.Context) error {
 
 	target, err := h.svc.ResolveRedirect(c.Request().Context(), slug)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "short link not found")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to resolve redirect")
 	}
 
-	// Validate link state
 	if target.Status == "deleted" {
 		return echo.NewHTTPError(http.StatusGone, "short link has been deleted")
 	}

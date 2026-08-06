@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"flux/apps/backend/internal/middleware"
-	"flux/apps/backend/internal/modules/auth"
+	"flux/apps/backend/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
@@ -17,7 +17,7 @@ func TestJWTMiddleware_MissingHeader(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	authSvc := auth.NewAuthService("test-secret", "")
+	authSvc := service.NewAuthService("test-secret", "")
 	mw := middleware.JWTMiddleware(authSvc)
 
 	handler := mw(func(c echo.Context) error {
@@ -42,7 +42,7 @@ func TestJWTMiddleware_InvalidHeaderFormat(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	authSvc := auth.NewAuthService("test-secret", "")
+	authSvc := service.NewAuthService("test-secret", "")
 	mw := middleware.JWTMiddleware(authSvc)
 
 	handler := mw(func(c echo.Context) error {
@@ -61,7 +61,7 @@ func TestJWTMiddleware_InvalidHeaderFormat(t *testing.T) {
 }
 
 func TestJWTMiddleware_ValidBearerToken(t *testing.T) {
-	authSvc := auth.NewAuthService("test-secret", "")
+	authSvc := service.NewAuthService("test-secret", "")
 	accessToken, _, err := authSvc.GenerateTokenPair("user_999", "user999@example.com")
 	if err != nil {
 		t.Fatalf("failed to generate token: %v", err)
