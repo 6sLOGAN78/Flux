@@ -1,12 +1,12 @@
 ---id: TASK-105
 title: Dashboard Metrics REST Backend APIs
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - api/openapi_v1_core.yaml
 references:
-  - [analytics_pipeline.md](file:///home/logan78/Desktop/plan/docs/core/analytics_pipeline.md)
+  - [analytics_pipeline.md](file:///home/logan78/Desktop/flux/docs/core/analytics_pipeline.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -29,31 +29,31 @@ This task relies on specifications and schema contracts in:
   - api/openapi_v1_core.yaml
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [analytics_pipeline.md](file:///home/logan78/Desktop/plan/docs/core/analytics_pipeline.md)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [analytics_pipeline.md](file:///home/logan78/Desktop/flux/docs/core/analytics_pipeline.md)
 
 ## 5. Acceptance Criteria
-- [ ] REST endpoints return correct aggregated link statistics with pagination.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [x] REST endpoints return correct aggregated link statistics with pagination.
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/analytics/api.go`
 
 ## 7. Definition of Done (DoD)
-- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
-- [ ] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/analytics/...`.
-- [ ] **Step 3: Write minimal implementation** inside target files.
-- [ ] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/analytics/...`.
-- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+- [x] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [x] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/analytics/...`.
+- [x] **Step 3: Write minimal implementation** inside target files.
+- [x] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/analytics/...`.
+- [x] **Step 5: Run linter**: Confirm zero warnings or errors.
 
 ## 8. Testing Strategy
 - **Unit Tests**: Test pure domain logic in isolation.
 - **Verification Command**: `go test -v ./internal/modules/analytics/...`
 
 ## 9. Documentation Updates
-- [ ] Mark task status as `Done` in this document frontmatter upon completion.
-- [ ] Update function/package docstrings if signatures were extended.
+- [x] Mark task status as `Done` in this document frontmatter upon completion.
+- [x] Update function/package docstrings if signatures were extended.
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
