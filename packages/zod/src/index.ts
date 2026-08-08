@@ -473,3 +473,20 @@ export const ZEdgeKVEntry = z.object({
 export type EdgeRedirectEvent = z.infer<typeof ZEdgeRedirectEvent>;
 export type EdgeKVEntry = z.infer<typeof ZEdgeKVEntry>;
 
+// --- Geo-Distributed DB Replication & Edge Sync Schemas ---
+
+export const ZRegionStatus = z.object({
+  region: z.string().openapi({ description: "Regional node location code", example: "us-east" }),
+  is_healthy: z.boolean().openapi({ description: "Regional node replication status health flag", example: true }),
+  latency_ms: z.number().int().openapi({ description: "Regional ping latency in milliseconds", example: 12 }),
+}).openapi({ description: "Regional database node status and SLA latency metrics" });
+
+export const ZGeoClusterHealthResponse = z.object({
+  regions: z.array(ZRegionStatus).openapi({ description: "Array of regional replication node statuses" }),
+  sync_sla_met: z.boolean().openapi({ description: "True if all regional nodes meet <500ms sync SLA", example: true }),
+}).openapi({ description: "Geo-distributed multi-region database cluster health response" });
+
+export type RegionStatus = z.infer<typeof ZRegionStatus>;
+export type GeoClusterHealthResponse = z.infer<typeof ZGeoClusterHealthResponse>;
+
+

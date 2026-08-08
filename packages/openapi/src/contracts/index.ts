@@ -1,6 +1,7 @@
 import { initContract } from "@ts-rest/core";
 import {
   ZHealthResponse,
+  ZGeoClusterHealthResponse,
   ZLink,
   ZCreateLinkInput,
   ZUpdateLinkInput,
@@ -39,6 +40,18 @@ export const apiContract = c.router({
       openApiTags: ["Health"],
     },
   },
+  getGeoClusterHealth: {
+    method: "GET",
+    path: "/health/geo-cluster",
+    responses: {
+      200: ZGeoClusterHealthResponse,
+    },
+    summary: "Get multi-region DB replication and Edge KV sync health status",
+    metadata: {
+      openApiTags: ["Health"],
+    },
+  },
+
 
   // --- Links ---
   createLink: {

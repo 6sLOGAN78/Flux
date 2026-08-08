@@ -39,6 +39,69 @@
         }
       }
     },
+    "/health/geo-cluster": {
+      "get": {
+        "summary": "Get multi-region DB replication and Edge KV sync health status",
+        "tags": [
+          "Health"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "regions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "region": {
+                            "type": "string",
+                            "description": "Regional node location code",
+                            "example": "us-east"
+                          },
+                          "is_healthy": {
+                            "type": "boolean",
+                            "description": "Regional node replication status health flag",
+                            "example": true
+                          },
+                          "latency_ms": {
+                            "type": "integer",
+                            "description": "Regional ping latency in milliseconds",
+                            "example": 12
+                          }
+                        },
+                        "required": [
+                          "region",
+                          "is_healthy",
+                          "latency_ms"
+                        ],
+                        "description": "Regional database node status and SLA latency metrics"
+                      },
+                      "description": "Array of regional replication node statuses"
+                    },
+                    "sync_sla_met": {
+                      "type": "boolean",
+                      "description": "True if all regional nodes meet <500ms sync SLA",
+                      "example": true
+                    }
+                  },
+                  "required": [
+                    "regions",
+                    "sync_sla_met"
+                  ],
+                  "description": "Geo-distributed multi-region database cluster health response"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/links": {
       "post": {
         "summary": "Shorten a URL link",
