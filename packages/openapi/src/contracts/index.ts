@@ -21,6 +21,7 @@ import {
   ZAPIKey,
   ZOAuthTokenResponse,
   ZWebhook,
+  ZNotification,
 } from "@flux/zod";
 import { z } from "zod";
 
@@ -209,6 +210,35 @@ export const apiContract = c.router({
     summary: "Register outbound webhook listener endpoint",
     metadata: {
       openApiTags: ["Webhooks"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- Notifications ---
+  getNotifications: {
+    method: "GET",
+    path: "/api/v1/notifications",
+    responses: {
+      200: z.array(ZNotification),
+    },
+    summary: "Get unread user notifications list",
+    metadata: {
+      openApiTags: ["Notifications"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  markNotificationsRead: {
+    method: "POST",
+    path: "/api/v1/notifications/mark-read",
+    body: z.object({
+      notification_ids: z.array(z.string().uuid()).openapi({ description: "Array of notification UUIDs to mark read" }),
+    }),
+    responses: {
+      200: z.object({ success: z.boolean(), updated_count: z.number().int() }),
+    },
+    summary: "Mark notifications as read",
+    metadata: {
+      openApiTags: ["Notifications"],
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },

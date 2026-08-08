@@ -207,6 +207,19 @@ export const ZWebhook = z.object({
   isActive: z.boolean().openapi({ description: "Active status", example: true }),
 }).openapi({ description: "Registered Webhook Endpoint entity" });
 
+// --- Notifications ---
+
+export const ZNotification = z.object({
+  id: z.string().uuid().openapi({ description: "Notification UUID" }),
+  userId: z.string().uuid().openapi({ description: "Recipient User UUID" }),
+  title: z.string().openapi({ description: "Notification title", example: "Threshold Exceeded" }),
+  message: z.string().openapi({ description: "Notification body message", example: "Link xyz123 reached 10,000 clicks" }),
+  type: z.enum(["info", "warning", "alert"]).openapi({ description: "Alert severity level", example: "warning" }),
+  linkUrl: z.string().url().optional().openapi({ description: "Optional action link URL" }),
+  isRead: z.boolean().openapi({ description: "Read status flag", example: false }),
+  createdAt: z.string().datetime().openapi({ description: "Creation timestamp" }),
+}).openapi({ description: "User notification item" });
+
 // --- Exported Inferred Types ---
 export type Link = z.infer<typeof ZLink>;
 export type CreateLinkInput = z.infer<typeof ZCreateLinkInput>;
@@ -232,3 +245,4 @@ export type Subscription = z.infer<typeof ZSubscription>;
 export type APIKey = z.infer<typeof ZAPIKey>;
 export type OAuthTokenResponse = z.infer<typeof ZOAuthTokenResponse>;
 export type Webhook = z.infer<typeof ZWebhook>;
+export type Notification = z.infer<typeof ZNotification>;

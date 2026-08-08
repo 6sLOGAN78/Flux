@@ -9,7 +9,7 @@ const openApiDocument = generateOpenApi(
     info: {
       title: "Flux Platform REST API",
       version: "2.0.0",
-      description: "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, and real-time analytics API.",
+      description: "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, multi-channel notifications, and real-time analytics API.",
       contact: {
         name: "Flux API Engineering Team",
         email: "support@flux.dev",
@@ -68,6 +68,7 @@ openApiDocument.tags = [
   { name: "Billing", description: "Stripe subscription tiers, checkout, and metered billing" },
   { name: "OAuth", description: "OAuth 2.0 Token issuance and developer API keys" },
   { name: "Webhooks", description: "Outbound real-time HTTP callback subscription management" },
+  { name: "Notifications", description: "In-app alerts and multi-channel notification center" },
   { name: "User", description: "Authenticated user context and profile management" },
   { name: "Analytics", description: "Real-time link click metrics, time-series, and performance reporting" },
 ];
@@ -95,6 +96,8 @@ for (const [pathKey, pathObj] of Object.entries(openApiDocument.paths || {})) {
           operation.tags = ["OAuth"];
         } else if (pathKey.includes("/webhooks")) {
           operation.tags = ["Webhooks"];
+        } else if (pathKey.includes("/notifications")) {
+          operation.tags = ["Notifications"];
         } else if (pathKey.includes("/me")) {
           operation.tags = ["User"];
         } else if (pathKey.includes("/analytics")) {

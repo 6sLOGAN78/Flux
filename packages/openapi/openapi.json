@@ -1117,6 +1117,143 @@
         }
       }
     },
+    "/api/v1/notifications": {
+      "get": {
+        "summary": "Get unread user notifications list",
+        "tags": [
+          "Notifications"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Notification UUID"
+                      },
+                      "userId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Recipient User UUID"
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "Notification title",
+                        "example": "Threshold Exceeded"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Notification body message",
+                        "example": "Link xyz123 reached 10,000 clicks"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "info",
+                          "warning",
+                          "alert"
+                        ],
+                        "description": "Alert severity level",
+                        "example": "warning"
+                      },
+                      "linkUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Optional action link URL"
+                      },
+                      "isRead": {
+                        "type": "boolean",
+                        "description": "Read status flag",
+                        "example": false
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Creation timestamp"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "userId",
+                      "title",
+                      "message",
+                      "type",
+                      "isRead",
+                      "createdAt"
+                    ],
+                    "description": "User notification item"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/mark-read": {
+      "post": {
+        "summary": "Mark notifications as read",
+        "tags": [
+          "Notifications"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notification_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Array of notification UUIDs to mark read"
+                  }
+                },
+                "required": [
+                  "notification_ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "updated_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "updated_count"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "summary": "Get authenticated user profile",
@@ -1350,7 +1487,7 @@
   "info": {
     "title": "Flux Platform REST API",
     "version": "2.0.0",
-    "description": "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, and real-time analytics API.",
+    "description": "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, multi-channel notifications, and real-time analytics API.",
     "contact": {
       "name": "Flux API Engineering Team",
       "email": "support@flux.dev",
@@ -1429,6 +1566,10 @@
     {
       "name": "Webhooks",
       "description": "Outbound real-time HTTP callback subscription management"
+    },
+    {
+      "name": "Notifications",
+      "description": "In-app alerts and multi-channel notification center"
     },
     {
       "name": "User",
