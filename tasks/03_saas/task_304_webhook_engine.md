@@ -1,7 +1,7 @@
 ---id: TASK-304
 title: Webhook Delivery Engine & Event Bus
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - api/asyncapi_events.yaml
@@ -33,27 +33,28 @@ This task relies on specifications and schema contracts in:
   - [webhooks_event_bus.md](file:///home/logan78/Desktop/flux/docs/saas/webhooks_event_bus.md)
 
 ## 5. Acceptance Criteria
-- [ ] Delivers signed webhook payloads to subscriber URLs with execution retry logs.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
+- [x] Delivers signed webhook payloads to subscriber URLs with execution retry logs.
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/webhook/deliver.go`
 
 ## 7. Definition of Done (DoD)
-- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
-- [ ] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/webhook/...`.
-- [ ] **Step 3: Write minimal implementation** inside target files.
-- [ ] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/webhook/...`.
-- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+- [x] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [x] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/webhook/...`.
+- [x] **Step 3: Write minimal implementation** inside target files.
+- [x] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/webhook/...`.
+- [x] **Step 5: Run linter**: Confirm zero warnings or errors.
 
 ## 8. Testing Strategy
 - **Unit Tests**: Test pure domain logic in isolation.
 - **Verification Command**: `go test -v ./internal/modules/webhook/...`
 
 ## 9. Documentation Updates
-- [ ] Mark task status as `Done` in this document frontmatter upon completion.
-- [ ] Update function/package docstrings if signatures were extended.
+- [x] Mark task status as `Done` in this document frontmatter upon completion.
+- [x] Update function/package docstrings if signatures were extended.
+
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
