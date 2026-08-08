@@ -38,6 +38,11 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		log.Warn().Err(dbErr).Msg("postgresql connection ping failed via pgx/v5")
 	} else {
 		log.Info().Msg("successfully connected and pinged postgresql database via pgx/v5")
+		migCtx, migCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if migErr := database.MigrateDSN(migCtx, &log.Logger, cfg.DatabaseURL); migErr != nil {
+			log.Warn().Err(migErr).Msg("database migration warning")
+		}
+		migCancel()
 	}
 
 	authSvc := service.NewAuthService(cfg.JWTSecret, cfg.ClerkSecretKey)

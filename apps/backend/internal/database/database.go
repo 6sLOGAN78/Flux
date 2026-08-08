@@ -6,8 +6,21 @@ import (
 	"fmt"
 	"time"
 
+	"flux/apps/backend/internal/config"
+
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 )
+
+const DatabasePingTimeout = 10 * time.Second
+
+// NewPool initializes a PostgreSQL connection pool using pgx/v5 pgxpool and structured Config.
+func NewPool(ctx context.Context, cfg *config.Config, logger *zerolog.Logger) (*pgxpool.Pool, error) {
+	if cfg == nil || cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("invalid config or empty DatabaseURL")
+	}
+	return InitDBPool(ctx, cfg.DatabaseURL)
+}
 
 // InitDBPool initializes a PostgreSQL connection pool using pgx/v5 pgxpool.
 func InitDBPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -22,7 +35,7 @@ func InitDBPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) 
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 15 * time.Minute
 
-	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, DatabasePingTimeout)
 	defer cancel()
 
 	pool, err := pgxpool.NewWithConfig(pingCtx, config)

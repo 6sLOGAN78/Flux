@@ -2,7 +2,6 @@ package validation_test
 
 import (
 	"testing"
-
 	"flux/apps/backend/internal/validation"
 )
 
