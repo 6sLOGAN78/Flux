@@ -9,15 +9,30 @@ import (
 
 // HTTPErrorResponse represents standardized HTTP JSON error payload.
 type HTTPErrorResponse struct {
-	Status  int    `json:"status"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Status      int          `json:"status"`
+	Code        string       `json:"code,omitempty"`
+	Message     string       `json:"message"`
+	FieldErrors []FieldError `json:"field_errors,omitempty"`
 }
 
-// ToHTTPError converts internal domain errors to Echo HTTP Error responses.
+// ToHTTPError converts internal domain errors or HTTPError to Echo HTTP Error responses.
 func ToHTTPError(err error) *echo.HTTPError {
 	if err == nil {
 		return nil
+	}
+
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		codeStr := ""
+		if httpErr.Code != nil {
+			codeStr = *httpErr.Code
+		}
+		return echo.NewHTTPError(httpErr.StatusCode, HTTPErrorResponse{
+			Status:      httpErr.StatusCode,
+			Code:        codeStr,
+			Message:     httpErr.Message,
+			FieldErrors: httpErr.FieldErrors,
+		})
 	}
 
 	var appErr *AppError
