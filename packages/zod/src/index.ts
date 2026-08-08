@@ -429,3 +429,25 @@ export const ZWhiteLabelConfig = z.object({
 });
 
 export type WhiteLabelConfig = z.infer<typeof ZWhiteLabelConfig>;
+
+// --- Enterprise Abuse & Malware Moderation Schemas ---
+
+export const ZSecurityScan = z.object({
+  id: z.string().uuid(),
+  link_id: z.string().uuid(),
+  url: z.string().url(),
+  is_safe: z.boolean(),
+  threat_type: z.string().optional(),
+  threat_provider: z.string().optional(),
+  scanned_at: z.string().datetime(),
+});
+
+export const ZScanResult = z.object({
+  is_safe: z.boolean(),
+  threat_type: z.string().optional(),
+  threat_provider: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+export type SecurityScan = z.infer<typeof ZSecurityScan>;
+export type ScanResult = z.infer<typeof ZScanResult>;

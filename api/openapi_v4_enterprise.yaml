@@ -374,6 +374,63 @@ paths:
             text/css:
               schema:
                 type: string
+  /api/v1/enterprise/abuse/scan:
+    post:
+      summary: Trigger Real-Time Abuse & Malware URL Scan
+      description: Evaluates target URL against Google Safe Browsing, VirusTotal, and internal malware blocklists.
+      tags:
+        - Enterprise Abuse Moderation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - link_id
+                - url
+              properties:
+                link_id:
+                  type: string
+                  format: uuid
+                url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: Security scan evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+  /api/v1/enterprise/abuse/quarantine:
+    post:
+      summary: Admin Link Quarantine & Legal Takedown Trigger
+      description: Suspends an abusive/malicious link returning HTTP 451 Unavailable For Legal Reasons on user access.
+      tags:
+        - Enterprise Abuse Moderation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - link_id
+                - reason
+              properties:
+                link_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Link successfully quarantined
 components:
   securitySchemes:
     BearerAuth:
@@ -693,4 +750,19 @@ components:
         dkim_selector:
           type: string
         dkim_domain:
+          type: string
+    ScanResult:
+      type: object
+      required:
+        - is_safe
+      properties:
+        is_safe:
+          type: boolean
+        threat_type:
+          type: string
+          enum: [malware, phishing, social_engineering, malformed_url]
+        threat_provider:
+          type: string
+          enum: [google_safe_browsing, virustotal, internal_validator]
+        reason:
           type: string

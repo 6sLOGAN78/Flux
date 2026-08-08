@@ -2018,6 +2018,53 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/abuse/scan": {
+      "post": {
+        "summary": "Trigger Real-Time Abuse & Malware URL Scan",
+        "tags": [
+          "Enterprise Abuse Moderation"
+        ],
+        "responses": {
+          "200": {
+            "description": "Security scan evaluation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_safe": {
+                      "type": "boolean"
+                    },
+                    "threat_type": {
+                      "type": "string"
+                    },
+                    "threat_provider": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/enterprise/abuse/quarantine": {
+      "post": {
+        "summary": "Admin Link Quarantine & Legal Takedown Trigger",
+        "tags": [
+          "Enterprise Abuse Moderation"
+        ],
+        "responses": {
+          "200": {
+            "description": "Link successfully quarantined"
+          }
+        }
+      }
     }
   },
   "info": {
