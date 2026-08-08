@@ -18,12 +18,12 @@
                   "properties": {
                     "status": {
                       "type": "string",
-                      "description": "Service operational status",
+                      "description": "Service status",
                       "example": "ok"
                     },
                     "database": {
                       "type": "string",
-                      "description": "Database connectivity status",
+                      "description": "PostgreSQL pool status",
                       "example": "connected"
                     }
                   },
@@ -31,7 +31,7 @@
                     "status",
                     "database"
                   ],
-                  "description": "System health check response"
+                  "description": "Health check status payload"
                 }
               }
             }
@@ -839,41 +839,23 @@
                         "format": "uuid",
                         "description": "Workspace UUID"
                       },
-                      "organizationId": {
+                      "orgId": {
                         "type": "string",
                         "format": "uuid",
-                        "description": "Parent organization UUID"
+                        "description": "Parent Organization UUID"
                       },
                       "name": {
                         "type": "string",
                         "description": "Workspace name",
                         "example": "Marketing Team"
-                      },
-                      "slug": {
-                        "type": "string",
-                        "description": "Workspace slug",
-                        "example": "marketing"
-                      },
-                      "isDefault": {
-                        "type": "boolean",
-                        "description": "Default workspace flag",
-                        "example": true
-                      },
-                      "createdAt": {
-                        "type": "string",
-                        "format": "date-time",
-                        "description": "Creation timestamp"
                       }
                     },
                     "required": [
                       "id",
-                      "organizationId",
-                      "name",
-                      "slug",
-                      "isDefault",
-                      "createdAt"
+                      "orgId",
+                      "name"
                     ],
-                    "description": "Tenant Workspace entity"
+                    "description": "Workspace scope entity"
                   }
                 }
               }
@@ -902,45 +884,40 @@
                       "format": "uuid",
                       "description": "Subscription UUID"
                     },
-                    "organizationId": {
+                    "orgId": {
                       "type": "string",
                       "format": "uuid",
                       "description": "Organization UUID"
                     },
-                    "stripeCustomerId": {
-                      "type": "string",
-                      "description": "Stripe customer identifier",
-                      "example": "cus_123"
-                    },
-                    "planTier": {
+                    "plan": {
                       "type": "string",
                       "enum": [
                         "free",
                         "pro",
-                        "business"
+                        "enterprise"
                       ],
-                      "description": "Subscription tier level",
-                      "example": "pro"
+                      "description": "Billing plan tier",
+                      "example": "enterprise"
                     },
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "active",
-                        "past_due",
-                        "canceled",
-                        "trialing"
-                      ],
-                      "description": "Subscription billing status",
+                      "description": "Stripe subscription status",
                       "example": "active"
+                    },
+                    "currentPeriodEnd": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Billing cycle renewal timestamp"
                     }
                   },
                   "required": [
-                    "organizationId",
-                    "stripeCustomerId",
-                    "planTier",
-                    "status"
+                    "id",
+                    "orgId",
+                    "plan",
+                    "status",
+                    "currentPeriodEnd"
                   ],
-                  "description": "Stripe subscription state entity"
+                  "description": "Stripe Subscription details"
                 }
               }
             }
@@ -992,30 +969,28 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "access_token": {
+                    "accessToken": {
                       "type": "string",
-                      "description": "Bearer Access Token",
-                      "example": "flx_oauth_abc123"
+                      "description": "OAuth2 Bearer Token",
+                      "example": "eyJhbGciOi..."
                     },
-                    "token_type": {
+                    "tokenType": {
                       "type": "string",
+                      "description": "Token type header",
                       "example": "Bearer"
                     },
-                    "expires_in": {
+                    "expiresIn": {
                       "type": "integer",
+                      "description": "Validity duration in seconds",
                       "example": 3600
-                    },
-                    "scope": {
-                      "type": "string",
-                      "example": "links:read links:write"
                     }
                   },
                   "required": [
-                    "access_token",
-                    "token_type",
-                    "expires_in"
+                    "accessToken",
+                    "tokenType",
+                    "expiresIn"
                   ],
-                  "description": "OAuth 2.0 Access Token Response"
+                  "description": "OAuth token issuance payload"
                 }
               }
             }
@@ -1269,29 +1244,27 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "user_id": {
+                    "userId": {
                       "type": "string",
-                      "description": "Authenticated user identifier",
-                      "example": "usr_998127"
+                      "description": "User UUID"
                     },
                     "email": {
                       "type": "string",
                       "format": "email",
-                      "description": "User email address",
-                      "example": "user@example.com"
+                      "description": "User email"
                     },
                     "status": {
                       "type": "string",
-                      "description": "Session status",
+                      "description": "Authentication status string",
                       "example": "authenticated"
                     }
                   },
                   "required": [
-                    "user_id",
+                    "userId",
                     "email",
                     "status"
                   ],
-                  "description": "Authenticated user session response"
+                  "description": "Current user profile authentication status"
                 }
               }
             }
@@ -1333,31 +1306,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "totalLinks": {
+                      "type": "integer",
+                      "description": "Total shortened links",
+                      "example": 1250
+                    },
                     "totalClicks": {
                       "type": "integer",
-                      "minimum": 0,
-                      "description": "Total click count across all links",
-                      "example": 42150
+                      "description": "Total recorded click events",
+                      "example": 45000
                     },
-                    "uniqueVisitors": {
+                    "activeDomains": {
                       "type": "integer",
-                      "minimum": 0,
-                      "description": "Total unique visitor IP count",
-                      "example": 31200
+                      "description": "Total verified custom domains",
+                      "example": 12
                     },
-                    "activeLinks": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "description": "Total active short links",
-                      "example": 128
+                    "topReferrer": {
+                      "type": "string",
+                      "description": "Top referrer domain",
+                      "example": "twitter.com"
                     }
                   },
                   "required": [
+                    "totalLinks",
                     "totalClicks",
-                    "uniqueVisitors",
-                    "activeLinks"
+                    "activeDomains",
+                    "topReferrer"
                   ],
-                  "description": "Global analytics summary statistics"
+                  "description": "High-level platform analytics summary"
                 }
               }
             }
@@ -1418,14 +1394,11 @@
                     },
                     "shortCode": {
                       "type": "string",
-                      "description": "Short code slug",
-                      "example": "xyz123"
+                      "description": "Link short code slug"
                     },
                     "totalClicks": {
                       "type": "integer",
-                      "minimum": 0,
-                      "description": "Total click count for this link",
-                      "example": 1540
+                      "description": "Total click count"
                     },
                     "clicksByDate": {
                       "type": "array",
@@ -1434,12 +1407,13 @@
                         "properties": {
                           "date": {
                             "type": "string",
+                            "description": "Date in YYYY-MM-DD format",
                             "example": "2026-08-08"
                           },
                           "clicks": {
                             "type": "integer",
-                            "minimum": 0,
-                            "example": 320
+                            "description": "Click count for date",
+                            "example": 340
                           }
                         },
                         "required": [
@@ -1447,7 +1421,7 @@
                           "clicks"
                         ]
                       },
-                      "description": "Time-series daily click breakdown"
+                      "description": "Daily click breakdown"
                     }
                   },
                   "required": [
@@ -1483,585 +1457,53 @@
         }
       }
     },
-    "/api/v1/enterprise/attribution": {
+    "/{slug}": {
       "get": {
-        "summary": "Get Multi-Touch Attribution Analytics",
+        "summary": "Execute sub-10ms multi-region edge redirect",
         "tags": [
-          "Enterprise Attribution"
+          "Redirects"
         ],
         "parameters": [
           {
-            "name": "model",
-            "in": "query",
+            "name": "slug",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "enum": [
-                "first_touch",
-                "last_touch",
-                "linear",
-                "time_decay",
-                "position_based"
-              ],
-              "default": "position_based"
+              "example": "openai"
             },
-            "description": "Attribution model algorithm"
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "description": "ISO 8601 start timestamp"
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "description": "ISO 8601 end timestamp"
+            "description": "Short URL slug"
           }
         ],
         "responses": {
-          "200": {
-            "description": "Attribution calculation result",
+          "302": {
+            "description": "302",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "302 Redirect to target destination URL"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "model": {
-                      "type": "string"
-                    },
-                    "total_conversions": {
-                      "type": "integer"
-                    },
-                    "total_attributed_revenue": {
-                      "type": "number"
-                    },
-                    "campaigns": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "campaign_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "campaign_name": {
-                            "type": "string"
-                          },
-                          "attributed_conversions": {
-                            "type": "number"
-                          },
-                          "attributed_revenue": {
-                            "type": "number"
-                          }
-                        }
-                      }
+                    "error": {
+                      "type": "string",
+                      "example": "Link Not Found"
                     }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/funnels/evaluate": {
-      "post": {
-        "summary": "Evaluate Enterprise Conversion Funnel Drop-off",
-        "tags": [
-          "Enterprise Funnels"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "funnel_name": {
-                    "type": "string"
                   },
-                  "steps": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "step_order": {
-                          "type": "integer"
-                        },
-                        "name": {
-                          "type": "string"
-                        },
-                        "link_id": {
-                          "type": "string",
-                          "format": "uuid"
-                        }
-                      }
-                    }
-                  }
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Funnel drop-off evaluation result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "funnel_name": {
-                      "type": "string"
-                    },
-                    "total_started": {
-                      "type": "integer"
-                    },
-                    "total_converted": {
-                      "type": "integer"
-                    },
-                    "final_conversion_pct": {
-                      "type": "number"
-                    },
-                    "steps": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "step_order": {
-                            "type": "integer"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "link_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "visitors": {
-                            "type": "integer"
-                          },
-                          "overall_conversion_pct": {
-                            "type": "number"
-                          },
-                          "step_conversion_pct": {
-                            "type": "number"
-                          },
-                          "drop_off_count": {
-                            "type": "integer"
-                          },
-                          "drop_off_pct": {
-                            "type": "number"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/metrics/roi": {
-      "get": {
-        "summary": "Get Financial Marketing Revenue Metrics (LTV, ROAS, CAC, ROI)",
-        "tags": [
-          "Enterprise Revenue Analytics"
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Financial revenue metrics summary",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "total_spend": {
-                      "type": "number"
-                    },
-                    "total_revenue": {
-                      "type": "number"
-                    },
-                    "total_customers": {
-                      "type": "integer"
-                    },
-                    "overall_cac": {
-                      "type": "number"
-                    },
-                    "overall_roas": {
-                      "type": "number"
-                    },
-                    "overall_roi_pct": {
-                      "type": "number"
-                    },
-                    "overall_ltv": {
-                      "type": "number"
-                    },
-                    "campaigns": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "campaign_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "campaign_name": {
-                            "type": "string"
-                          },
-                          "spend": {
-                            "type": "number"
-                          },
-                          "revenue": {
-                            "type": "number"
-                          },
-                          "customers_acquired": {
-                            "type": "integer"
-                          },
-                          "cac": {
-                            "type": "number"
-                          },
-                          "roas": {
-                            "type": "number"
-                          },
-                          "roi_pct": {
-                            "type": "number"
-                          },
-                          "ltv": {
-                            "type": "number"
-                          },
-                          "ltv_to_cac_ratio": {
-                            "type": "number"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/ai/generate-slugs": {
-      "post": {
-        "summary": "Generate AI Short Slug Suggestions",
-        "tags": [
-          "Enterprise AI Engine"
-        ],
-        "responses": {
-          "200": {
-            "description": "AI suggested slugs list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "suggestions": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/ai/summarize-campaign": {
-      "post": {
-        "summary": "Generate AI Executive Campaign Summary Brief",
-        "tags": [
-          "Enterprise AI Engine"
-        ],
-        "responses": {
-          "200": {
-            "description": "Campaign summary brief",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "summary": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/ai/detect-anomalies": {
-      "post": {
-        "summary": "Detect Statistical Click Traffic Anomalies (Z-Score)",
-        "tags": [
-          "Enterprise AI Engine"
-        ],
-        "responses": {
-          "200": {
-            "description": "Anomaly detection result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "link_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "is_anomaly": {
-                      "type": "boolean"
-                    },
-                    "anomaly_type": {
-                      "type": "string"
-                    },
-                    "z_score": {
-                      "type": "number"
-                    },
-                    "confidence_score": {
-                      "type": "number"
-                    },
-                    "summary": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/ai/predict-ctr": {
-      "post": {
-        "summary": "Forecast Predictive Link CTR (Click-Through Rate)",
-        "tags": [
-          "Enterprise AI Engine"
-        ],
-        "responses": {
-          "200": {
-            "description": "CTR prediction result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "link_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "historical_ctr": {
-                      "type": "number"
-                    },
-                    "predicted_ctr": {
-                      "type": "number"
-                    },
-                    "trend": {
-                      "type": "string"
-                    },
-                    "confidence": {
-                      "type": "number"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/sso/saml/acs": {
-      "post": {
-        "summary": "SAML 2.0 Assertion Consumer Service (ACS) Endpoint",
-        "tags": [
-          "Enterprise SSO"
-        ],
-        "responses": {
-          "200": {
-            "description": "SAML authentication validation result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "is_valid": {
-                      "type": "boolean"
-                    },
-                    "user_email": {
-                      "type": "string",
-                      "format": "email"
-                    },
-                    "session_index": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/scim/v2/Users": {
-      "post": {
-        "summary": "SCIM 2.0 User Provisioning Endpoint",
-        "tags": [
-          "SCIM 2.0 Provisioning"
-        ],
-        "responses": {
-          "201": {
-            "description": "SCIM user provisioned successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "userName": {
-                      "type": "string"
-                    },
-                    "active": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/whitelabel": {
-      "get": {
-        "summary": "Get Enterprise White-Label Configuration",
-        "tags": [
-          "Enterprise White-Label"
-        ],
-        "responses": {
-          "200": {
-            "description": "White-label configuration",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "dashboard_domain": {
-                      "type": "string"
-                    },
-                    "brand_name": {
-                      "type": "string"
-                    },
-                    "primary_color": {
-                      "type": "string"
-                    },
-                    "accent_color": {
-                      "type": "string"
-                    },
-                    "hide_footer": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/whitelabel/theme.css": {
-      "get": {
-        "summary": "Get Compiled Tenant CSS Theme Variables",
-        "tags": [
-          "Enterprise White-Label"
-        ],
-        "responses": {
-          "200": {
-            "description": "Compiled CSS stylesheet",
-            "content": {
-              "text/css": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/abuse/scan": {
-      "post": {
-        "summary": "Trigger Real-Time Abuse & Malware URL Scan",
-        "tags": [
-          "Enterprise Abuse Moderation"
-        ],
-        "responses": {
-          "200": {
-            "description": "Security scan evaluation result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "is_safe": {
-                      "type": "boolean"
-                    },
-                    "threat_type": {
-                      "type": "string"
-                    },
-                    "threat_provider": {
-                      "type": "string"
-                    },
-                    "reason": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/enterprise/abuse/quarantine": {
-      "post": {
-        "summary": "Admin Link Quarantine & Legal Takedown Trigger",
-        "tags": [
-          "Enterprise Abuse Moderation"
-        ],
-        "responses": {
-          "200": {
-            "description": "Link successfully quarantined"
           }
         }
       }
@@ -2117,6 +1559,10 @@
     {
       "name": "Health",
       "description": "System operational status and health check endpoints"
+    },
+    {
+      "name": "Redirects",
+      "description": "Multi-region sub-10ms edge redirect execution"
     },
     {
       "name": "Links",

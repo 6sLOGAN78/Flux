@@ -60,6 +60,7 @@ openApiDocument.security = [
 
 openApiDocument.tags = [
   { name: "Health", description: "System operational status and health check endpoints" },
+  { name: "Redirects", description: "Multi-region sub-10ms edge redirect execution" },
   { name: "Links", description: "Short URL creation, retrieval, Base62 routing, category assignment, and management" },
   { name: "Categories", description: "Category management and link organization" },
   { name: "Campaigns", description: "Marketing campaigns and UTM template building" },
@@ -80,7 +81,10 @@ for (const [pathKey, pathObj] of Object.entries(openApiDocument.paths || {})) {
       if (!operation.tags || operation.tags.length === 0) {
         if (pathKey.includes("/health")) {
           operation.tags = ["Health"];
+        } else if (pathKey === "/{slug}" || pathKey.includes("/:slug")) {
+          operation.tags = ["Redirects"];
         } else if (pathKey.includes("/links")) {
+
           operation.tags = ["Links"];
         } else if (pathKey.includes("/categories")) {
           operation.tags = ["Categories"];

@@ -286,4 +286,22 @@ export const apiContract = c.router({
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },
+
+  // --- Edge Redirect Engine ---
+  edgeRedirect: {
+    method: "GET",
+    path: "/:slug",
+    pathParams: z.object({
+      slug: z.string().openapi({ description: "Short URL slug", example: "openai" }),
+    }),
+    responses: {
+      302: z.undefined().openapi({ description: "302 Redirect to target destination URL" }),
+      404: z.object({ error: z.string().openapi({ example: "Link Not Found" }) }),
+    },
+    summary: "Execute sub-10ms multi-region edge redirect",
+    metadata: {
+      openApiTags: ["Redirects"],
+    },
+  },
 });
+

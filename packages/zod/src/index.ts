@@ -451,3 +451,25 @@ export const ZScanResult = z.object({
 
 export type SecurityScan = z.infer<typeof ZSecurityScan>;
 export type ScanResult = z.infer<typeof ZScanResult>;
+
+// --- Cloudflare Edge Redirect Worker Schemas ---
+
+export const ZEdgeRedirectEvent = z.object({
+  slug: z.string().openapi({ description: "Short URL slug executed at edge", example: "openai" }),
+  timestamp: z.string().datetime().openapi({ description: "ISO 8601 timestamp of click event" }),
+  ip: z.string().nullable().optional().openapi({ description: "Connecting IP address from Cloudflare header", example: "1.2.3.4" }),
+  country: z.string().nullable().optional().openapi({ description: "Two-letter ISO country code", example: "US" }),
+  userAgent: z.string().nullable().optional().openapi({ description: "Visitor User-Agent string" }),
+  referrer: z.string().nullable().optional().openapi({ description: "HTTP Referer header" }),
+}).openapi({ description: "Asynchronous click analytics event payload dispatched by Cloudflare Edge Worker" });
+
+export const ZEdgeKVEntry = z.object({
+  slug: z.string().openapi({ description: "Short link slug key", example: "openai" }),
+  destinationUrl: z.string().url().openapi({ description: "Target destination URL for 302 redirect", example: "https://openai.com" }),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+}).openapi({ description: "Cloudflare Workers KV cache entry mapping slug to destination URL" });
+
+export type EdgeRedirectEvent = z.infer<typeof ZEdgeRedirectEvent>;
+export type EdgeKVEntry = z.infer<typeof ZEdgeKVEntry>;
+
