@@ -1,7 +1,7 @@
 ---id: TASK-406
 title: Enterprise White-Label Customization
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/enterprise/white_label_engine.md

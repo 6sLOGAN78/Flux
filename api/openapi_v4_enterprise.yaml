@@ -326,6 +326,54 @@ paths:
       responses:
         '204':
           description: User deprovisioned successfully
+  /api/v1/enterprise/whitelabel:
+    get:
+      summary: Get Enterprise White-Label Configuration
+      description: Returns custom branding configuration, logo, favicon, colors, and DKIM domain setup for organization.
+      tags:
+        - Enterprise White-Label
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: White-label configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhiteLabelConfig'
+    put:
+      summary: Update Enterprise White-Label Branding
+      description: Updates custom branding logo, favicon, primary/accent colors, custom CSS overrides, and DKIM signing configs.
+      tags:
+        - Enterprise White-Label
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhiteLabelConfig'
+      responses:
+        '200':
+          description: Updated white-label configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhiteLabelConfig'
+  /api/v1/enterprise/whitelabel/theme.css:
+    get:
+      summary: Get Compiled Tenant CSS Theme Variables
+      description: Serves compiled `:root` CSS variables and sanitized CSS overrides for custom subdomains.
+      tags:
+        - Enterprise White-Label
+      responses:
+        '200':
+          description: Compiled CSS stylesheet
+          content:
+            text/css:
+              schema:
+                type: string
 components:
   securitySchemes:
     BearerAuth:
@@ -613,3 +661,36 @@ components:
           format: email
         active:
           type: boolean
+    WhiteLabelConfig:
+      type: object
+      required:
+        - brand_name
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        dashboard_domain:
+          type: string
+        brand_name:
+          type: string
+        logo_url:
+          type: string
+          format: uri
+        favicon_url:
+          type: string
+          format: uri
+        primary_color:
+          type: string
+        accent_color:
+          type: string
+        custom_css:
+          type: string
+        hide_footer:
+          type: boolean
+        dkim_selector:
+          type: string
+        dkim_domain:
+          type: string

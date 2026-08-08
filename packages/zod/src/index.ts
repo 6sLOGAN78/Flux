@@ -410,3 +410,22 @@ export type SSOConfig = z.infer<typeof ZSSOConfig>;
 export type SAMLAssertion = z.infer<typeof ZSAMLAssertion>;
 export type SAMLValidationResult = z.infer<typeof ZSAMLValidationResult>;
 export type SCIMUser = z.infer<typeof ZSCIMUser>;
+
+// --- Enterprise White-Label Schemas ---
+
+export const ZWhiteLabelConfig = z.object({
+  id: z.string().uuid().optional(),
+  organization_id: z.string().uuid().optional(),
+  dashboard_domain: z.string().optional(),
+  brand_name: z.string(),
+  logo_url: z.string().url().optional(),
+  favicon_url: z.string().url().optional(),
+  primary_color: z.string().optional(),
+  accent_color: z.string().optional(),
+  custom_css: z.string().optional(),
+  hide_footer: z.boolean().optional(),
+  dkim_selector: z.string().optional(),
+  dkim_domain: z.string().optional(),
+});
+
+export type WhiteLabelConfig = z.infer<typeof ZWhiteLabelConfig>;

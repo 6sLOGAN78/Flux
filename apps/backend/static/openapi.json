@@ -1961,6 +1961,63 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/whitelabel": {
+      "get": {
+        "summary": "Get Enterprise White-Label Configuration",
+        "tags": [
+          "Enterprise White-Label"
+        ],
+        "responses": {
+          "200": {
+            "description": "White-label configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dashboard_domain": {
+                      "type": "string"
+                    },
+                    "brand_name": {
+                      "type": "string"
+                    },
+                    "primary_color": {
+                      "type": "string"
+                    },
+                    "accent_color": {
+                      "type": "string"
+                    },
+                    "hide_footer": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/enterprise/whitelabel/theme.css": {
+      "get": {
+        "summary": "Get Compiled Tenant CSS Theme Variables",
+        "tags": [
+          "Enterprise White-Label"
+        ],
+        "responses": {
+          "200": {
+            "description": "Compiled CSS stylesheet",
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {
