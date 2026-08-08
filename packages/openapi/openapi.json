@@ -1573,6 +1573,106 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/funnels/evaluate": {
+      "post": {
+        "summary": "Evaluate Enterprise Conversion Funnel Drop-off",
+        "tags": [
+          "Enterprise Funnels"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "funnel_name": {
+                    "type": "string"
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "step_order": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "link_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Funnel drop-off evaluation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "funnel_name": {
+                      "type": "string"
+                    },
+                    "total_started": {
+                      "type": "integer"
+                    },
+                    "total_converted": {
+                      "type": "integer"
+                    },
+                    "final_conversion_pct": {
+                      "type": "number"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step_order": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "link_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "visitors": {
+                            "type": "integer"
+                          },
+                          "overall_conversion_pct": {
+                            "type": "number"
+                          },
+                          "step_conversion_pct": {
+                            "type": "number"
+                          },
+                          "drop_off_count": {
+                            "type": "integer"
+                          },
+                          "drop_off_pct": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

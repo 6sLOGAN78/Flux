@@ -250,3 +250,42 @@ export type Notification = z.infer<typeof ZNotification>;
 export type AttributionModel = z.infer<typeof ZAttributionModel>;
 export type CampaignAttribution = z.infer<typeof ZCampaignAttribution>;
 export type AttributionResult = z.infer<typeof ZAttributionResult>;
+
+// --- Enterprise Funnel Schemas ---
+
+export const ZFunnelStepInput = z.object({
+  step_order: z.number().int().openapi({ description: "Sequential step order index", example: 1 }),
+  name: z.string().openapi({ description: "Funnel step name label", example: "Landing Page" }),
+  link_id: z.string().uuid().openapi({ description: "Target link UUID" }),
+}).openapi({ description: "Input specification for a funnel step" });
+
+export const ZFunnelQueryPayload = z.object({
+  funnel_name: z.string().openapi({ description: "Funnel name label", example: "Checkout Funnel" }),
+  steps: z.array(ZFunnelStepInput).min(1).openapi({ description: "Ordered funnel steps array" }),
+  from: z.string().datetime().optional().openapi({ description: "Start timestamp filter" }),
+  to: z.string().datetime().optional().openapi({ description: "End timestamp filter" }),
+}).openapi({ description: "Payload for executing funnel evaluation query" });
+
+export const ZFunnelStepResult = z.object({
+  step_order: z.number().int().openapi({ description: "Step order index", example: 1 }),
+  name: z.string().openapi({ description: "Step name", example: "Landing Page" }),
+  link_id: z.string().uuid().openapi({ description: "Link UUID" }),
+  visitors: z.number().int().openapi({ description: "Visitor count reaching step", example: 100 }),
+  overall_conversion_pct: z.number().openapi({ description: "Conversion rate relative to step 1", example: 100.0 }),
+  step_conversion_pct: z.number().openapi({ description: "Conversion rate from previous step", example: 100.0 }),
+  drop_off_count: z.number().int().openapi({ description: "Visitor drop-off count", example: 0 }),
+  drop_off_pct: z.number().openapi({ description: "Percentage of visitors dropping off", example: 0.0 }),
+}).openapi({ description: "Calculated result metrics for a single funnel step" });
+
+export const ZFunnelAnalysisResult = z.object({
+  funnel_name: z.string().openapi({ description: "Funnel name", example: "Checkout Funnel" }),
+  total_started: z.number().int().openapi({ description: "Visitors starting at step 1", example: 100 }),
+  total_converted: z.number().int().openapi({ description: "Visitors completing final step", example: 33 }),
+  final_conversion_pct: z.number().openapi({ description: "Overall end-to-end conversion percentage", example: 33.33 }),
+  steps: z.array(ZFunnelStepResult).openapi({ description: "Step-by-step breakdown results" }),
+}).openapi({ description: "Complete funnel analysis result" });
+
+export type FunnelStepInput = z.infer<typeof ZFunnelStepInput>;
+export type FunnelQueryPayload = z.infer<typeof ZFunnelQueryPayload>;
+export type FunnelStepResult = z.infer<typeof ZFunnelStepResult>;
+export type FunnelAnalysisResult = z.infer<typeof ZFunnelAnalysisResult>;

@@ -1,7 +1,7 @@
 ---id: TASK-402
 title: Enterprise Funnel Analytics Engine
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/core/analytics_pipeline.md#part-iv

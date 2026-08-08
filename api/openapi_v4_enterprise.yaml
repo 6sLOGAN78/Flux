@@ -37,7 +37,7 @@ paths:
             format: date-time
       responses:
         '200':
-          description: Attribution analytics calculation result
+          description: Attribution calculation result
           content:
             application/json:
               schema:
@@ -46,6 +46,29 @@ paths:
           description: Invalid query parameters or unsupported model
         '401':
           description: Unauthorized
+  /api/v1/enterprise/funnels/evaluate:
+    post:
+      summary: Evaluate Enterprise Conversion Funnel Drop-off
+      description: Computes step-by-step conversion rates and visitor drop-off percentages for ordered multi-step funnels.
+      tags:
+        - Enterprise Funnels
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunnelQueryPayload'
+      responses:
+        '200':
+          description: Funnel drop-off evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunnelAnalysisResult'
+        '400':
+          description: Invalid funnel steps payload
 components:
   securitySchemes:
     BearerAuth:
@@ -92,3 +115,89 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CampaignAttribution'
+    FunnelStepInput:
+      type: object
+      required:
+        - step_order
+        - name
+        - link_id
+      properties:
+        step_order:
+          type: integer
+        name:
+          type: string
+        link_id:
+          type: string
+          format: uuid
+    FunnelQueryPayload:
+      type: object
+      required:
+        - funnel_name
+        - steps
+      properties:
+        funnel_name:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunnelStepInput'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+    FunnelStepResult:
+      type: object
+      required:
+        - step_order
+        - name
+        - link_id
+        - visitors
+        - overall_conversion_pct
+        - step_conversion_pct
+        - drop_off_count
+        - drop_off_pct
+      properties:
+        step_order:
+          type: integer
+        name:
+          type: string
+        link_id:
+          type: string
+          format: uuid
+        visitors:
+          type: integer
+        overall_conversion_pct:
+          type: number
+          format: double
+        step_conversion_pct:
+          type: number
+          format: double
+        drop_off_count:
+          type: integer
+        drop_off_pct:
+          type: number
+          format: double
+    FunnelAnalysisResult:
+      type: object
+      required:
+        - funnel_name
+        - total_started
+        - total_converted
+        - final_conversion_pct
+        - steps
+      properties:
+        funnel_name:
+          type: string
+        total_started:
+          type: integer
+        total_converted:
+          type: integer
+        final_conversion_pct:
+          type: number
+          format: double
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunnelStepResult'
