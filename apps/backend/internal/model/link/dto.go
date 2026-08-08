@@ -8,10 +8,11 @@ import (
 // ------------------------------------------------------------
 
 type CreateLinkPayload struct {
-	DestinationURL string  `json:"destination_url" validate:"required,url"`
-	CustomCode     *string `json:"custom_code,omitempty" validate:"omitempty,min=3,max=20,alphanum"`
-	Title          *string `json:"title,omitempty" validate:"omitempty,max=100"`
-	Description    *string `json:"description,omitempty" validate:"omitempty,max=255"`
+	DestinationURL string     `json:"destination_url" validate:"required,url"`
+	CustomCode     *string    `json:"custom_code,omitempty" validate:"omitempty,min=3,max=20,alphanum"`
+	CategoryID     *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid"`
+	Title          *string    `json:"title,omitempty" validate:"omitempty,max=100"`
+	Description    *string    `json:"description,omitempty" validate:"omitempty,max=255"`
 }
 
 func (p *CreateLinkPayload) Validate() error {
@@ -22,10 +23,11 @@ func (p *CreateLinkPayload) Validate() error {
 // ------------------------------------------------------------
 
 type UpdateLinkPayload struct {
-	ID             uuid.UUID `param:"id" validate:"required,uuid"`
-	DestinationURL *string   `json:"destination_url,omitempty" validate:"omitempty,url"`
-	Title          *string   `json:"title,omitempty" validate:"omitempty,max=100"`
-	Description    *string   `json:"description,omitempty" validate:"omitempty,max=255"`
+	ID             uuid.UUID  `param:"id" validate:"required,uuid"`
+	DestinationURL *string    `json:"destination_url,omitempty" validate:"omitempty,url"`
+	CategoryID     *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid"`
+	Title          *string    `json:"title,omitempty" validate:"omitempty,max=100"`
+	Description    *string    `json:"description,omitempty" validate:"omitempty,max=255"`
 }
 
 func (p *UpdateLinkPayload) Validate() error {
@@ -35,12 +37,25 @@ func (p *UpdateLinkPayload) Validate() error {
 
 // ------------------------------------------------------------
 
+type BulkCategorizePayload struct {
+	LinkIDs    []uuid.UUID `json:"link_ids" validate:"required,min=1"`
+	CategoryID *uuid.UUID  `json:"category_id" validate:"omitempty,uuid"`
+}
+
+func (p *BulkCategorizePayload) Validate() error {
+	validate := validator.New()
+	return validate.Struct(p)
+}
+
+// ------------------------------------------------------------
+
 type GetLinksQuery struct {
-	Page   *int    `query:"page" validate:"omitempty,min=1"`
-	Limit  *int    `query:"limit" validate:"omitempty,min=1,max=100"`
-	Sort   *string `query:"sort" validate:"omitempty,oneof=created_at updated_at short_code"`
-	Order  *string `query:"order" validate:"omitempty,oneof=asc desc"`
-	Search *string `query:"search" validate:"omitempty,min=1"`
+	Page       *int       `query:"page" validate:"omitempty,min=1"`
+	Limit      *int       `query:"limit" validate:"omitempty,min=1,max=100"`
+	Sort       *string    `query:"sort" validate:"omitempty,oneof=created_at updated_at short_code"`
+	Order      *string    `query:"order" validate:"omitempty,oneof=asc desc"`
+	Search     *string    `query:"search" validate:"omitempty,min=1"`
+	CategoryID *uuid.UUID `query:"category_id" validate:"omitempty,uuid"`
 }
 
 func (q *GetLinksQuery) Validate() error {

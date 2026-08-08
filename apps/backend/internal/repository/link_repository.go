@@ -34,6 +34,7 @@ func (r *LinkRepository) CreateLink(
 			short_code,
 			destination_url,
 			tenant_id,
+			category_id,
 			title,
 			description
 		)
@@ -41,6 +42,7 @@ func (r *LinkRepository) CreateLink(
 			@short_code,
 			@destination_url,
 			@tenant_id,
+			@category_id,
 			@title,
 			@description
 		)
@@ -51,6 +53,7 @@ func (r *LinkRepository) CreateLink(
 		"short_code":      shortCode,
 		"destination_url": payload.DestinationURL,
 		"tenant_id":       tenantID,
+		"category_id":     payload.CategoryID,
 		"title":          payload.Title,
 		"description":    payload.Description,
 	})
@@ -121,6 +124,11 @@ func (r *LinkRepository) GetLinks(
 	if tenantID != nil {
 		conditions = append(conditions, "tenant_id = @tenant_id")
 		args["tenant_id"] = *tenantID
+	}
+
+	if query.CategoryID != nil {
+		conditions = append(conditions, "category_id = @category_id")
+		args["category_id"] = *query.CategoryID
 	}
 
 	if query.Search != nil && *query.Search != "" {
@@ -204,6 +212,10 @@ func (r *LinkRepository) UpdateLink(
 		setClauses = append(setClauses, "destination_url = @destination_url")
 		args["destination_url"] = *payload.DestinationURL
 	}
+	if payload.CategoryID != nil {
+		setClauses = append(setClauses, "category_id = @category_id")
+		args["category_id"] = *payload.CategoryID
+	}
 	if payload.Title != nil {
 		setClauses = append(setClauses, "title = @title")
 		args["title"] = *payload.Title
@@ -235,6 +247,30 @@ func (r *LinkRepository) UpdateLink(
 	}
 
 	return &updated, nil
+}
+
+func (r *LinkRepository) BulkCategorizeLinks(
+	ctx context.Context,
+	tenantID *uuid.UUID,
+	linkIDs []uuid.UUID,
+	categoryID *uuid.UUID,
+) (int64, error) {
+	stmt := "UPDATE links SET category_id = @category_id WHERE id = ANY(@link_ids)"
+	args := pgx.NamedArgs{
+		"category_id": categoryID,
+		"link_ids":    linkIDs,
+	}
+	if tenantID != nil {
+		stmt += " AND tenant_id = @tenant_id"
+		args["tenant_id"] = *tenantID
+	}
+
+	result, err := r.pool.Exec(ctx, stmt, args)
+	if err != nil {
+		return 0, sqlerr.HandleError(fmt.Errorf("failed to bulk update link categories: %w", err))
+	}
+
+	return result.RowsAffected(), nil
 }
 
 func (r *LinkRepository) DeleteLink(ctx context.Context, tenantID *uuid.UUID, id uuid.UUID) error {
