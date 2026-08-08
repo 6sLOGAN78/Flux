@@ -336,3 +336,35 @@ export type AdSpend = z.infer<typeof ZAdSpend>;
 export type CustomerConversion = z.infer<typeof ZCustomerConversion>;
 export type CampaignRevenueMetrics = z.infer<typeof ZCampaignRevenueMetrics>;
 export type RevenueSummaryResult = z.infer<typeof ZRevenueSummaryResult>;
+
+// --- Enterprise Predictive AI Schemas ---
+
+export const ZAnomalyLog = z.object({
+  id: z.string().uuid(),
+  link_id: z.string().uuid(),
+  anomaly_type: z.enum(["traffic_spike", "traffic_drop", "bot_surge"]),
+  confidence_score: z.number(),
+  summary: z.string(),
+  created_at: z.string().datetime(),
+});
+
+export const ZAnomalyDetectionResult = z.object({
+  link_id: z.string().uuid(),
+  is_anomaly: z.boolean(),
+  anomaly_type: z.enum(["traffic_spike", "traffic_drop", "bot_surge"]).optional(),
+  z_score: z.number(),
+  confidence_score: z.number(),
+  summary: z.string(),
+});
+
+export const ZCTRPredictionResult = z.object({
+  link_id: z.string().uuid(),
+  historical_ctr: z.number(),
+  predicted_ctr: z.number(),
+  trend: z.enum(["upward", "downward", "stable"]),
+  confidence: z.number(),
+});
+
+export type AnomalyLog = z.infer<typeof ZAnomalyLog>;
+export type AnomalyDetectionResult = z.infer<typeof ZAnomalyDetectionResult>;
+export type CTRPredictionResult = z.infer<typeof ZCTRPredictionResult>;

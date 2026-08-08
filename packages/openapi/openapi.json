@@ -1766,6 +1766,138 @@
           }
         }
       }
+    },
+    "/api/v1/ai/generate-slugs": {
+      "post": {
+        "summary": "Generate AI Short Slug Suggestions",
+        "tags": [
+          "Enterprise AI Engine"
+        ],
+        "responses": {
+          "200": {
+            "description": "AI suggested slugs list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/summarize-campaign": {
+      "post": {
+        "summary": "Generate AI Executive Campaign Summary Brief",
+        "tags": [
+          "Enterprise AI Engine"
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign summary brief",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/detect-anomalies": {
+      "post": {
+        "summary": "Detect Statistical Click Traffic Anomalies (Z-Score)",
+        "tags": [
+          "Enterprise AI Engine"
+        ],
+        "responses": {
+          "200": {
+            "description": "Anomaly detection result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "link_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "is_anomaly": {
+                      "type": "boolean"
+                    },
+                    "anomaly_type": {
+                      "type": "string"
+                    },
+                    "z_score": {
+                      "type": "number"
+                    },
+                    "confidence_score": {
+                      "type": "number"
+                    },
+                    "summary": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/predict-ctr": {
+      "post": {
+        "summary": "Forecast Predictive Link CTR (Click-Through Rate)",
+        "tags": [
+          "Enterprise AI Engine"
+        ],
+        "responses": {
+          "200": {
+            "description": "CTR prediction result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "link_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "historical_ctr": {
+                      "type": "number"
+                    },
+                    "predicted_ctr": {
+                      "type": "number"
+                    },
+                    "trend": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

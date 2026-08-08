@@ -94,6 +94,144 @@ paths:
                 $ref: '#/components/schemas/RevenueSummaryResult'
         '401':
           description: Unauthorized
+  /api/v1/ai/generate-slugs:
+    post:
+      summary: Generate AI Short Slug Suggestions
+      description: Generates short, catchy, SEO-optimized URL slugs from target web page title or content.
+      tags:
+        - Enterprise AI Engine
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                title:
+                  type: string
+      responses:
+        '200':
+          description: AI suggested slugs list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+  /api/v1/ai/summarize-campaign:
+    post:
+      summary: Generate AI Executive Campaign Summary Brief
+      description: Generates executive plain-English summary brief for marketing campaign performance.
+      tags:
+        - Enterprise AI Engine
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - campaign_id
+              properties:
+                campaign_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Campaign summary brief
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: string
+  /api/v1/ai/detect-anomalies:
+    post:
+      summary: Detect Statistical Click Traffic Anomalies (Z-Score)
+      description: Evaluates rolling Z-score traffic variance and bot percentage to identify traffic spikes, drops, or bot surges.
+      tags:
+        - Enterprise AI Engine
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - link_id
+                - historical_counts
+                - current_count
+              properties:
+                link_id:
+                  type: string
+                  format: uuid
+                historical_counts:
+                  type: array
+                  items:
+                    type: number
+                current_count:
+                  type: number
+                bot_percentage:
+                  type: number
+      responses:
+        '200':
+          description: Anomaly detection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyDetectionResult'
+  /api/v1/ai/predict-ctr:
+    post:
+      summary: Forecast Predictive Link CTR (Click-Through Rate)
+      description: Predicts future link CTR trend using linear regression forecasting.
+      tags:
+        - Enterprise AI Engine
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - link_id
+                - impressions
+                - clicks
+              properties:
+                link_id:
+                  type: string
+                  format: uuid
+                impressions:
+                  type: array
+                  items:
+                    type: integer
+                clicks:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: CTR prediction result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CTRPredictionResult'
 components:
   securitySchemes:
     BearerAuth:
@@ -303,3 +441,51 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CampaignRevenueMetrics'
+    AnomalyDetectionResult:
+      type: object
+      required:
+        - link_id
+        - is_anomaly
+        - z_score
+        - summary
+      properties:
+        link_id:
+          type: string
+          format: uuid
+        is_anomaly:
+          type: boolean
+        anomaly_type:
+          type: string
+          enum: [traffic_spike, traffic_drop, bot_surge]
+        z_score:
+          type: number
+          format: double
+        confidence_score:
+          type: number
+          format: double
+        summary:
+          type: string
+    CTRPredictionResult:
+      type: object
+      required:
+        - link_id
+        - historical_ctr
+        - predicted_ctr
+        - trend
+        - confidence
+      properties:
+        link_id:
+          type: string
+          format: uuid
+        historical_ctr:
+          type: number
+          format: double
+        predicted_ctr:
+          type: number
+          format: double
+        trend:
+          type: string
+          enum: [upward, downward, stable]
+        confidence:
+          type: number
+          format: double
