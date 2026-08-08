@@ -1,0 +1,7 @@
+# .cursorrules — Cursor IDE Agent Rules
+
+# Master Agent Protocol
+- Read and strictly enforce all guidelines in AGENTS.md (file:///home/logan78/Desktop/flux/AGENTS.md) and ai/CURSOR.md (file:///home/logan78/Desktop/flux/ai/CURSOR.md).
+- Follow 5-step TDD cycle for all code changes.
+- Never write code before inspecting authoritative schemas in api/ and database/.
+- Keep changes minimal and isolated to target files declared in the active task document.
