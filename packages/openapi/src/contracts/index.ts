@@ -2,6 +2,7 @@ import { initContract } from "@ts-rest/core";
 import {
   ZHealthResponse,
   ZGeoClusterHealthResponse,
+  ZAnycastStatusResponse,
   ZLink,
   ZCreateLinkInput,
   ZUpdateLinkInput,
@@ -51,6 +52,18 @@ export const apiContract = c.router({
       openApiTags: ["Health"],
     },
   },
+  getAnycastStatus: {
+    method: "GET",
+    path: "/health/anycast-dns",
+    responses: {
+      200: ZAnycastStatusResponse,
+    },
+    summary: "Get Anycast BGP DNS routing and Edge TLS status",
+    metadata: {
+      openApiTags: ["Health"],
+    },
+  },
+
 
 
   // --- Links ---

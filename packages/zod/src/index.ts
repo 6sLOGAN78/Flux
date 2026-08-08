@@ -489,4 +489,33 @@ export const ZGeoClusterHealthResponse = z.object({
 export type RegionStatus = z.infer<typeof ZRegionStatus>;
 export type GeoClusterHealthResponse = z.infer<typeof ZGeoClusterHealthResponse>;
 
+// --- Anycast DNS & Edge TLS Schemas ---
+
+export const ZPoPNode = z.object({
+  id: z.string().openapi({ description: "Point of Presence node identifier", example: "pop-us-east-1" }),
+  region: z.string().openapi({ description: "Geographic region", example: "us-east" }),
+  anycast_ip: z.string().openapi({ description: "Anycast IPv4 address", example: "198.51.100.1" }),
+  is_healthy: z.boolean().openapi({ description: "Health probe status", example: true }),
+  bgp_state: z.enum(["advertised", "withdrawn"]).openapi({ description: "BGP route advertisement state", example: "advertised" }),
+  latency_ms: z.number().int().openapi({ description: "PoP edge latency in milliseconds", example: 5 }),
+}).openapi({ description: "Anycast BGP Edge Point of Presence node metadata" });
+
+export const ZTLSCertificate = z.object({
+  domain: z.string().openapi({ description: "Domain name pattern", example: "*.flux.dev" }),
+  issuer: z.string().openapi({ description: "ACME Certificate Authority issuer", example: "Let's Encrypt Authority X3" }),
+  status: z.enum(["active", "renewing", "expired"]).openapi({ description: "Certificate validity status", example: "active" }),
+  fingerprint: z.string().openapi({ description: "SHA-256 certificate fingerprint hash" }),
+  expires_at: z.string().datetime().openapi({ description: "Certificate expiration timestamp" }),
+}).openapi({ description: "Automated Edge TLS Certificate details" });
+
+export const ZAnycastStatusResponse = z.object({
+  pops: z.array(ZPoPNode).openapi({ description: "List of Anycast PoP nodes" }),
+  active_certificates: z.number().int().openapi({ description: "Total active edge TLS certificates", example: 42 }),
+}).openapi({ description: "Anycast DNS routing and Edge TLS status summary" });
+
+export type PoPNode = z.infer<typeof ZPoPNode>;
+export type TLSCertificate = z.infer<typeof ZTLSCertificate>;
+export type AnycastStatusResponse = z.infer<typeof ZAnycastStatusResponse>;
+
+
 

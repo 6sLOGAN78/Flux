@@ -102,6 +102,91 @@
         }
       }
     },
+    "/health/anycast-dns": {
+      "get": {
+        "summary": "Get Anycast BGP DNS routing and Edge TLS status",
+        "tags": [
+          "Health"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pops": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Point of Presence node identifier",
+                            "example": "pop-us-east-1"
+                          },
+                          "region": {
+                            "type": "string",
+                            "description": "Geographic region",
+                            "example": "us-east"
+                          },
+                          "anycast_ip": {
+                            "type": "string",
+                            "description": "Anycast IPv4 address",
+                            "example": "198.51.100.1"
+                          },
+                          "is_healthy": {
+                            "type": "boolean",
+                            "description": "Health probe status",
+                            "example": true
+                          },
+                          "bgp_state": {
+                            "type": "string",
+                            "enum": [
+                              "advertised",
+                              "withdrawn"
+                            ],
+                            "description": "BGP route advertisement state",
+                            "example": "advertised"
+                          },
+                          "latency_ms": {
+                            "type": "integer",
+                            "description": "PoP edge latency in milliseconds",
+                            "example": 5
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "region",
+                          "anycast_ip",
+                          "is_healthy",
+                          "bgp_state",
+                          "latency_ms"
+                        ],
+                        "description": "Anycast BGP Edge Point of Presence node metadata"
+                      },
+                      "description": "List of Anycast PoP nodes"
+                    },
+                    "active_certificates": {
+                      "type": "integer",
+                      "description": "Total active edge TLS certificates",
+                      "example": 42
+                    }
+                  },
+                  "required": [
+                    "pops",
+                    "active_certificates"
+                  ],
+                  "description": "Anycast DNS routing and Edge TLS status summary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/links": {
       "post": {
         "summary": "Shorten a URL link",
