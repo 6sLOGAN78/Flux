@@ -1,7 +1,7 @@
 ---id: TASK-401
 title: Multi-Touch Attribution Engine
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/enterprise/attribution_engine.md

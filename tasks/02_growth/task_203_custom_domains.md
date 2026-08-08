@@ -1,17 +1,4 @@
 
-  Read every referenced document.
-
-  Follow AGENTS.md.
-
-  Do not read unrelated documents.
-
-  Implement only this task.
-
-  Write tests.
-
-  Update documentation if necessary. and dont put commit
-  message like this task or something else
-  
 ---id: TASK-203
 title: Custom Domains & ACME SSL Provisioning
 layer: Level 5 (Executable Task Unit)

@@ -1,1 +1,94 @@
-# Placeholder YAML for openapi_v4_enterprise.yaml
+openapi: 3.0.3
+info:
+  title: Flux Enterprise API - Multi-Touch Attribution
+  version: 4.0.0
+  description: Multi-Touch Attribution Engine OpenAPI contract for Flux Enterprise.
+paths:
+  /api/v1/enterprise/attribution:
+    get:
+      summary: Get Multi-Touch Attribution Analytics
+      description: Returns conversion and revenue attribution calculated via selected attribution model (first_touch, last_touch, linear, time_decay, position_based).
+      tags:
+        - Enterprise Attribution
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model
+          in: query
+          required: true
+          description: Attribution model algorithm
+          schema:
+            type: string
+            enum: [first_touch, last_touch, linear, time_decay, position_based]
+            default: position_based
+        - name: from
+          in: query
+          required: false
+          description: ISO 8601 start timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: ISO 8601 end timestamp
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Attribution analytics calculation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributionResult'
+        '400':
+          description: Invalid query parameters or unsupported model
+        '401':
+          description: Unauthorized
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    CampaignAttribution:
+      type: object
+      required:
+        - campaign_id
+        - campaign_name
+        - attributed_conversions
+        - attributed_revenue
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        campaign_name:
+          type: string
+        attributed_conversions:
+          type: number
+          format: double
+        attributed_revenue:
+          type: number
+          format: double
+    AttributionResult:
+      type: object
+      required:
+        - model
+        - total_conversions
+        - total_attributed_revenue
+        - campaigns
+      properties:
+        model:
+          type: string
+          enum: [first_touch, last_touch, linear, time_decay, position_based]
+        total_conversions:
+          type: integer
+        total_attributed_revenue:
+          type: number
+          format: double
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignAttribution'

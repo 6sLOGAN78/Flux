@@ -98,104 +98,87 @@ export const ZUser = z.object({
 }).openapi({ description: "User account entity" });
 
 export const ZAuthMeResponse = z.object({
-  user_id: z.string().openapi({ description: "Authenticated user identifier", example: "usr_998127" }),
-  email: z.string().email().openapi({ description: "User email address", example: "user@example.com" }),
-  status: z.string().openapi({ description: "Session status", example: "authenticated" }),
-}).openapi({ description: "Authenticated user session response" });
+  userId: z.string().openapi({ description: "User UUID" }),
+  email: z.string().email().openapi({ description: "User email" }),
+  status: z.string().openapi({ description: "Authentication status string", example: "authenticated" }),
+}).openapi({ description: "Current user profile authentication status" });
+
+// --- Analytics & System Schemas ---
 
 export const ZHealthResponse = z.object({
-  status: z.string().openapi({ description: "Service operational status", example: "ok" }),
-  database: z.string().openapi({ description: "Database connectivity status", example: "connected" }),
-}).openapi({ description: "System health check response" });
+  status: z.string().openapi({ description: "Service status", example: "ok" }),
+  database: z.string().openapi({ description: "PostgreSQL pool status", example: "connected" }),
+}).openapi({ description: "Health check status payload" });
 
 export const ZAnalyticsSummaryResponse = z.object({
-  totalClicks: z.number().int().nonnegative().openapi({ description: "Total click count across all links", example: 42150 }),
-  uniqueVisitors: z.number().int().nonnegative().openapi({ description: "Total unique visitor IP count", example: 31200 }),
-  activeLinks: z.number().int().nonnegative().openapi({ description: "Total active short links", example: 128 }),
-}).openapi({ description: "Global analytics summary statistics" });
+  totalLinks: z.number().int().openapi({ description: "Total shortened links", example: 1250 }),
+  totalClicks: z.number().int().openapi({ description: "Total recorded click events", example: 45000 }),
+  activeDomains: z.number().int().openapi({ description: "Total verified custom domains", example: 12 }),
+  topReferrer: z.string().openapi({ description: "Top referrer domain", example: "twitter.com" }),
+}).openapi({ description: "High-level platform analytics summary" });
 
 export const ZLinkMetricsResponse = z.object({
   linkId: z.string().uuid().openapi({ description: "Target link UUID" }),
-  shortCode: z.string().openapi({ description: "Short code slug", example: "xyz123" }),
-  totalClicks: z.number().int().nonnegative().openapi({ description: "Total click count for this link", example: 1540 }),
+  shortCode: z.string().openapi({ description: "Link short code slug" }),
+  totalClicks: z.number().int().openapi({ description: "Total click count" }),
   clicksByDate: z.array(z.object({
-    date: z.string().openapi({ example: "2026-08-08" }),
-    clicks: z.number().int().nonnegative().openapi({ example: 320 }),
-  })).openapi({ description: "Time-series daily click breakdown" }),
+    date: z.string().openapi({ description: "Date in YYYY-MM-DD format", example: "2026-08-08" }),
+    clicks: z.number().int().openapi({ description: "Click count for date", example: 340 }),
+  })).openapi({ description: "Daily click breakdown" }),
 }).openapi({ description: "Detailed analytics metrics for a specific link" });
 
-// --- QR Code & Advanced Customization ---
+// --- Advanced Feature Schemas ---
 
 export const ZQRCustomization = z.object({
-  fgColor: z.string().openapi({ description: "Foreground hex color", example: "#0f172a" }),
-  bgColor: z.string().openapi({ description: "Background hex color", example: "#ffffff" }),
-  logoUrl: z.string().url().optional().openapi({ description: "Center logo icon URL" }),
-  dotStyle: z.string().openapi({ description: "QR matrix module pattern style", example: "circle" }),
-}).openapi({ description: "QR Code styling options" });
-
-// --- A/B Testing & Traffic Splitter ---
+  colorDark: z.string().openapi({ description: "Hex code for dark modules", example: "#000000" }),
+  colorLight: z.string().openapi({ description: "Hex code for background", example: "#ffffff" }),
+  logoUrl: z.string().url().optional().openapi({ description: "Optional embedded center logo URL" }),
+}).openapi({ description: "QR Code styling parameters" });
 
 export const ZABVariant = z.object({
-  id: z.string().openapi({ description: "Variant identifier" }),
-  destinationUrl: z.string().url().openapi({ description: "Variant destination URL" }),
-  weight: z.number().min(0).max(100).openapi({ description: "Traffic percentage weight", example: 50 }),
-  clicks: z.number().int().nonnegative().openapi({ description: "Total clicks on variant" }),
-  conversions: z.number().int().nonnegative().openapi({ description: "Total conversions on variant" }),
-}).openapi({ description: "A/B testing destination variant" });
-
-// --- Multi-Tenant SaaS & RBAC ---
+  destinationUrl: z.string().url().openapi({ description: "Target destination URL" }),
+  weight: z.number().min(0).max(100).openapi({ description: "Traffic allocation percentage weight", example: 50 }),
+}).openapi({ description: "A/B test traffic distribution variant" });
 
 export const ZOrganization = z.object({
   id: z.string().uuid().openapi({ description: "Organization UUID" }),
   name: z.string().openapi({ description: "Organization name", example: "Acme Corp" }),
-  slug: z.string().openapi({ description: "Unique organization slug", example: "acme" }),
-  billingEmail: z.string().email().openapi({ description: "Organization billing email", example: "billing@acme.com" }),
-  createdAt: z.string().datetime().openapi({ description: "Creation timestamp" }),
+  slug: z.string().openapi({ description: "Organization slug", example: "acme-corp" }),
 }).openapi({ description: "Multi-tenant Organization entity" });
 
 export const ZWorkspace = z.object({
   id: z.string().uuid().openapi({ description: "Workspace UUID" }),
-  organizationId: z.string().uuid().openapi({ description: "Parent organization UUID" }),
+  orgId: z.string().uuid().openapi({ description: "Parent Organization UUID" }),
   name: z.string().openapi({ description: "Workspace name", example: "Marketing Team" }),
-  slug: z.string().openapi({ description: "Workspace slug", example: "marketing" }),
-  isDefault: z.boolean().openapi({ description: "Default workspace flag", example: true }),
-  createdAt: z.string().datetime().openapi({ description: "Creation timestamp" }),
-}).openapi({ description: "Tenant Workspace entity" });
+}).openapi({ description: "Workspace scope entity" });
 
 export const ZWorkspaceMember = z.object({
-  id: z.string().uuid().openapi({ description: "Member UUID" }),
+  id: z.string().uuid().openapi({ description: "Membership UUID" }),
   workspaceId: z.string().uuid().openapi({ description: "Workspace UUID" }),
   userId: z.string().uuid().openapi({ description: "User UUID" }),
-  role: z.enum(["owner", "admin", "editor", "viewer"]).openapi({ description: "RBAC role", example: "admin" }),
+  role: z.enum(["owner", "admin", "member", "viewer"]).openapi({ description: "RBAC role level", example: "admin" }),
 }).openapi({ description: "Workspace member role mapping" });
 
-// --- Subscriptions & Billing ---
-
 export const ZSubscription = z.object({
-  id: z.string().uuid().optional().openapi({ description: "Subscription UUID" }),
-  organizationId: z.string().uuid().openapi({ description: "Organization UUID" }),
-  stripeCustomerId: z.string().openapi({ description: "Stripe customer identifier", example: "cus_123" }),
-  planTier: z.enum(["free", "pro", "business"]).openapi({ description: "Subscription tier level", example: "pro" }),
-  status: z.enum(["active", "past_due", "canceled", "trialing"]).openapi({ description: "Subscription billing status", example: "active" }),
-}).openapi({ description: "Stripe subscription state entity" });
-
-// --- Public API & OAuth 2.0 ---
+  id: z.string().uuid().openapi({ description: "Subscription UUID" }),
+  orgId: z.string().uuid().openapi({ description: "Organization UUID" }),
+  plan: z.enum(["free", "pro", "enterprise"]).openapi({ description: "Billing plan tier", example: "enterprise" }),
+  status: z.string().openapi({ description: "Stripe subscription status", example: "active" }),
+  currentPeriodEnd: z.string().datetime().openapi({ description: "Billing cycle renewal timestamp" }),
+}).openapi({ description: "Stripe Subscription details" });
 
 export const ZAPIKey = z.object({
   id: z.string().uuid().openapi({ description: "API Key UUID" }),
-  workspaceId: z.string().uuid().openapi({ description: "Workspace UUID" }),
-  name: z.string().openapi({ description: "Key label name", example: "Production Backend Key" }),
-  keyPrefix: z.string().openapi({ description: "Key prefix", example: "flx_live_" }),
+  name: z.string().openapi({ description: "Key identifier label", example: "CI/CD Token" }),
+  tokenPrefix: z.string().openapi({ description: "Key display prefix", example: "flx_live_a1b2..." }),
   scopes: z.array(z.string()).openapi({ description: "Granted permission scopes", example: ["links:read", "links:write"] }),
-  rateLimitPerMin: z.number().int().openapi({ description: "Requests per minute limit", example: 100 }),
-}).openapi({ description: "Developer API Key entity" });
+}).openapi({ description: "Public API key credential entity" });
 
 export const ZOAuthTokenResponse = z.object({
-  access_token: z.string().openapi({ description: "Bearer Access Token", example: "flx_oauth_abc123" }),
-  token_type: z.string().openapi({ example: "Bearer" }),
-  expires_in: z.number().int().openapi({ example: 3600 }),
-  scope: z.string().optional().openapi({ example: "links:read links:write" }),
-}).openapi({ description: "OAuth 2.0 Access Token Response" });
+  accessToken: z.string().openapi({ description: "OAuth2 Bearer Token", example: "eyJhbGciOi..." }),
+  tokenType: z.string().openapi({ description: "Token type header", example: "Bearer" }),
+  expiresIn: z.number().int().openapi({ description: "Validity duration in seconds", example: 3600 }),
+}).openapi({ description: "OAuth token issuance payload" });
 
 // --- Webhooks ---
 
@@ -219,6 +202,24 @@ export const ZNotification = z.object({
   isRead: z.boolean().openapi({ description: "Read status flag", example: false }),
   createdAt: z.string().datetime().openapi({ description: "Creation timestamp" }),
 }).openapi({ description: "User notification item" });
+
+// --- Enterprise Attribution Schemas ---
+
+export const ZAttributionModel = z.enum(["first_touch", "last_touch", "linear", "time_decay", "position_based"]).openapi({ description: "Attribution model algorithm", example: "position_based" });
+
+export const ZCampaignAttribution = z.object({
+  campaign_id: z.string().uuid().openapi({ description: "Campaign UUID" }),
+  campaign_name: z.string().openapi({ description: "Campaign name", example: "Summer Launch" }),
+  attributed_conversions: z.number().openapi({ description: "Attributed conversion count", example: 56.8 }),
+  attributed_revenue: z.number().openapi({ description: "Attributed revenue amount", example: 18080.00 }),
+}).openapi({ description: "Campaign attribution metric breakdown" });
+
+export const ZAttributionResult = z.object({
+  model: ZAttributionModel,
+  total_conversions: z.number().int().openapi({ description: "Total evaluated conversions", example: 142 }),
+  total_attributed_revenue: z.number().openapi({ description: "Total attributed revenue", example: 45200.00 }),
+  campaigns: z.array(ZCampaignAttribution).openapi({ description: "Attribution metrics per campaign" }),
+}).openapi({ description: "Attribution calculation result" });
 
 // --- Exported Inferred Types ---
 export type Link = z.infer<typeof ZLink>;
@@ -246,3 +247,6 @@ export type APIKey = z.infer<typeof ZAPIKey>;
 export type OAuthTokenResponse = z.infer<typeof ZOAuthTokenResponse>;
 export type Webhook = z.infer<typeof ZWebhook>;
 export type Notification = z.infer<typeof ZNotification>;
+export type AttributionModel = z.infer<typeof ZAttributionModel>;
+export type CampaignAttribution = z.infer<typeof ZCampaignAttribution>;
+export type AttributionResult = z.infer<typeof ZAttributionResult>;

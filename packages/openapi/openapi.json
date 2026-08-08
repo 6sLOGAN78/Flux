@@ -1482,6 +1482,97 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/attribution": {
+      "get": {
+        "summary": "Get Multi-Touch Attribution Analytics",
+        "tags": [
+          "Enterprise Attribution"
+        ],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "first_touch",
+                "last_touch",
+                "linear",
+                "time_decay",
+                "position_based"
+              ],
+              "default": "position_based"
+            },
+            "description": "Attribution model algorithm"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 start timestamp"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 end timestamp"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attribution calculation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    },
+                    "total_conversions": {
+                      "type": "integer"
+                    },
+                    "total_attributed_revenue": {
+                      "type": "number"
+                    },
+                    "campaigns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "campaign_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "campaign_name": {
+                            "type": "string"
+                          },
+                          "attributed_conversions": {
+                            "type": "number"
+                          },
+                          "attributed_revenue": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {
