@@ -534,6 +534,26 @@ export const ZClickEventBatch = z.object({
 export type StreamMetrics = z.infer<typeof ZStreamMetrics>;
 export type ClickEventBatch = z.infer<typeof ZClickEventBatch>;
 
+// --- Global HA & Disaster Recovery Failover Schemas ---
+
+export const ZFailoverResult = z.object({
+  failover_triggered: z.boolean().openapi({ description: "True if DNS rerouting was executed", example: true }),
+  previous_region: z.string().openapi({ description: "Degraded active region code", example: "us-east" }),
+  new_active_region: z.string().openapi({ description: "Rerouted backup active region code", example: "eu-west" }),
+  timestamp: z.string().datetime().openapi({ description: "Failover execution timestamp" }),
+}).openapi({ description: "Automated regional failover execution result payload" });
+
+export const ZClusterFailoverStatus = z.object({
+  active_region: z.string().openapi({ description: "Currently active primary region code", example: "us-east" }),
+  backup_regions: z.array(z.string()).openapi({ description: "Array of registered backup region codes" }),
+  is_failed_over: z.boolean().openapi({ description: "True if running on backup region", example: false }),
+  region_health: z.record(z.boolean()).openapi({ description: "Map of region codes to health status flags" }),
+}).openapi({ description: "Global HA multi-region failover status payload" });
+
+export type FailoverResult = z.infer<typeof ZFailoverResult>;
+export type ClusterFailoverStatus = z.infer<typeof ZClusterFailoverStatus>;
+
+
 
 
 

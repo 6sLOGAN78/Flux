@@ -4,7 +4,9 @@ import {
   ZGeoClusterHealthResponse,
   ZAnycastStatusResponse,
   ZStreamMetrics,
+  ZClusterFailoverStatus,
   ZLink,
+
 
   ZCreateLinkInput,
   ZUpdateLinkInput,
@@ -65,6 +67,18 @@ export const apiContract = c.router({
       openApiTags: ["Health"],
     },
   },
+  getFailoverStatus: {
+    method: "GET",
+    path: "/health/failover",
+    responses: {
+      200: ZClusterFailoverStatus,
+    },
+    summary: "Get multi-region automated HA failover status",
+    metadata: {
+      openApiTags: ["Health"],
+    },
+  },
+
 
 
 

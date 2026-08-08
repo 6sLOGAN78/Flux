@@ -187,6 +187,60 @@
         }
       }
     },
+    "/health/failover": {
+      "get": {
+        "summary": "Get multi-region automated HA failover status",
+        "tags": [
+          "Health"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "active_region": {
+                      "type": "string",
+                      "description": "Currently active primary region code",
+                      "example": "us-east"
+                    },
+                    "backup_regions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Array of registered backup region codes"
+                    },
+                    "is_failed_over": {
+                      "type": "boolean",
+                      "description": "True if running on backup region",
+                      "example": false
+                    },
+                    "region_health": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "description": "Map of region codes to health status flags"
+                    }
+                  },
+                  "required": [
+                    "active_region",
+                    "backup_regions",
+                    "is_failed_over",
+                    "region_health"
+                  ],
+                  "description": "Global HA multi-region failover status payload"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/links": {
       "post": {
         "summary": "Shorten a URL link",
