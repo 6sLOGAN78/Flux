@@ -1898,6 +1898,69 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/sso/saml/acs": {
+      "post": {
+        "summary": "SAML 2.0 Assertion Consumer Service (ACS) Endpoint",
+        "tags": [
+          "Enterprise SSO"
+        ],
+        "responses": {
+          "200": {
+            "description": "SAML authentication validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_valid": {
+                      "type": "boolean"
+                    },
+                    "user_email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "session_index": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scim/v2/Users": {
+      "post": {
+        "summary": "SCIM 2.0 User Provisioning Endpoint",
+        "tags": [
+          "SCIM 2.0 Provisioning"
+        ],
+        "responses": {
+          "201": {
+            "description": "SCIM user provisioned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "userName": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

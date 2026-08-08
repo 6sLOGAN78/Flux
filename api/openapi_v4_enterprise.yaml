@@ -232,6 +232,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CTRPredictionResult'
+  /api/v1/enterprise/sso/saml/acs:
+    post:
+      summary: SAML 2.0 Assertion Consumer Service (ACS) Endpoint
+      description: Validates SAML 2.0 identity provider responses and authenticates enterprise SSO sessions.
+      tags:
+        - Enterprise SSO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entity_id
+                - name_id
+              properties:
+                entity_id:
+                  type: string
+                name_id:
+                  type: string
+                  format: email
+                session_index:
+                  type: string
+      responses:
+        '200':
+          description: SAML authentication validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLValidationResult'
+  /scim/v2/Users:
+    post:
+      summary: SCIM 2.0 User Provisioning Endpoint
+      description: Provisions a new enterprise user directory record via SCIM 2.0 protocol.
+      tags:
+        - SCIM 2.0 Provisioning
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SCIMUser'
+      responses:
+        '201':
+          description: SCIM user provisioned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SCIMUser'
+  /scim/v2/Users/{id}:
+    put:
+      summary: SCIM 2.0 Update User Directory Record
+      description: Updates or deactivates an enterprise user account.
+      tags:
+        - SCIM 2.0 Provisioning
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SCIMUser'
+      responses:
+        '200':
+          description: SCIM user record updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SCIMUser'
+    delete:
+      summary: SCIM 2.0 Deprovision User
+      description: Deprovisions (deactivates/deletes) an enterprise user account.
+      tags:
+        - SCIM 2.0 Provisioning
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deprovisioned successfully
 components:
   securitySchemes:
     BearerAuth:
@@ -489,3 +583,33 @@ components:
         confidence:
           type: number
           format: double
+    SAMLValidationResult:
+      type: object
+      required:
+        - is_valid
+        - user_email
+      properties:
+        is_valid:
+          type: boolean
+        user_email:
+          type: string
+          format: email
+        session_index:
+          type: string
+    SCIMUser:
+      type: object
+      required:
+        - userName
+        - active
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+        userName:
+          type: string
+          format: email
+        active:
+          type: boolean

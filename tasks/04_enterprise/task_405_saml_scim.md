@@ -1,7 +1,7 @@
 ---id: TASK-405
 title: Enterprise SAML 2.0 / OIDC & SCIM 2.0
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/enterprise/saml_scim_sso.md

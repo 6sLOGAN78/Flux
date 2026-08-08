@@ -368,3 +368,45 @@ export const ZCTRPredictionResult = z.object({
 export type AnomalyLog = z.infer<typeof ZAnomalyLog>;
 export type AnomalyDetectionResult = z.infer<typeof ZAnomalyDetectionResult>;
 export type CTRPredictionResult = z.infer<typeof ZCTRPredictionResult>;
+
+// --- Enterprise SSO & SCIM 2.0 Schemas ---
+
+export const ZSSOConfig = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  idp_type: z.enum(["saml", "oidc"]),
+  entity_id: z.string(),
+  sso_url: z.string().url(),
+  certificate: z.string(),
+  enforce_sso: z.boolean(),
+});
+
+export const ZSAMLAssertion = z.object({
+  entity_id: z.string(),
+  name_id: z.string().email(),
+  session_index: z.string(),
+  issue_instant: z.string().datetime(),
+  attributes: z.record(z.string()).optional(),
+});
+
+export const ZSAMLValidationResult = z.object({
+  is_valid: z.boolean(),
+  user_email: z.string().email(),
+  session_index: z.string(),
+  attributes: z.record(z.string()).optional(),
+});
+
+export const ZSCIMUser = z.object({
+  schemas: z.array(z.string()).optional(),
+  id: z.string().optional(),
+  externalId: z.string().optional(),
+  userName: z.string().email(),
+  name: z.object({ givenName: z.string(), familyName: z.string() }).optional(),
+  emails: z.array(z.object({ value: z.string().email(), primary: z.boolean() })).optional(),
+  active: z.boolean(),
+});
+
+export type SSOConfig = z.infer<typeof ZSSOConfig>;
+export type SAMLAssertion = z.infer<typeof ZSAMLAssertion>;
+export type SAMLValidationResult = z.infer<typeof ZSAMLValidationResult>;
+export type SCIMUser = z.infer<typeof ZSCIMUser>;
