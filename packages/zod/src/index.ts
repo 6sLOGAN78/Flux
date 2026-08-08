@@ -4,7 +4,7 @@ import { extendZodWithOpenApi } from "@anatine/zod-openapi";
 // Extend Zod with OpenAPI metadata capabilities
 extendZodWithOpenApi(z);
 
-// --- Entity Schemas ---
+// --- Link & Base Schemas ---
 
 export const ZLink = z.object({
   id: z.string().uuid().openapi({ description: "Unique link identifier (UUID)", example: "123e4567-e89b-12d3-a456-426614174000" }),
@@ -18,7 +18,63 @@ export const ZLink = z.object({
 export const ZCreateLinkInput = z.object({
   destinationUrl: z.string().url().openapi({ description: "Destination URL to shorten", example: "https://example.com/long-url" }),
   customCode: z.string().min(3).max(20).optional().openapi({ description: "Optional custom short code slug", example: "my-custom-alias" }),
+  title: z.string().max(100).optional().openapi({ description: "Optional title for the link", example: "Product Launch Page" }),
+  description: z.string().max(255).optional().openapi({ description: "Optional description", example: "Summer sale landing page" }),
 }).openapi({ description: "Input payload for creating a shortened link" });
+
+// --- Category Schemas ---
+
+export const ZCategory = z.object({
+  id: z.string().uuid().openapi({ description: "Category UUID", example: "987e6543-e89b-12d3-a456-426614174000" }),
+  name: z.string().min(1).max(100).openapi({ description: "Category name", example: "Marketing" }),
+  color: z.string().openapi({ description: "Hex color code", example: "#3b82f6" }),
+  description: z.string().optional().openapi({ description: "Optional category description" }),
+  createdAt: z.string().datetime().openapi({ description: "Category creation timestamp" }),
+  updatedAt: z.string().datetime().openapi({ description: "Category last update timestamp" }),
+}).openapi({ description: "Category entity" });
+
+export const ZCreateCategoryInput = z.object({
+  name: z.string().min(1).max(100).openapi({ description: "Category name", example: "Marketing" }),
+  color: z.string().openapi({ description: "Hex color code", example: "#3b82f6" }),
+  description: z.string().max(255).optional().openapi({ description: "Category description" }),
+}).openapi({ description: "Input payload for creating a category" });
+
+// --- Campaign Schemas ---
+
+export const ZCampaign = z.object({
+  id: z.string().uuid().openapi({ description: "Campaign UUID" }),
+  name: z.string().openapi({ description: "Campaign title name", example: "Q3 Growth Campaign" }),
+  utm_source: z.string().optional().openapi({ description: "Default UTM Source", example: "twitter" }),
+  utm_medium: z.string().optional().openapi({ description: "Default UTM Medium", example: "cpc" }),
+  utm_campaign: z.string().optional().openapi({ description: "Default UTM Campaign", example: "q3_launch" }),
+  status: z.string().openapi({ description: "Campaign operational status", example: "active" }),
+}).openapi({ description: "Marketing campaign entity" });
+
+export const ZCreateCampaignInput = z.object({
+  name: z.string().min(1).max(150).openapi({ description: "Campaign name", example: "Q3 Growth Campaign" }),
+  utm_source: z.string().optional().openapi({ description: "UTM Source", example: "twitter" }),
+  utm_medium: z.string().optional().openapi({ description: "UTM Medium", example: "cpc" }),
+  utm_campaign: z.string().optional().openapi({ description: "UTM Campaign", example: "q3_launch" }),
+  utm_term: z.string().optional().openapi({ description: "UTM Term" }),
+  utm_content: z.string().optional().openapi({ description: "UTM Content" }),
+}).openapi({ description: "Input payload for creating a campaign" });
+
+// --- Custom Domain Schemas ---
+
+export const ZCustomDomain = z.object({
+  id: z.string().uuid().openapi({ description: "Custom domain UUID" }),
+  domain: z.string().openapi({ description: "Branded hostname", example: "link.acme.com" }),
+  verification_token: z.string().openapi({ description: "DNS challenge verification token", example: "flux-verify=abc123" }),
+  is_verified: z.boolean().openapi({ description: "CNAME verification status", example: true }),
+  ssl_status: z.string().openapi({ description: "ACME TLS/SSL certificate status", example: "active" }),
+}).openapi({ description: "Custom branded domain entity" });
+
+export const ZCreateDomainInput = z.object({
+  domain: z.string().openapi({ description: "Domain hostname to configure", example: "link.acme.com" }),
+  custom_root_redirect: z.string().url().optional().openapi({ description: "Root domain fallback URL" }),
+}).openapi({ description: "Input payload for adding a custom domain" });
+
+// --- User & Auth Schemas ---
 
 export const ZUser = z.object({
   id: z.string().openapi({ description: "Unique user identifier", example: "usr_998127" }),
@@ -57,9 +113,14 @@ export const ZLinkMetricsResponse = z.object({
 // --- Exported Inferred Types ---
 export type Link = z.infer<typeof ZLink>;
 export type CreateLinkInput = z.infer<typeof ZCreateLinkInput>;
+export type Category = z.infer<typeof ZCategory>;
+export type CreateCategoryInput = z.infer<typeof ZCreateCategoryInput>;
+export type Campaign = z.infer<typeof ZCampaign>;
+export type CreateCampaignInput = z.infer<typeof ZCreateCampaignInput>;
+export type CustomDomain = z.infer<typeof ZCustomDomain>;
+export type CreateDomainInput = z.infer<typeof ZCreateDomainInput>;
 export type User = z.infer<typeof ZUser>;
 export type AuthMeResponse = z.infer<typeof ZAuthMeResponse>;
 export type HealthResponse = z.infer<typeof ZHealthResponse>;
 export type AnalyticsSummaryResponse = z.infer<typeof ZAnalyticsSummaryResponse>;
 export type LinkMetricsResponse = z.infer<typeof ZLinkMetricsResponse>;
-

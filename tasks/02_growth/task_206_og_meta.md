@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/growth/dynamic_og_metadata.md
 references:
-  - [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
+  - [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:

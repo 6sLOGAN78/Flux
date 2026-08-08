@@ -65,6 +65,18 @@
                     "maxLength": 20,
                     "description": "Optional custom short code slug",
                     "example": "my-custom-alias"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Optional title for the link",
+                    "example": "Product Launch Page"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "description": "Optional description",
+                    "example": "Summer sale landing page"
                   }
                 },
                 "required": [
@@ -235,6 +247,347 @@
                     "error": {
                       "type": "string",
                       "example": "Link not found"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories": {
+      "post": {
+        "summary": "Create link category",
+        "tags": [
+          "Categories"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "description": "Category name",
+                    "example": "Marketing"
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "Hex color code",
+                    "example": "#3b82f6"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "description": "Category description"
+                  }
+                },
+                "required": [
+                  "name",
+                  "color"
+                ],
+                "description": "Input payload for creating a category"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Category UUID",
+                      "example": "987e6543-e89b-12d3-a456-426614174000"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100,
+                      "description": "Category name",
+                      "example": "Marketing"
+                    },
+                    "color": {
+                      "type": "string",
+                      "description": "Hex color code",
+                      "example": "#3b82f6"
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Optional category description"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Category creation timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Category last update timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "color",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "description": "Category entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Invalid category payload"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns": {
+      "post": {
+        "summary": "Create marketing campaign with UTM template",
+        "tags": [
+          "Campaigns"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150,
+                    "description": "Campaign name",
+                    "example": "Q3 Growth Campaign"
+                  },
+                  "utm_source": {
+                    "type": "string",
+                    "description": "UTM Source",
+                    "example": "twitter"
+                  },
+                  "utm_medium": {
+                    "type": "string",
+                    "description": "UTM Medium",
+                    "example": "cpc"
+                  },
+                  "utm_campaign": {
+                    "type": "string",
+                    "description": "UTM Campaign",
+                    "example": "q3_launch"
+                  },
+                  "utm_term": {
+                    "type": "string",
+                    "description": "UTM Term"
+                  },
+                  "utm_content": {
+                    "type": "string",
+                    "description": "UTM Content"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "description": "Input payload for creating a campaign"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Campaign UUID"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Campaign title name",
+                      "example": "Q3 Growth Campaign"
+                    },
+                    "utm_source": {
+                      "type": "string",
+                      "description": "Default UTM Source",
+                      "example": "twitter"
+                    },
+                    "utm_medium": {
+                      "type": "string",
+                      "description": "Default UTM Medium",
+                      "example": "cpc"
+                    },
+                    "utm_campaign": {
+                      "type": "string",
+                      "description": "Default UTM Campaign",
+                      "example": "q3_launch"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Campaign operational status",
+                      "example": "active"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "status"
+                  ],
+                  "description": "Marketing campaign entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Invalid campaign payload"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains": {
+      "post": {
+        "summary": "Register custom branded domain",
+        "tags": [
+          "Domains"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "description": "Domain hostname to configure",
+                    "example": "link.acme.com"
+                  },
+                  "custom_root_redirect": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Root domain fallback URL"
+                  }
+                },
+                "required": [
+                  "domain"
+                ],
+                "description": "Input payload for adding a custom domain"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Custom domain UUID"
+                    },
+                    "domain": {
+                      "type": "string",
+                      "description": "Branded hostname",
+                      "example": "link.acme.com"
+                    },
+                    "verification_token": {
+                      "type": "string",
+                      "description": "DNS challenge verification token",
+                      "example": "flux-verify=abc123"
+                    },
+                    "is_verified": {
+                      "type": "boolean",
+                      "description": "CNAME verification status",
+                      "example": true
+                    },
+                    "ssl_status": {
+                      "type": "string",
+                      "description": "ACME TLS/SSL certificate status",
+                      "example": "active"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "domain",
+                    "verification_token",
+                    "is_verified",
+                    "ssl_status"
+                  ],
+                  "description": "Custom branded domain entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Invalid domain"
                     }
                   },
                   "required": [
@@ -479,8 +832,8 @@
   },
   "info": {
     "title": "Flux Platform REST API",
-    "version": "1.0.0",
-    "description": "Production-grade URL shortening, dynamic link routing, and real-time analytics API.",
+    "version": "2.0.0",
+    "description": "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, and real-time analytics API.",
     "contact": {
       "name": "Flux API Engineering Team",
       "email": "support@flux.dev",
@@ -531,6 +884,18 @@
     {
       "name": "Links",
       "description": "Short URL creation, retrieval, Base62 routing, and management"
+    },
+    {
+      "name": "Categories",
+      "description": "Category management and link organization"
+    },
+    {
+      "name": "Campaigns",
+      "description": "Marketing campaigns and UTM template building"
+    },
+    {
+      "name": "Domains",
+      "description": "Custom branded domain registration and CNAME verification"
     },
     {
       "name": "User",

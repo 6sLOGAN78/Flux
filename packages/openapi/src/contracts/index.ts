@@ -3,6 +3,12 @@ import {
   ZHealthResponse,
   ZLink,
   ZCreateLinkInput,
+  ZCategory,
+  ZCreateCategoryInput,
+  ZCampaign,
+  ZCreateCampaignInput,
+  ZCustomDomain,
+  ZCreateDomainInput,
   ZAuthMeResponse,
   ZAnalyticsSummaryResponse,
   ZLinkMetricsResponse,
@@ -23,6 +29,8 @@ export const apiContract = c.router({
       openApiTags: ["Health"],
     },
   },
+
+  // --- Links ---
   createLink: {
     method: "POST",
     path: "/api/v1/links",
@@ -53,6 +61,56 @@ export const apiContract = c.router({
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },
+
+  // --- Categories ---
+  createCategory: {
+    method: "POST",
+    path: "/api/v1/categories",
+    body: ZCreateCategoryInput,
+    responses: {
+      201: ZCategory,
+      400: z.object({ error: z.string().openapi({ example: "Invalid category payload" }) }),
+    },
+    summary: "Create link category",
+    metadata: {
+      openApiTags: ["Categories"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- Campaigns ---
+  createCampaign: {
+    method: "POST",
+    path: "/api/v1/campaigns",
+    body: ZCreateCampaignInput,
+    responses: {
+      201: ZCampaign,
+      400: z.object({ error: z.string().openapi({ example: "Invalid campaign payload" }) }),
+    },
+    summary: "Create marketing campaign with UTM template",
+    metadata: {
+      openApiTags: ["Campaigns"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- Domains ---
+  createDomain: {
+    method: "POST",
+    path: "/api/v1/domains",
+    body: ZCreateDomainInput,
+    responses: {
+      201: ZCustomDomain,
+      400: z.object({ error: z.string().openapi({ example: "Invalid domain" }) }),
+    },
+    summary: "Register custom branded domain",
+    metadata: {
+      openApiTags: ["Domains"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- User & Analytics ---
   getMe: {
     method: "GET",
     path: "/api/v1/me",
@@ -96,4 +154,3 @@ export const apiContract = c.router({
     },
   },
 });
-

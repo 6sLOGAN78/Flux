@@ -8,8 +8,8 @@ const openApiDocument = generateOpenApi(
   {
     info: {
       title: "Flux Platform REST API",
-      version: "1.0.0",
-      description: "Production-grade URL shortening, dynamic link routing, and real-time analytics API.",
+      version: "2.0.0",
+      description: "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, and real-time analytics API.",
       contact: {
         name: "Flux API Engineering Team",
         email: "support@flux.dev",
@@ -61,6 +61,9 @@ openApiDocument.security = [
 openApiDocument.tags = [
   { name: "Health", description: "System operational status and health check endpoints" },
   { name: "Links", description: "Short URL creation, retrieval, Base62 routing, and management" },
+  { name: "Categories", description: "Category management and link organization" },
+  { name: "Campaigns", description: "Marketing campaigns and UTM template building" },
+  { name: "Domains", description: "Custom branded domain registration and CNAME verification" },
   { name: "User", description: "Authenticated user context and profile management" },
   { name: "Analytics", description: "Real-time link click metrics, time-series, and performance reporting" },
 ];
@@ -74,6 +77,12 @@ for (const [pathKey, pathObj] of Object.entries(openApiDocument.paths || {})) {
           operation.tags = ["Health"];
         } else if (pathKey.includes("/links")) {
           operation.tags = ["Links"];
+        } else if (pathKey.includes("/categories")) {
+          operation.tags = ["Categories"];
+        } else if (pathKey.includes("/campaigns")) {
+          operation.tags = ["Campaigns"];
+        } else if (pathKey.includes("/domains")) {
+          operation.tags = ["Domains"];
         } else if (pathKey.includes("/me")) {
           operation.tags = ["User"];
         } else if (pathKey.includes("/analytics")) {
@@ -87,7 +96,6 @@ for (const [pathKey, pathObj] of Object.entries(openApiDocument.paths || {})) {
 }
 
 const targetPathBackend = path.resolve(__dirname, "../../../apps/backend/static/openapi.json");
-
 const targetPathPackage = path.resolve(__dirname, "../openapi.json");
 
 for (const targetPath of [targetPathBackend, targetPathPackage]) {
@@ -98,4 +106,3 @@ for (const targetPath of [targetPathBackend, targetPathPackage]) {
   fs.writeFileSync(targetPath, JSON.stringify(openApiDocument, null, 2), "utf-8");
   console.log(`Successfully generated OpenAPI spec at: ${targetPath}`);
 }
-
