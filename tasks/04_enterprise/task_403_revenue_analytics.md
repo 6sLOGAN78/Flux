@@ -1,7 +1,7 @@
 ---id: TASK-403
 title: Revenue Metrics (LTV, ROAS, CAC) Engine
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/enterprise/revenue_analytics.md

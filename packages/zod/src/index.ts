@@ -289,3 +289,50 @@ export type FunnelStepInput = z.infer<typeof ZFunnelStepInput>;
 export type FunnelQueryPayload = z.infer<typeof ZFunnelQueryPayload>;
 export type FunnelStepResult = z.infer<typeof ZFunnelStepResult>;
 export type FunnelAnalysisResult = z.infer<typeof ZFunnelAnalysisResult>;
+
+// --- Enterprise Revenue Analytics Schemas ---
+
+export const ZAdSpend = z.object({
+  id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+  campaign_name: z.string().optional(),
+  date: z.string().datetime(),
+  amount_spent: z.number(),
+  platform: z.string(),
+});
+
+export const ZCustomerConversion = z.object({
+  customer_id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+  revenue: z.number(),
+  converted_at: z.string().datetime(),
+});
+
+export const ZCampaignRevenueMetrics = z.object({
+  campaign_id: z.string().uuid(),
+  campaign_name: z.string().optional(),
+  spend: z.number(),
+  revenue: z.number(),
+  customers_acquired: z.number().int(),
+  cac: z.number(),
+  roas: z.number(),
+  roi_pct: z.number(),
+  ltv: z.number(),
+  ltv_to_cac_ratio: z.number(),
+});
+
+export const ZRevenueSummaryResult = z.object({
+  total_spend: z.number(),
+  total_revenue: z.number(),
+  total_customers: z.number().int(),
+  overall_cac: z.number(),
+  overall_roas: z.number(),
+  overall_roi_pct: z.number(),
+  overall_ltv: z.number(),
+  campaigns: z.array(ZCampaignRevenueMetrics),
+});
+
+export type AdSpend = z.infer<typeof ZAdSpend>;
+export type CustomerConversion = z.infer<typeof ZCustomerConversion>;
+export type CampaignRevenueMetrics = z.infer<typeof ZCampaignRevenueMetrics>;
+export type RevenueSummaryResult = z.infer<typeof ZRevenueSummaryResult>;

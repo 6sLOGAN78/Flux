@@ -69,6 +69,31 @@ paths:
                 $ref: '#/components/schemas/FunnelAnalysisResult'
         '400':
           description: Invalid funnel steps payload
+  /api/v1/enterprise/metrics/roi:
+    get:
+      summary: Get Financial Marketing Revenue Metrics (LTV, ROAS, CAC, ROI)
+      description: Calculates financial marketing metrics (CAC, ROAS, ROI, LTV, LTV:CAC) for shortened link campaigns.
+      tags:
+        - Enterprise Revenue Analytics
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: query
+          required: false
+          description: Optional Campaign UUID filter
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Financial revenue metrics summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevenueSummaryResult'
+        '401':
+          description: Unauthorized
 components:
   securitySchemes:
     BearerAuth:
@@ -201,3 +226,80 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FunnelStepResult'
+    CampaignRevenueMetrics:
+      type: object
+      required:
+        - campaign_id
+        - spend
+        - revenue
+        - customers_acquired
+        - cac
+        - roas
+        - roi_pct
+        - ltv
+        - ltv_to_cac_ratio
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        campaign_name:
+          type: string
+        spend:
+          type: number
+          format: double
+        revenue:
+          type: number
+          format: double
+        customers_acquired:
+          type: integer
+        cac:
+          type: number
+          format: double
+        roas:
+          type: number
+          format: double
+        roi_pct:
+          type: number
+          format: double
+        ltv:
+          type: number
+          format: double
+        ltv_to_cac_ratio:
+          type: number
+          format: double
+    RevenueSummaryResult:
+      type: object
+      required:
+        - total_spend
+        - total_revenue
+        - total_customers
+        - overall_cac
+        - overall_roas
+        - overall_roi_pct
+        - overall_ltv
+        - campaigns
+      properties:
+        total_spend:
+          type: number
+          format: double
+        total_revenue:
+          type: number
+          format: double
+        total_customers:
+          type: integer
+        overall_cac:
+          type: number
+          format: double
+        overall_roas:
+          type: number
+          format: double
+        overall_roi_pct:
+          type: number
+          format: double
+        overall_ltv:
+          type: number
+          format: double
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignRevenueMetrics'

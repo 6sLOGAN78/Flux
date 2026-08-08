@@ -1673,6 +1673,99 @@
           }
         }
       }
+    },
+    "/api/v1/enterprise/metrics/roi": {
+      "get": {
+        "summary": "Get Financial Marketing Revenue Metrics (LTV, ROAS, CAC, ROI)",
+        "tags": [
+          "Enterprise Revenue Analytics"
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Financial revenue metrics summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_spend": {
+                      "type": "number"
+                    },
+                    "total_revenue": {
+                      "type": "number"
+                    },
+                    "total_customers": {
+                      "type": "integer"
+                    },
+                    "overall_cac": {
+                      "type": "number"
+                    },
+                    "overall_roas": {
+                      "type": "number"
+                    },
+                    "overall_roi_pct": {
+                      "type": "number"
+                    },
+                    "overall_ltv": {
+                      "type": "number"
+                    },
+                    "campaigns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "campaign_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "campaign_name": {
+                            "type": "string"
+                          },
+                          "spend": {
+                            "type": "number"
+                          },
+                          "revenue": {
+                            "type": "number"
+                          },
+                          "customers_acquired": {
+                            "type": "integer"
+                          },
+                          "cac": {
+                            "type": "number"
+                          },
+                          "roas": {
+                            "type": "number"
+                          },
+                          "roi_pct": {
+                            "type": "number"
+                          },
+                          "ltv": {
+                            "type": "number"
+                          },
+                          "ltv_to_cac_ratio": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {
