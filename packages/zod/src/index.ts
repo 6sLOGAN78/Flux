@@ -517,5 +517,23 @@ export type PoPNode = z.infer<typeof ZPoPNode>;
 export type TLSCertificate = z.infer<typeof ZTLSCertificate>;
 export type AnycastStatusResponse = z.infer<typeof ZAnycastStatusResponse>;
 
+// --- Global Analytics Stream & Edge Batching Schemas ---
+
+export const ZStreamMetrics = z.object({
+  total_ingested_events: z.number().int().openapi({ description: "Total ingested click events count", example: 1000000 }),
+  total_bytes_processed: z.number().int().openapi({ description: "Total uncompressed raw byte size", example: 154000000 }),
+  compression_ratio: z.number().openapi({ description: "Gzip stream compression ratio factor", example: 4.2 }),
+}).openapi({ description: "Global analytics stream ingestion metrics and compression performance" });
+
+export const ZClickEventBatch = z.object({
+  batch_id: z.string().uuid().openapi({ description: "Batch unique UUID", example: "123e4567-e89b-12d3-a456-426614174000" }),
+  timestamp: z.string().datetime().openapi({ description: "Batch creation timestamp" }),
+  event_count: z.number().int().openapi({ description: "Number of events in batch", example: 100 }),
+}).openapi({ description: "Edge click event batch metadata" });
+
+export type StreamMetrics = z.infer<typeof ZStreamMetrics>;
+export type ClickEventBatch = z.infer<typeof ZClickEventBatch>;
+
+
 
 

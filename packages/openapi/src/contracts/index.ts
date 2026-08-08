@@ -3,7 +3,9 @@ import {
   ZHealthResponse,
   ZGeoClusterHealthResponse,
   ZAnycastStatusResponse,
+  ZStreamMetrics,
   ZLink,
+
   ZCreateLinkInput,
   ZUpdateLinkInput,
   ZBulkCategorizeInput,
@@ -312,6 +314,20 @@ export const apiContract = c.router({
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },
+  getAnalyticsStreamMetrics: {
+    method: "GET",
+    path: "/api/v1/analytics/stream-metrics",
+    responses: {
+      200: ZStreamMetrics,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get global real-time stream ingestion and compression metrics",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
 
   // --- Edge Redirect Engine ---
   edgeRedirect: {

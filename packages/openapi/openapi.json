@@ -1605,6 +1605,69 @@
         }
       }
     },
+    "/api/v1/analytics/stream-metrics": {
+      "get": {
+        "summary": "Get global real-time stream ingestion and compression metrics",
+        "tags": [
+          "Analytics"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_ingested_events": {
+                      "type": "integer",
+                      "description": "Total ingested click events count",
+                      "example": 1000000
+                    },
+                    "total_bytes_processed": {
+                      "type": "integer",
+                      "description": "Total uncompressed raw byte size",
+                      "example": 154000000
+                    },
+                    "compression_ratio": {
+                      "type": "number",
+                      "description": "Gzip stream compression ratio factor",
+                      "example": 4.2
+                    }
+                  },
+                  "required": [
+                    "total_ingested_events",
+                    "total_bytes_processed",
+                    "compression_ratio"
+                  ],
+                  "description": "Global analytics stream ingestion metrics and compression performance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{slug}": {
       "get": {
         "summary": "Execute sub-10ms multi-region edge redirect",
