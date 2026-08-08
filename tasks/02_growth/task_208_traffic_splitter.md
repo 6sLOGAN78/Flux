@@ -1,7 +1,7 @@
 ---id: TASK-208
 title: A/B Testing & Weighted Traffic Splitter
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/growth/ab_testing.md
@@ -33,27 +33,28 @@ This task relies on specifications and schema contracts in:
   - [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 
 ## 5. Acceptance Criteria
-- [ ] Splits traffic according to variant weights (e.g. 50/50, 80/20) with sticky visitor sessions.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
+- [x] Splits traffic according to variant weights (e.g. 50/50, 80/20) with sticky visitor sessions.
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/abtest/splitter.go`
 
 ## 7. Definition of Done (DoD)
-- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
-- [ ] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/abtest/...`.
-- [ ] **Step 3: Write minimal implementation** inside target files.
-- [ ] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/abtest/...`.
-- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+- [x] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [x] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/abtest/...`.
+- [x] **Step 3: Write minimal implementation** inside target files.
+- [x] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/abtest/...`.
+- [x] **Step 5: Run linter**: Confirm zero warnings or errors.
 
 ## 8. Testing Strategy
 - **Unit Tests**: Test pure domain logic in isolation.
 - **Verification Command**: `go test -v ./internal/modules/abtest/...`
 
 ## 9. Documentation Updates
-- [ ] Mark task status as `Done` in this document frontmatter upon completion.
-- [ ] Update function/package docstrings if signatures were extended.
+- [x] Mark task status as `Done` in this document frontmatter upon completion.
+- [x] Update function/package docstrings if signatures were extended.
+
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
