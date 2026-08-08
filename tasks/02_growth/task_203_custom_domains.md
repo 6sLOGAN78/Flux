@@ -20,7 +20,7 @@ owner: Feature Engineer
 depends_on:
   - docs/growth/custom_domains_ssl.md
 references:
-  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -43,13 +43,13 @@ This task relies on specifications and schema contracts in:
   - docs/growth/custom_domains_ssl.md
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 
 ## 5. Acceptance Criteria
 - [x] Verifies CNAME records and provisions SSL certificates for branded domains.
-- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/domain/verifier.go`
@@ -75,12 +75,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/growth/custom_domains_ssl.md](file:///home/logan78/Desktop/plan/docs/growth/custom_domains_ssl.md) |
-| **Previous** | [tasks/02_growth/task_202_utm_builder.md](file:///home/logan78/Desktop/plan/tasks/02_growth/task_202_utm_builder.md) |
-| **Next** | [tasks/02_growth/task_204_smart_routing.md](file:///home/logan78/Desktop/plan/tasks/02_growth/task_204_smart_routing.md) |
+| **Parent** | [docs/growth/custom_domains_ssl.md](file:///home/logan78/Desktop/flux/docs/growth/custom_domains_ssl.md) |
+| **Previous** | [tasks/02_growth/task_202_utm_builder.md](file:///home/logan78/Desktop/flux/tasks/02_growth/task_202_utm_builder.md) |
+| **Next** | [tasks/02_growth/task_204_smart_routing.md](file:///home/logan78/Desktop/flux/tasks/02_growth/task_204_smart_routing.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

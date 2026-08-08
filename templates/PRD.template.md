@@ -24,8 +24,8 @@ Feature module boundaries.
 - **5. Telemetry & Analytics Events**: Key tracking events to instrument.
 
 ## Cross References
-- [Product Vision](file:///home/logan78/Desktop/plan/PRODUCT.md)
-- [API Contracts](file:///home/logan78/Desktop/plan/api/)
+- [Product Vision](file:///home/logan78/Desktop/flux/PRODUCT.md)
+- [API Contracts](file:///home/logan78/Desktop/flux/api/)
 
 ## Acceptance Criteria
 - [ ] All user stories have explicit automated test acceptance criteria.

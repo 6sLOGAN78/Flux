@@ -1,6 +1,6 @@
 # CLAUDE.md — Claude Code CLI Agent Adapter
 
-> **Master Protocol Directive**: All Claude Code sessions MUST follow the rules, precedence hierarchy, and TDD workflow defined in [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md).
+> **Master Protocol Directive**: All Claude Code sessions MUST follow the rules, precedence hierarchy, and TDD workflow defined in [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md).
 
 ## Operational Instructions
 - **Context Isolation**: Load only `AGENTS.md` + active task file from `tasks/` + target schema from `api/` or `database/`.

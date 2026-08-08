@@ -24,8 +24,8 @@ System-wide security architecture and compliance requirements.
 - **5. STRIDE Threat Model & Mitigations**: Vulnerability countermeasures.
 
 ## Cross References
-- [Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [SAML/SCIM Specs](file:///home/logan78/Desktop/plan/docs/enterprise/saml_scim_sso.md)
+- [Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [SAML/SCIM Specs](file:///home/logan78/Desktop/flux/docs/enterprise/saml_scim_sso.md)
 
 ## Acceptance Criteria
 - [ ] Zero unauthenticated endpoints permitted unless explicitly whitelisted.

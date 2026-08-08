@@ -50,12 +50,12 @@ Step 3: Implement dynamic SNI callback querying active custom domain registry in
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md) |
-| **Previous** | [docs/global/geo_db_replication.md](file:///home/logan78/Desktop/plan/docs/global/geo_db_replication.md) |
-| **Next** | [docs/global/ha_disaster_recovery.md](file:///home/logan78/Desktop/plan/docs/global/ha_disaster_recovery.md) |
-| **Children** | [task_501_edge_redirects.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_501_edge_redirects.md), [task_502_geo_replication.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_502_geo_replication.md), [task_503_anycast_dns.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_503_anycast_dns.md) |
-| **Dependencies** | [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml), [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql) |
-| **Related Documents** | [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md), [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Parent** | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md) |
+| **Previous** | [docs/global/geo_db_replication.md](file:///home/logan78/Desktop/flux/docs/global/geo_db_replication.md) |
+| **Next** | [docs/global/ha_disaster_recovery.md](file:///home/logan78/Desktop/flux/docs/global/ha_disaster_recovery.md) |
+| **Children** | [task_501_edge_redirects.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_501_edge_redirects.md), [task_502_geo_replication.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_502_geo_replication.md), [task_503_anycast_dns.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_503_anycast_dns.md) |
+| **Dependencies** | [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml), [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql) |
+| **Related Documents** | [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md), [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

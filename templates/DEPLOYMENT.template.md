@@ -24,8 +24,8 @@ Build, packaging, infrastructure provisioning, and release processes.
 - **5. Release Management & Rollbacks**: Zero-downtime deployment & rollback runbooks.
 
 ## Cross References
-- [DevOps Runbooks](file:///home/logan78/Desktop/plan/ops/)
-- [Security Model](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+- [DevOps Runbooks](file:///home/logan78/Desktop/flux/ops/)
+- [Security Model](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 
 ## Acceptance Criteria
 - [ ] Production builds are 100% reproducible via container pipelines.

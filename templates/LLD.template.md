@@ -24,8 +24,8 @@ Specific code component or package.
 - **5. Error Codes & Edge Case Handling**: Specific error responses and boundaries.
 
 ## Cross References
-- [Parent HLD](file:///home/logan78/Desktop/plan/docs/)
-- [Coding Standards](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md)
+- [Parent HLD](file:///home/logan78/Desktop/flux/docs/)
+- [Coding Standards](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md)
 
 ## Acceptance Criteria
 - [ ] Code implementation matches function signatures 100%.

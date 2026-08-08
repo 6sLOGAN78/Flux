@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/core/analytics_pipeline.md#part-v
 references:
-  - [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md)
+  - [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -29,13 +29,13 @@ This task relies on specifications and schema contracts in:
   - docs/core/analytics_pipeline.md#part-v
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 
 ## 5. Acceptance Criteria
 - [ ] Batches and compresses click events at edge nodes before regional ingestion.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/analytics/global.go`
@@ -60,12 +60,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/core/analytics_pipeline.md](file:///home/logan78/Desktop/plan/docs/core/analytics_pipeline.md) |
-| **Previous** | [tasks/05_global/task_503_anycast_dns.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_503_anycast_dns.md) |
-| **Next** | [tasks/05_global/task_505_global_ha_dr.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_505_global_ha_dr.md) |
+| **Parent** | [docs/core/analytics_pipeline.md](file:///home/logan78/Desktop/flux/docs/core/analytics_pipeline.md) |
+| **Previous** | [tasks/05_global/task_503_anycast_dns.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_503_anycast_dns.md) |
+| **Next** | [tasks/05_global/task_505_global_ha_dr.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_505_global_ha_dr.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

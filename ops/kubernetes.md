@@ -720,12 +720,12 @@ The architecture will also evolve, introducing asynchronous jobs, richer analyti
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/plan/ai/DEPLOYMENT.md) |
-| **Previous** | [ops/docker.md](file:///home/logan78/Desktop/plan/ops/docker.md) |
-| **Next** | [ops/terraform.md](file:///home/logan78/Desktop/plan/ops/terraform.md) |
+| **Parent** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/flux/ai/DEPLOYMENT.md) |
+| **Previous** | [ops/docker.md](file:///home/logan78/Desktop/flux/ops/docker.md) |
+| **Next** | [ops/terraform.md](file:///home/logan78/Desktop/flux/ops/terraform.md) |
 | **Children** | None |
-| **Dependencies** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/plan/ai/DEPLOYMENT.md), [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md) |
-| **Related Documents** | [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/flux/ai/DEPLOYMENT.md), [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md) |
+| **Related Documents** | [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

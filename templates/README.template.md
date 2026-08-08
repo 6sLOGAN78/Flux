@@ -25,9 +25,9 @@ Repository-wide overview.
 - **5. Contributing & Workflow**: Overview of Git branch, PR, and review protocols.
 
 ## Cross References
-- [Product Vision](file:///home/logan78/Desktop/plan/PRODUCT.md)
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Developer Setup](file:///home/logan78/Desktop/plan/CONTRIBUTING.md)
+- [Product Vision](file:///home/logan78/Desktop/flux/PRODUCT.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Developer Setup](file:///home/logan78/Desktop/flux/CONTRIBUTING.md)
 
 ## Acceptance Criteria
 - [ ] New developers can bootstrap local environment in <15 minutes.

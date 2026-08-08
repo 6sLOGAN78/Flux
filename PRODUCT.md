@@ -21,12 +21,12 @@ Flux is a production-grade, multi-tier URL shortening, link management, dynamic 
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Previous** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
-| **Next** | [ROADMAP.md](file:///home/logan78/Desktop/plan/ROADMAP.md) |
-| **Children** | [ROADMAP.md](file:///home/logan78/Desktop/plan/ROADMAP.md), [docs/core/link_management.md](file:///home/logan78/Desktop/plan/docs/core/link_management.md) |
-| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Previous** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
+| **Next** | [ROADMAP.md](file:///home/logan78/Desktop/flux/ROADMAP.md) |
+| **Children** | [ROADMAP.md](file:///home/logan78/Desktop/flux/ROADMAP.md), [docs/core/link_management.md](file:///home/logan78/Desktop/flux/docs/core/link_management.md) |
+| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

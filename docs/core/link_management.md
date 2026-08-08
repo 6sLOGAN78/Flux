@@ -809,12 +809,12 @@ That format is much closer to what you'd see in a software design review at a st
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md) |
-| **Previous** | [CHANGELOG.md](file:///home/logan78/Desktop/plan/CHANGELOG.md) |
-| **Next** | [docs/core/redirect_engine.md](file:///home/logan78/Desktop/plan/docs/core/redirect_engine.md) |
-| **Children** | [task_100_bootstrap_backend.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_100_bootstrap_backend.md), [task_101_auth_service.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_101_auth_service.md), [task_102_base62_encoder.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_102_base62_encoder.md) |
-| **Dependencies** | [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml), [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql) |
-| **Related Documents** | [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md), [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Parent** | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md) |
+| **Previous** | [CHANGELOG.md](file:///home/logan78/Desktop/flux/CHANGELOG.md) |
+| **Next** | [docs/core/redirect_engine.md](file:///home/logan78/Desktop/flux/docs/core/redirect_engine.md) |
+| **Children** | [task_100_bootstrap_backend.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_100_bootstrap_backend.md), [task_101_auth_service.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_101_auth_service.md), [task_102_base62_encoder.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_102_base62_encoder.md) |
+| **Dependencies** | [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml), [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql) |
+| **Related Documents** | [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md), [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

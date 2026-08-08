@@ -24,8 +24,8 @@ Exposed public and internal API surfaces.
 - **5. Standard Error Responses**: HTTP 400, 401, 403, 404, 429, 500 error schemas.
 
 ## Cross References
-- [OpenAPI YAML](file:///home/logan78/Desktop/plan/api/)
-- [Security Specs](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+- [OpenAPI YAML](file:///home/logan78/Desktop/flux/api/)
+- [Security Specs](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 
 ## Acceptance Criteria
 - [ ] Passes automated OpenAPI validation (`spectral lint`).

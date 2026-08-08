@@ -27,9 +27,9 @@ Entire system topology and technical design laws.
 - **6. Cross-Cutting Concerns**: Logging, tracing, auth, and error handling.
 
 ## Cross References
-- [Product Specifications](file:///home/logan78/Desktop/plan/PRODUCT.md)
-- [Security Model](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
-- [Database Schemas](file:///home/logan78/Desktop/plan/database/)
+- [Product Specifications](file:///home/logan78/Desktop/flux/PRODUCT.md)
+- [Security Model](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
+- [Database Schemas](file:///home/logan78/Desktop/flux/database/)
 
 ## Acceptance Criteria
 - [ ] Component boundaries strictly prevent illegal cyclic dependencies.

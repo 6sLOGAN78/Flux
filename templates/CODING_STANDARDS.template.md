@@ -24,8 +24,8 @@ All source code files in all languages used in the repository.
 - **5. Automated Linter Configurations**: Tooling rules (`golangci-lint`, `eslint`).
 
 ## Cross References
-- [Testing Strategy](file:///home/logan78/Desktop/plan/ai/TESTING.md)
-- [Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
+- [Testing Strategy](file:///home/logan78/Desktop/flux/ai/TESTING.md)
+- [Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
 
 ## Acceptance Criteria
 - [ ] Code passes all automated linters with 0 warnings.

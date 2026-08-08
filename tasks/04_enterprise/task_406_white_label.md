@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/enterprise/white_label_engine.md
 references:
-  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -29,13 +29,13 @@ This task relies on specifications and schema contracts in:
   - docs/enterprise/white_label_engine.md
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md)
 
 ## 5. Acceptance Criteria
 - [ ] Isolates tenant branding and signs transactional emails with custom DKIM signatures.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/whitelabel/branding.go`
@@ -60,12 +60,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/enterprise/white_label_engine.md](file:///home/logan78/Desktop/plan/docs/enterprise/white_label_engine.md) |
-| **Previous** | [tasks/04_enterprise/task_405_saml_scim.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_405_saml_scim.md) |
-| **Next** | [tasks/04_enterprise/task_407_abuse_malware.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_407_abuse_malware.md) |
+| **Parent** | [docs/enterprise/white_label_engine.md](file:///home/logan78/Desktop/flux/docs/enterprise/white_label_engine.md) |
+| **Previous** | [tasks/04_enterprise/task_405_saml_scim.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_405_saml_scim.md) |
+| **Next** | [tasks/04_enterprise/task_407_abuse_malware.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_407_abuse_malware.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

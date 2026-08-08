@@ -121,12 +121,12 @@ A task is **DONE** only when ALL of the following criteria are verified:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Previous** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Next** | [PRODUCT.md](file:///home/logan78/Desktop/plan/PRODUCT.md) |
-| **Children** | [tasks/01_core/task_100_bootstrap_backend.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_100_bootstrap_backend.md) |
-| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Previous** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Next** | [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md) |
+| **Children** | [tasks/01_core/task_100_bootstrap_backend.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_100_bootstrap_backend.md) |
+| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

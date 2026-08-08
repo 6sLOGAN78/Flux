@@ -31,8 +31,8 @@ Limited to the target files explicitly declared in this task document.
 - **4. Acceptance Criteria & Definition of Done**: Verification commands required before commit.
 
 ## Cross References
-- [Subsystem Spec](file:///home/logan78/Desktop/plan/docs/)
-- [Testing Strategy](file:///home/logan78/Desktop/plan/ai/TESTING.md)
+- [Subsystem Spec](file:///home/logan78/Desktop/flux/docs/)
+- [Testing Strategy](file:///home/logan78/Desktop/flux/ai/TESTING.md)
 
 ## Acceptance Criteria
 - [ ] Unit tests pass 100%.

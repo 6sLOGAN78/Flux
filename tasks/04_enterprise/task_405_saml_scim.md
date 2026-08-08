@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/enterprise/saml_scim_sso.md
 references:
-  - [SECURITY.md#enterprise-sso](file:///home/logan78/Desktop/plan/ai/SECURITY.md#enterprise-sso)
+  - [SECURITY.md#enterprise-sso](file:///home/logan78/Desktop/flux/ai/SECURITY.md#enterprise-sso)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -29,13 +29,13 @@ This task relies on specifications and schema contracts in:
   - docs/enterprise/saml_scim_sso.md
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [SECURITY.md#enterprise-sso](file:///home/logan78/Desktop/plan/ai/SECURITY.md#enterprise-sso)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [SECURITY.md#enterprise-sso](file:///home/logan78/Desktop/flux/ai/SECURITY.md#enterprise-sso)
 
 ## 5. Acceptance Criteria
 - [ ] Authenticates enterprise users via SAML SSO and provisions accounts via SCIM API.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/sso/saml.go`
@@ -60,12 +60,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/enterprise/saml_scim_sso.md](file:///home/logan78/Desktop/plan/docs/enterprise/saml_scim_sso.md) |
-| **Previous** | [tasks/04_enterprise/task_404_ai_engine.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_404_ai_engine.md) |
-| **Next** | [tasks/04_enterprise/task_406_white_label.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_406_white_label.md) |
+| **Parent** | [docs/enterprise/saml_scim_sso.md](file:///home/logan78/Desktop/flux/docs/enterprise/saml_scim_sso.md) |
+| **Previous** | [tasks/04_enterprise/task_404_ai_engine.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_404_ai_engine.md) |
+| **Next** | [tasks/04_enterprise/task_406_white_label.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_406_white_label.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

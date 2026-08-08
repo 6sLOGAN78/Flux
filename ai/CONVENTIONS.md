@@ -1,6 +1,6 @@
 # CONVENTIONS.md — Aider & Codex CLI Agent Conventions
 
-> **Master Protocol Directive**: Aider and Codex CLI agents MUST follow [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md).
+> **Master Protocol Directive**: Aider and Codex CLI agents MUST follow [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md).
 
 ## Key Conventions
 - **Single Responsibility**: Every file has exactly one responsibility.

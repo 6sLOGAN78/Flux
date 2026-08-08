@@ -26,9 +26,9 @@ Applies to all automated agents, subagents, and AI assistant sessions operating 
 - **6. Verification & Definition of Done**: Verification commands required before declaring task completion.
 
 ## Cross References
-- [Master Sitemap](file:///home/logan78/Desktop/plan/docs/INDEX.md)
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Tasks Registry](file:///home/logan78/Desktop/plan/tasks/)
+- [Master Sitemap](file:///home/logan78/Desktop/flux/docs/INDEX.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Tasks Registry](file:///home/logan78/Desktop/flux/tasks/)
 
 ## Acceptance Criteria
 - [ ] Agent can resolve any requirement conflict using Section 2 precedence rules.

@@ -9,12 +9,12 @@
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Previous** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/plan/ai/DEPLOYMENT.md) |
-| **Next** | [CHANGELOG.md](file:///home/logan78/Desktop/plan/CHANGELOG.md) |
+| **Parent** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Previous** | [ai/DEPLOYMENT.md](file:///home/logan78/Desktop/flux/ai/DEPLOYMENT.md) |
+| **Next** | [CHANGELOG.md](file:///home/logan78/Desktop/flux/CHANGELOG.md) |
 | **Children** | None |
-| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

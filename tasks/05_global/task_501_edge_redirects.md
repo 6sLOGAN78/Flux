@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/core/redirect_engine.md#part-iii
 references:
-  - [PERFORMANCE.md#slas](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md#slas)
+  - [PERFORMANCE.md#slas](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md#slas)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -29,13 +29,13 @@ This task relies on specifications and schema contracts in:
   - docs/core/redirect_engine.md#part-iii
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [PERFORMANCE.md#slas](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md#slas)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [PERFORMANCE.md#slas](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md#slas)
 
 ## 5. Acceptance Criteria
 - [ ] Executes redirects at edge closest to visitor with sub-10ms global latency.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `workers/redirect.js`
@@ -60,12 +60,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/global/edge_redirect_workers.md](file:///home/logan78/Desktop/plan/docs/global/edge_redirect_workers.md) |
-| **Previous** | [tasks/04_enterprise/task_407_abuse_malware.md](file:///home/logan78/Desktop/plan/tasks/04_enterprise/task_407_abuse_malware.md) |
-| **Next** | [tasks/05_global/task_502_geo_replication.md](file:///home/logan78/Desktop/plan/tasks/05_global/task_502_geo_replication.md) |
+| **Parent** | [docs/global/edge_redirect_workers.md](file:///home/logan78/Desktop/flux/docs/global/edge_redirect_workers.md) |
+| **Previous** | [tasks/04_enterprise/task_407_abuse_malware.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_407_abuse_malware.md) |
+| **Next** | [tasks/05_global/task_502_geo_replication.md](file:///home/logan78/Desktop/flux/tasks/05_global/task_502_geo_replication.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

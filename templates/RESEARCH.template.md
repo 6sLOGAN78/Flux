@@ -25,8 +25,8 @@ Target technology or architectural problem evaluated.
 - **5. Architectural Recommendation**: Final recommendation and adoption plan.
 
 ## Cross References
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Performance Specs](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Performance Specs](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 
 ## Acceptance Criteria
 - [ ] Empirical data justifies the architectural recommendation.

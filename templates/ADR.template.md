@@ -26,7 +26,7 @@ Applies to the specific architectural component or decision area described.
 - **6. Consequences & Follow-up**: Long-term architectural impact and required migration steps.
 
 ## Cross References
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
 
 ## Acceptance Criteria
 - [ ] Accepted decision must be reflected in `ARCHITECTURE.md` and relevant subsystem docs.

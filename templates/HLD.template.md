@@ -24,8 +24,8 @@ Entire subsystem component.
 - **5. Failure Modes & Resilience**: Fallback behavior during dependency outages.
 
 ## Cross References
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Database Schema](file:///home/logan78/Desktop/plan/database/)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Database Schema](file:///home/logan78/Desktop/flux/database/)
 
 ## Acceptance Criteria
 - [ ] Interfaces match machine-readable contracts in `api/` and `database/`.

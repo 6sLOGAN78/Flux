@@ -24,8 +24,8 @@ Repository-wide test suite.
 - **5. Benchmark Testing**: Performance regression testing rules.
 
 ## Cross References
-- [Coding Standards](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md)
-- [Performance Specs](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md)
+- [Coding Standards](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md)
+- [Performance Specs](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 
 ## Acceptance Criteria
 - [ ] All code changes must include corresponding unit/integration tests.

@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - api/openapi_v1_core.yaml#/components/schemas/AuthRequest
 references:
-  - [SECURITY.md#authentication](file:///home/logan78/Desktop/plan/ai/SECURITY.md#authentication)
+  - [SECURITY.md#authentication](file:///home/logan78/Desktop/flux/ai/SECURITY.md#authentication)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -66,12 +66,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [ai/SECURITY.md](file:///home/logan78/Desktop/plan/ai/SECURITY.md) |
-| **Previous** | [tasks/01_core/task_100_bootstrap_backend.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_100_bootstrap_backend.md) |
-| **Next** | [tasks/01_core/task_102_base62_encoder.md](file:///home/logan78/Desktop/plan/tasks/01_core/task_102_base62_encoder.md) |
+| **Parent** | [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md) |
+| **Previous** | [tasks/01_core/task_100_bootstrap_backend.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_100_bootstrap_backend.md) |
+| **Next** | [tasks/01_core/task_102_base62_encoder.md](file:///home/logan78/Desktop/flux/tasks/01_core/task_102_base62_encoder.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

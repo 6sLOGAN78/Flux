@@ -24,8 +24,8 @@ Long-term architectural evolution roadmap.
 - **4. Legacy Migration & Deprecation Plan**: Milestones for retiring outdated modules.
 
 ## Cross References
-- [Product Vision](file:///home/logan78/Desktop/plan/PRODUCT.md)
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
+- [Product Vision](file:///home/logan78/Desktop/flux/PRODUCT.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
 
 ## Acceptance Criteria
 - [ ] Clear milestone exit criteria defined for each phase.

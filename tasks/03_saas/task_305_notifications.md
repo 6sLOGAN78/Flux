@@ -6,7 +6,7 @@ owner: Feature Engineer
 depends_on:
   - docs/saas/notifications.md
 references:
-  - [PRODUCT.md](file:///home/logan78/Desktop/plan/PRODUCT.md)
+  - [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md)
 agent_mode: TDD-Execution
 token_budget_est: ~1.8KB
 tags:
@@ -30,13 +30,13 @@ This task relies on specifications and schema contracts in:
   - docs/saas/notifications.md
 
 ## 4. Referenced Architecture & Product Specs
-- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md)
-  - [PRODUCT.md](file:///home/logan78/Desktop/plan/PRODUCT.md)
+- Master Agent Operating Protocol: [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md)
+  - [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md)
 
 ## 5. Acceptance Criteria
 - [ ] Dispatches alerts to configured integration channels on triggered system events.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md).
+- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/notification/dispatcher.go`
@@ -61,12 +61,12 @@ This task relies on specifications and schema contracts in:
 ### 🧭 Knowledge Graph & Navigation
 | Dimension | Link / Reference |
 | :--- | :--- |
-| **Parent** | [docs/saas/notifications.md](file:///home/logan78/Desktop/plan/docs/saas/notifications.md) |
-| **Previous** | [tasks/03_saas/task_304_webhook_engine.md](file:///home/logan78/Desktop/plan/tasks/03_saas/task_304_webhook_engine.md) |
-| **Next** | [tasks/03_saas/task_306_integrations.md](file:///home/logan78/Desktop/plan/tasks/03_saas/task_306_integrations.md) |
+| **Parent** | [docs/saas/notifications.md](file:///home/logan78/Desktop/flux/docs/saas/notifications.md) |
+| **Previous** | [tasks/03_saas/task_304_webhook_engine.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_304_webhook_engine.md) |
+| **Next** | [tasks/03_saas/task_306_integrations.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_306_integrations.md) |
 | **Children** | None |
-| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/plan/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/plan/api/openapi_v1_core.yaml) |
-| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/plan/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/plan/ai/TESTING.md) |
-| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/plan/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/plan/AGENTS.md) |
+| **Dependencies** | [database/postgres_master_schema.sql](file:///home/logan78/Desktop/flux/database/postgres_master_schema.sql), [api/openapi_v1_core.yaml](file:///home/logan78/Desktop/flux/api/openapi_v1_core.yaml) |
+| **Related Documents** | [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md), [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md), [ai/TESTING.md](file:///home/logan78/Desktop/flux/ai/TESTING.md) |
+| **Navigation Hub** | [docs/INDEX.md](file:///home/logan78/Desktop/flux/docs/INDEX.md) \| [AGENTS.md](file:///home/logan78/Desktop/flux/AGENTS.md) |
 ---
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_END -->

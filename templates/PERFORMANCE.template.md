@@ -24,8 +24,8 @@ All runtime endpoints, workers, and database queries.
 - **5. Load Testing & Benchmarking Targets**: Load testing rules (`k6`, `vegeta`).
 
 ## Cross References
-- [Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Testing Strategy](file:///home/logan78/Desktop/plan/ai/TESTING.md)
+- [Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Testing Strategy](file:///home/logan78/Desktop/flux/ai/TESTING.md)
 
 ## Acceptance Criteria
 - [ ] Benchmarks pass latency targets before merging feature code.

@@ -24,8 +24,8 @@ Target database engine (PostgreSQL, ClickHouse, Redis).
 - **5. Migration & Rollback Guidelines**: Safe migration policies (`up` / `down` scripts).
 
 ## Cross References
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [Performance Specs](file:///home/logan78/Desktop/plan/ai/PERFORMANCE.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [Performance Specs](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md)
 
 ## Acceptance Criteria
 - [ ] DDL SQL scripts execute cleanly in automated CI database containers.

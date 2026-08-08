@@ -25,9 +25,9 @@ Entire functional product lifecycle across all tiers.
 - **5. Success Metrics & KPIs**: Target analytics, adoption, and revenue KPIs.
 
 ## Cross References
-- [Product Roadmap](file:///home/logan78/Desktop/plan/ROADMAP.md)
-- [System Architecture](file:///home/logan78/Desktop/plan/docs/ARCHITECTURE.md)
-- [API Contracts](file:///home/logan78/Desktop/plan/api/)
+- [Product Roadmap](file:///home/logan78/Desktop/flux/ROADMAP.md)
+- [System Architecture](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md)
+- [API Contracts](file:///home/logan78/Desktop/flux/api/)
 
 ## Acceptance Criteria
 - [ ] Every feature in `tasks/` traces back to a requirement in this document.
