@@ -9,7 +9,7 @@ const openApiDocument = generateOpenApi(
     info: {
       title: "Flux Platform REST API",
       version: "2.0.0",
-      description: "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, and real-time analytics API.",
+      description: "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, and real-time analytics API.",
       contact: {
         name: "Flux API Engineering Team",
         email: "support@flux.dev",
@@ -60,10 +60,14 @@ openApiDocument.security = [
 
 openApiDocument.tags = [
   { name: "Health", description: "System operational status and health check endpoints" },
-  { name: "Links", description: "Short URL creation, retrieval, Base62 routing, and management" },
+  { name: "Links", description: "Short URL creation, retrieval, Base62 routing, category assignment, and management" },
   { name: "Categories", description: "Category management and link organization" },
   { name: "Campaigns", description: "Marketing campaigns and UTM template building" },
   { name: "Domains", description: "Custom branded domain registration and CNAME verification" },
+  { name: "Workspaces", description: "Multi-tenant Organization & Workspace management with RBAC" },
+  { name: "Billing", description: "Stripe subscription tiers, checkout, and metered billing" },
+  { name: "OAuth", description: "OAuth 2.0 Token issuance and developer API keys" },
+  { name: "Webhooks", description: "Outbound real-time HTTP callback subscription management" },
   { name: "User", description: "Authenticated user context and profile management" },
   { name: "Analytics", description: "Real-time link click metrics, time-series, and performance reporting" },
 ];
@@ -83,6 +87,14 @@ for (const [pathKey, pathObj] of Object.entries(openApiDocument.paths || {})) {
           operation.tags = ["Campaigns"];
         } else if (pathKey.includes("/domains")) {
           operation.tags = ["Domains"];
+        } else if (pathKey.includes("/workspaces")) {
+          operation.tags = ["Workspaces"];
+        } else if (pathKey.includes("/billing")) {
+          operation.tags = ["Billing"];
+        } else if (pathKey.includes("/oauth")) {
+          operation.tags = ["OAuth"];
+        } else if (pathKey.includes("/webhooks")) {
+          operation.tags = ["Webhooks"];
         } else if (pathKey.includes("/me")) {
           operation.tags = ["User"];
         } else if (pathKey.includes("/analytics")) {

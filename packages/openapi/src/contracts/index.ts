@@ -3,6 +3,8 @@ import {
   ZHealthResponse,
   ZLink,
   ZCreateLinkInput,
+  ZUpdateLinkInput,
+  ZBulkCategorizeInput,
   ZCategory,
   ZCreateCategoryInput,
   ZCampaign,
@@ -12,6 +14,13 @@ import {
   ZAuthMeResponse,
   ZAnalyticsSummaryResponse,
   ZLinkMetricsResponse,
+  ZOrganization,
+  ZWorkspace,
+  ZWorkspaceMember,
+  ZSubscription,
+  ZAPIKey,
+  ZOAuthTokenResponse,
+  ZWebhook,
 } from "@flux/zod";
 import { z } from "zod";
 
@@ -56,6 +65,36 @@ export const apiContract = c.router({
       404: z.object({ error: z.string().openapi({ example: "Link not found" }) }),
     },
     summary: "Get shortened link details",
+    metadata: {
+      openApiTags: ["Links"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  updateLink: {
+    method: "PATCH",
+    path: "/api/v1/links/:id",
+    pathParams: z.object({
+      id: z.string().uuid().openapi({ description: "Link UUID", example: "123e4567-e89b-12d3-a456-426614174000" }),
+    }),
+    body: ZUpdateLinkInput,
+    responses: {
+      200: ZLink,
+      404: z.object({ error: z.string().openapi({ example: "Link not found" }) }),
+    },
+    summary: "Update link destination URL or category assignment",
+    metadata: {
+      openApiTags: ["Links"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  bulkCategorizeLinks: {
+    method: "POST",
+    path: "/api/v1/links/bulk-categorize",
+    body: ZBulkCategorizeInput,
+    responses: {
+      200: z.object({ success: z.boolean(), updated_count: z.number().int() }),
+    },
+    summary: "Bulk assign or unassign category for multiple short links",
     metadata: {
       openApiTags: ["Links"],
       openApiSecurity: [{ bearerAuth: [] }],
@@ -106,6 +145,70 @@ export const apiContract = c.router({
     summary: "Register custom branded domain",
     metadata: {
       openApiTags: ["Domains"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- Multi-Tenant & Workspaces ---
+  getWorkspaces: {
+    method: "GET",
+    path: "/api/v1/workspaces",
+    responses: {
+      200: z.array(ZWorkspace),
+    },
+    summary: "List tenant workspaces for active user",
+    metadata: {
+      openApiTags: ["Workspaces"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- Subscriptions & Billing ---
+  getSubscription: {
+    method: "GET",
+    path: "/api/v1/billing/subscription",
+    responses: {
+      200: ZSubscription,
+    },
+    summary: "Get active SaaS plan subscription status",
+    metadata: {
+      openApiTags: ["Billing"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+
+  // --- OAuth 2.0 & Developer Keys ---
+  issueOAuthToken: {
+    method: "POST",
+    path: "/oauth/token",
+    body: z.object({
+      grant_type: z.string().openapi({ example: "client_credentials" }),
+      client_id: z.string().openapi({ example: "flx_app_123" }),
+      client_secret: z.string().openapi({ example: "sec_abc999" }),
+    }),
+    responses: {
+      200: ZOAuthTokenResponse,
+    },
+    summary: "Exchange credentials for OAuth 2.0 Access Token",
+    metadata: {
+      openApiTags: ["OAuth"],
+    },
+  },
+
+  // --- Webhooks ---
+  createWebhook: {
+    method: "POST",
+    path: "/api/v1/webhooks",
+    body: z.object({
+      url: z.string().url().openapi({ example: "https://api.acme.com/webhook" }),
+      events: z.array(z.string()).openapi({ example: ["link.created", "click.recorded"] }),
+    }),
+    responses: {
+      201: ZWebhook,
+    },
+    summary: "Register outbound webhook listener endpoint",
+    metadata: {
+      openApiTags: ["Webhooks"],
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },

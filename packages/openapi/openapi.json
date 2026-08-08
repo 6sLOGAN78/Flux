@@ -66,6 +66,11 @@
                     "description": "Optional custom short code slug",
                     "example": "my-custom-alias"
                   },
+                  "categoryId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional category UUID assignment"
+                  },
                   "title": {
                     "type": "string",
                     "maxLength": 100,
@@ -113,6 +118,12 @@
                       "format": "uri",
                       "description": "Target URL for redirection",
                       "example": "https://example.com/target-page"
+                    },
+                    "categoryId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true,
+                      "description": "Optional link category UUID"
                     },
                     "tenantId": {
                       "type": "string",
@@ -209,6 +220,12 @@
                       "description": "Target URL for redirection",
                       "example": "https://example.com/target-page"
                     },
+                    "categoryId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true,
+                      "description": "Optional link category UUID"
+                    },
                     "tenantId": {
                       "type": "string",
                       "format": "uuid",
@@ -251,6 +268,206 @@
                   },
                   "required": [
                     "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/{id}": {
+      "patch": {
+        "summary": "Update link destination URL or category assignment",
+        "tags": [
+          "Links"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174000"
+            },
+            "description": "Link UUID"
+          }
+        ],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "destinationUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Updated destination URL"
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "description": "Updated category UUID or null to unassign"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Updated link title"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "description": "Updated link description"
+                  }
+                },
+                "description": "Input payload for updating a link"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique link identifier (UUID)",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "shortCode": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 20,
+                      "description": "Custom or generated Base62 short code",
+                      "example": "xyz123"
+                    },
+                    "destinationUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Target URL for redirection",
+                      "example": "https://example.com/target-page"
+                    },
+                    "categoryId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true,
+                      "description": "Optional link category UUID"
+                    },
+                    "tenantId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Tenant identifier for multi-tenant isolation"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Link creation timestamp in ISO 8601 format"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Link last update timestamp in ISO 8601 format"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "shortCode",
+                    "destinationUrl",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "description": "Shortened Link entity"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Link not found"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/bulk-categorize": {
+      "post": {
+        "summary": "Bulk assign or unassign category for multiple short links",
+        "tags": [
+          "Links"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "linkIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Array of link UUIDs to categorize"
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "description": "Category UUID to assign, or null to unassign"
+                  }
+                },
+                "required": [
+                  "linkIds",
+                  "categoryId"
+                ],
+                "description": "Input payload for bulk link categorization"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "updated_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "updated_count"
                   ]
                 }
               }
@@ -600,6 +817,306 @@
         }
       }
     },
+    "/api/v1/workspaces": {
+      "get": {
+        "summary": "List tenant workspaces for active user",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Workspace UUID"
+                      },
+                      "organizationId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Parent organization UUID"
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Workspace name",
+                        "example": "Marketing Team"
+                      },
+                      "slug": {
+                        "type": "string",
+                        "description": "Workspace slug",
+                        "example": "marketing"
+                      },
+                      "isDefault": {
+                        "type": "boolean",
+                        "description": "Default workspace flag",
+                        "example": true
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Creation timestamp"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "name",
+                      "slug",
+                      "isDefault",
+                      "createdAt"
+                    ],
+                    "description": "Tenant Workspace entity"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/subscription": {
+      "get": {
+        "summary": "Get active SaaS plan subscription status",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Subscription UUID"
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Organization UUID"
+                    },
+                    "stripeCustomerId": {
+                      "type": "string",
+                      "description": "Stripe customer identifier",
+                      "example": "cus_123"
+                    },
+                    "planTier": {
+                      "type": "string",
+                      "enum": [
+                        "free",
+                        "pro",
+                        "business"
+                      ],
+                      "description": "Subscription tier level",
+                      "example": "pro"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "past_due",
+                        "canceled",
+                        "trialing"
+                      ],
+                      "description": "Subscription billing status",
+                      "example": "active"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "stripeCustomerId",
+                    "planTier",
+                    "status"
+                  ],
+                  "description": "Stripe subscription state entity"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "summary": "Exchange credentials for OAuth 2.0 Access Token",
+        "tags": [
+          "OAuth"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "example": "client_credentials"
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "example": "flx_app_123"
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "example": "sec_abc999"
+                  }
+                },
+                "required": [
+                  "grant_type",
+                  "client_id",
+                  "client_secret"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {
+                      "type": "string",
+                      "description": "Bearer Access Token",
+                      "example": "flx_oauth_abc123"
+                    },
+                    "token_type": {
+                      "type": "string",
+                      "example": "Bearer"
+                    },
+                    "expires_in": {
+                      "type": "integer",
+                      "example": 3600
+                    },
+                    "scope": {
+                      "type": "string",
+                      "example": "links:read links:write"
+                    }
+                  },
+                  "required": [
+                    "access_token",
+                    "token_type",
+                    "expires_in"
+                  ],
+                  "description": "OAuth 2.0 Access Token Response"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks": {
+      "post": {
+        "summary": "Register outbound webhook listener endpoint",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://api.acme.com/webhook"
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "link.created",
+                      "click.recorded"
+                    ]
+                  }
+                },
+                "required": [
+                  "url",
+                  "events"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Webhook UUID"
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Workspace UUID"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Target callback URL",
+                      "example": "https://api.acme.com/webhooks"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Subscribed event triggers",
+                      "example": [
+                        "link.created",
+                        "click.recorded"
+                      ]
+                    },
+                    "isActive": {
+                      "type": "boolean",
+                      "description": "Active status",
+                      "example": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workspaceId",
+                    "url",
+                    "events",
+                    "isActive"
+                  ],
+                  "description": "Registered Webhook Endpoint entity"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "summary": "Get authenticated user profile",
@@ -833,7 +1350,7 @@
   "info": {
     "title": "Flux Platform REST API",
     "version": "2.0.0",
-    "description": "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, and real-time analytics API.",
+    "description": "Production-grade URL shortening, dynamic link routing, custom domains, marketing campaigns, SaaS multi-tenancy, billing, webhooks, and real-time analytics API.",
     "contact": {
       "name": "Flux API Engineering Team",
       "email": "support@flux.dev",
@@ -883,7 +1400,7 @@
     },
     {
       "name": "Links",
-      "description": "Short URL creation, retrieval, Base62 routing, and management"
+      "description": "Short URL creation, retrieval, Base62 routing, category assignment, and management"
     },
     {
       "name": "Categories",
@@ -896,6 +1413,22 @@
     {
       "name": "Domains",
       "description": "Custom branded domain registration and CNAME verification"
+    },
+    {
+      "name": "Workspaces",
+      "description": "Multi-tenant Organization & Workspace management with RBAC"
+    },
+    {
+      "name": "Billing",
+      "description": "Stripe subscription tiers, checkout, and metered billing"
+    },
+    {
+      "name": "OAuth",
+      "description": "OAuth 2.0 Token issuance and developer API keys"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Outbound real-time HTTP callback subscription management"
     },
     {
       "name": "User",
