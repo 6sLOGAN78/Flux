@@ -14,12 +14,18 @@ import (
 
 // Config holds the application configuration parameters.
 type Config struct {
+	PrimaryEnv         string `koanf:"primary_env"`
 	ServerPort         string `koanf:"server_port"`
 	DatabaseURL        string `koanf:"database_url"`
 	RedisURL           string `koanf:"redis_url"`
 	JWTSecret          string `koanf:"jwt_secret"`
 	ClerkSecretKey     string `koanf:"clerk_secret_key"`
+	ResendAPIKey       string `koanf:"resend_api_key"`
 	NewRelicLicenseKey string `koanf:"new_relic_license_key"`
+	AWSRegion          string `koanf:"aws_region"`
+	AWSAccessKeyID     string `koanf:"aws_access_key_id"`
+	AWSSecretAccessKey string `koanf:"aws_secret_access_key"`
+	AWSUploadBucket    string `koanf:"aws_upload_bucket"`
 }
 
 // LoadConfig initializes application configuration from environment variables with defaults using koanf/v2.
@@ -34,6 +40,14 @@ func LoadConfig() (*Config, error) {
 	}), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	primaryEnv := k.String("flux_primary.env")
+	if primaryEnv == "" {
+		primaryEnv = os.Getenv("FLUX_PRIMARY_ENV")
+	}
+	if primaryEnv == "" {
+		primaryEnv = "local"
 	}
 
 	// 1. Server Port
@@ -81,7 +95,15 @@ func LoadConfig() (*Config, error) {
 		redisURL = "localhost:6379"
 	}
 
-	// 4. Auth & JWT Secret
+	// 4. Auth & Clerk Secret Key
+	clerkSecretKey := k.String("flux_auth.secret_key")
+	if clerkSecretKey == "" {
+		clerkSecretKey = k.String("clerk_secret_key")
+	}
+	if clerkSecretKey == "" {
+		clerkSecretKey = os.Getenv("CLERK_SECRET_KEY")
+	}
+
 	jwtSecret := k.String("flux_auth.secret_key")
 	if jwtSecret == "" {
 		jwtSecret = k.String("jwt_secret")
@@ -90,21 +112,37 @@ func LoadConfig() (*Config, error) {
 		jwtSecret = "super-secret-default-flux-key-change-in-prod"
 	}
 
-	clerkSecretKey := k.String("clerk_secret_key")
+	// 5. Integration Keys
+	resendKey := k.String("flux_integration.resend_api_key")
+	if resendKey == "" {
+		resendKey = os.Getenv("RESEND_API_KEY")
+	}
 
-	// 5. New Relic APM License Key
+	// 6. New Relic APM License Key
 	nrLicenseKey := k.String("flux_observability.new_relic.license_key")
 	if nrLicenseKey == "" {
 		nrLicenseKey = k.String("new_relic_license_key")
 	}
 
+	// 7. AWS S3 Settings
+	awsRegion := k.String("flux_aws.region")
+	awsAccessKey := k.String("flux_aws.access_key_id")
+	awsSecretKey := k.String("flux_aws.secret_access_key")
+	awsBucket := k.String("flux_aws.upload_bucket")
+
 	cfg := &Config{
+		PrimaryEnv:         primaryEnv,
 		ServerPort:         port,
 		DatabaseURL:        dbURL,
 		RedisURL:           redisURL,
 		JWTSecret:          jwtSecret,
 		ClerkSecretKey:     clerkSecretKey,
+		ResendAPIKey:       resendKey,
 		NewRelicLicenseKey: nrLicenseKey,
+		AWSRegion:          awsRegion,
+		AWSAccessKeyID:     awsAccessKey,
+		AWSSecretAccessKey: awsSecretKey,
+		AWSUploadBucket:    awsBucket,
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -127,3 +165,4 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
+
