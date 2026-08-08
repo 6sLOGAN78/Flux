@@ -1,7 +1,7 @@
 ---id: TASK-306
 title: 3rd-Party Integrations (Zapier, GA4, Shopify)
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/saas/ecosystem_integrations.md
@@ -34,27 +34,28 @@ This task relies on specifications and schema contracts in:
   - [openapi_v3_saas.yaml](file:///home/logan78/Desktop/flux/api/openapi_v3_saas.yaml)
 
 ## 5. Acceptance Criteria
-- [ ] Streams conversion events to Google Analytics 4 and Shopify storefronts.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
+- [x] Streams conversion events to Google Analytics 4 and Shopify storefronts.
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `internal/modules/integration/ga4.go`
 
 ## 7. Definition of Done (DoD)
-- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
-- [ ] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/integration/...`.
-- [ ] **Step 3: Write minimal implementation** inside target files.
-- [ ] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/integration/...`.
-- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+- [x] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [x] **Step 2: Confirm test failure**: Run `go test -v ./internal/modules/integration/...`.
+- [x] **Step 3: Write minimal implementation** inside target files.
+- [x] **Step 4: Confirm test passes**: Run `go test -v ./internal/modules/integration/...`.
+- [x] **Step 5: Run linter**: Confirm zero warnings or errors.
 
 ## 8. Testing Strategy
 - **Unit Tests**: Test pure domain logic in isolation.
 - **Verification Command**: `go test -v ./internal/modules/integration/...`
 
 ## 9. Documentation Updates
-- [ ] Mark task status as `Done` in this document frontmatter upon completion.
-- [ ] Update function/package docstrings if signatures were extended.
+- [x] Mark task status as `Done` in this document frontmatter upon completion.
+- [x] Update function/package docstrings if signatures were extended.
+
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
