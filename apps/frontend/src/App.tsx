@@ -18,6 +18,7 @@ import { LinksListPage } from '@/pages/links/LinksListPage';
 import { LinkDetailPage } from '@/pages/links/LinkDetailPage';
 import { CategoriesPage } from '@/pages/links/CategoriesPage';
 import { CampaignsPage } from '@/pages/growth/CampaignsPage';
+import { SmartRoutingPage } from '@/pages/growth/SmartRoutingPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -127,6 +128,16 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <CampaignsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/routing"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <SmartRoutingPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
