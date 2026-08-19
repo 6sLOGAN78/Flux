@@ -32,6 +32,7 @@ import { IntegrationsPage } from '@/pages/developer/IntegrationsPage';
 import { NotificationsPage } from '@/pages/dashboard/NotificationsPage';
 import { AIInsightsPage } from '@/pages/enterprise/AIInsightsPage';
 import { SecurityScannerPage } from '@/pages/enterprise/SecurityScannerPage';
+import { GlobalOpsPage } from '@/pages/enterprise/GlobalOpsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -352,6 +353,36 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <SecurityScannerPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ops/global-health"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <GlobalOpsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ops"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <GlobalOpsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/global-ops"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <GlobalOpsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

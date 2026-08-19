@@ -2,7 +2,7 @@
 id: TASK-652
 title: Global Edge PoP Health, Anycast BGP & Disaster Recovery Monitor
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_603_app_shell_navigation.md
@@ -39,20 +39,20 @@ Target source files:
 - [docs/global/ha_disaster_recovery.md](file:///home/logan78/Desktop/flux/docs/global/ha_disaster_recovery.md)
 
 ## 5. Acceptance Criteria
-- [ ] PoP nodes display operational health (`healthy` green pulse, `withdrawn` grey, `degraded` amber) and latency ms.
-- [ ] Geo-replication table tracks regional ping latencies with SLA compliance badge.
-- [ ] Failover card shows active primary region and backup health with live circuit breaker trip status.
+- [x] PoP nodes display operational health (`healthy` green pulse, `withdrawn` grey, `degraded` amber) and latency ms.
+- [x] Geo-replication table tracks regional ping latencies with SLA compliance badge.
+- [x] Failover card shows active primary region and backup health with live circuit breaker trip status.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/enterprise/GlobalOpsPage.tsx`
 - `apps/frontend/src/components/ops/PoPWorldMap.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write PoP status calculation unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Global Ops page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write PoP status calculation unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Global Ops page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/enterprise/GlobalOpsPage.test.tsx`
