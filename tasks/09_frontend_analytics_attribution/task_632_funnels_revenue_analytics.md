@@ -2,7 +2,7 @@
 id: TASK-632
 title: Conversion Funnels Builder & Unit Economics ROAS Dashboard
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/09_frontend_analytics_attribution/task_631_attribution_engine_studio.md
@@ -38,20 +38,20 @@ Target source files:
 - [tasks/04_enterprise/task_402_funnel_analytics.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_402_funnel_analytics.md)
 
 ## 5. Acceptance Criteria
-- [ ] Funnel visualizer renders sequential conversion bars showing drop-off percentage between consecutive steps.
-- [ ] Unit economics cards display Total Spend, Attributed Revenue, CAC ($), ROAS (x.x), and LTV:CAC health indicators (>3.0 = healthy).
-- [ ] Funnel creation modal permits adding re-orderable steps mapped to specific campaign link IDs.
+- [x] Funnel visualizer renders sequential conversion bars showing drop-off percentage between consecutive steps.
+- [x] Unit economics cards display Total Spend, Attributed Revenue, CAC ($), ROAS (x.x), and LTV:CAC health indicators (>3.0 = healthy).
+- [x] Funnel creation modal permits adding re-orderable steps mapped to specific campaign link IDs.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/analytics/FunnelsPage.tsx`
 - `apps/frontend/src/components/funnels/FunnelVisualizer.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write funnel metric formatting unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Funnels page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write funnel metric formatting unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Funnels page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/analytics/FunnelsPage.test.tsx`
