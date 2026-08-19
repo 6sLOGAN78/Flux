@@ -2,7 +2,7 @@
 id: TASK-604
 title: Notion & Dub Minimalist UI Primitives & Form Controls
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_600_frontend_scaffold_env.md
@@ -43,23 +43,23 @@ Target source files:
 - [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md)
 
 ## 5. Acceptance Criteria
-- [ ] Buttons:
+- [x] Buttons:
   - Primary: Solid black `bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200`.
   - Secondary/Outline: Subtle border `border-zinc-200 hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900`.
   - Single-line labels with tactile active states (`scale-[0.98]`).
-- [ ] Inputs & Controls: Clean flat inputs with `border-zinc-200 dark:border-zinc-800`, subtle focus ring (`ring-zinc-900/10 dark:ring-zinc-100/10`), label on top, error message below.
-- [ ] Modal: Lightweight backdrop blur (`backdrop-blur-xs`), subtle border, focus trapped, clean `Escape` close.
-- [ ] Badges: Minimalist pill badges with subtle zinc/emerald/blue backgrounds (no loud neon gradients).
+- [x] Inputs & Controls: Clean flat inputs with `border-zinc-200 dark:border-zinc-800`, subtle focus ring (`ring-zinc-900/10 dark:ring-zinc-100/10`), label on top, error message below.
+- [x] Modal: Lightweight backdrop blur (`backdrop-blur-xs`), subtle border, focus trapped, clean `Escape` close.
+- [x] Badges: Minimalist pill badges with subtle zinc/emerald/blue backgrounds (no loud neon gradients).
 
 ## 6. Target Deliverables
 - `apps/frontend/src/components/ui/` primitive component library
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write component unit tests for Button, Input, Modal, and DataTable.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Notion & Dub minimalist UI primitives.
-- [ ] Step 4: Confirm tests pass with `bun test`.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write component unit tests for Button, Input, Modal, and DataTable.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Notion & Dub minimalist UI primitives.
+- [x] Step 4: Confirm tests pass with `bun test`.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/components/ui/Button.test.tsx`
