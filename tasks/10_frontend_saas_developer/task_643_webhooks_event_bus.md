@@ -2,7 +2,7 @@
 id: TASK-643
 title: Outbound Webhooks Manager, Delivery Log & Event Payload Inspector
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/10_frontend_saas_developer/task_642_developer_api_keys_oauth.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/03_saas/task_304_webhook_engine.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_304_webhook_engine.md)
 
 ## 5. Acceptance Criteria
-- [ ] Creation modal validates HTTPS URLs and allows multi-selecting event subscription checkboxes.
-- [ ] Delivery history shows timestamp, response status code (200, 500), latency ms, and expandable JSON payload inspector.
-- [ ] Retry button sends test event and provides immediate feedback.
+- [x] Creation modal validates HTTPS URLs and allows multi-selecting event subscription checkboxes.
+- [x] Delivery history shows timestamp, response status code (200, 500), latency ms, and expandable JSON payload inspector.
+- [x] Retry button sends test event and provides immediate feedback.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/developer/WebhooksPage.tsx`
 - `apps/frontend/src/components/webhooks/WebhookDeliveryHistory.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write delivery status badge and URL validation unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Webhooks page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write delivery status badge and URL validation unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Webhooks page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/developer/WebhooksPage.test.tsx`
