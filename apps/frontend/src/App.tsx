@@ -30,6 +30,7 @@ import { ApiKeysPage } from '@/pages/developer/ApiKeysPage';
 import { WebhooksPage } from '@/pages/developer/WebhooksPage';
 import { IntegrationsPage } from '@/pages/developer/IntegrationsPage';
 import { NotificationsPage } from '@/pages/dashboard/NotificationsPage';
+import { AIInsightsPage } from '@/pages/enterprise/AIInsightsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -310,6 +311,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <NotificationsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/enterprise/ai-insights"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <AIInsightsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ai-insights"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <AIInsightsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

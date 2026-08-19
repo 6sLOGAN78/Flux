@@ -2,7 +2,7 @@
 id: TASK-650
 title: Predictive AI CTR Forecasting & Anomaly Detection Center
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/09_frontend_analytics_attribution/task_630_timeseries_analytics_explorer.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/04_enterprise/task_404_ai_engine.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_404_ai_engine.md)
 
 ## 5. Acceptance Criteria
-- [ ] CTR prediction chart plots historical vs predicted trajectory with confidence bands.
-- [ ] Anomaly feed displays real-time badges for `traffic_spike` (green), `traffic_drop` (rose), and `bot_surge` (amber) with statistical Z-scores.
-- [ ] Optimization tips present actionable recommendation chips (e.g. "Optimal posting time: 14:00 UTC").
+- [x] CTR prediction chart plots historical vs predicted trajectory with confidence bands.
+- [x] Anomaly feed displays real-time badges for `traffic_spike` (green), `traffic_drop` (rose), and `bot_surge` (amber) with statistical Z-scores.
+- [x] Optimization tips present actionable recommendation chips (e.g. "Optimal posting time: 14:00 UTC").
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/enterprise/AIInsightsPage.tsx`
 - `apps/frontend/src/components/ai/AnomalyEventStream.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write anomaly event rendering unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement AI Insights page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write anomaly event rendering unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement AI Insights page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/enterprise/AIInsightsPage.test.tsx`
