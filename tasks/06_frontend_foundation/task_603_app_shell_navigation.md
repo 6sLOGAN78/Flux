@@ -2,7 +2,7 @@
 id: TASK-603
 title: Minimalist App Shell, Clean Sidebar, cmdk & Workspace Switcher
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_602_auth_clerk_sso.md
@@ -42,9 +42,9 @@ Target source files:
 - [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md)
 
 ## 5. Acceptance Criteria
-- [ ] Sidebar: Minimalist flat navigation items (`hover:bg-zinc-100 dark:hover:bg-zinc-900`), active item indicator, collapsible on mobile (`<768px`).
-- [ ] Command palette (`Cmd+K`): Fast fuzzy search with clean search input and subtle shortcut key hints (`⌘K`, `ESC`).
-- [ ] Workspace switcher: Dub-style clean dropdown with organization logos/monograms and instant workspace switching.
+- [x] Sidebar: Minimalist flat navigation items (`hover:bg-zinc-100 dark:hover:bg-zinc-900`), active item indicator, collapsible on mobile (`<768px`).
+- [x] Command palette (`Cmd+K`): Fast fuzzy search with clean search input and subtle shortcut key hints (`⌘K`, `ESC`).
+- [x] Workspace switcher: Dub-style clean dropdown with organization logos/monograms and instant workspace switching.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/components/layout/AppLayout.tsx`
@@ -52,11 +52,11 @@ Target source files:
 - `apps/frontend/src/components/layout/CommandPalette.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write component unit test for Sidebar navigation and Command Palette shortcut.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement layout components.
-- [ ] Step 4: Confirm tests pass with `bun test`.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write component unit test for Sidebar navigation and Command Palette shortcut.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement layout components.
+- [x] Step 4: Confirm tests pass with `bun test`.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/components/layout/AppLayout.test.tsx`
