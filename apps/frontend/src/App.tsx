@@ -28,6 +28,8 @@ import { WorkspacesPage } from '@/pages/settings/WorkspacesPage';
 import { BillingPage } from '@/pages/settings/BillingPage';
 import { ApiKeysPage } from '@/pages/developer/ApiKeysPage';
 import { WebhooksPage } from '@/pages/developer/WebhooksPage';
+import { IntegrationsPage } from '@/pages/developer/IntegrationsPage';
+import { NotificationsPage } from '@/pages/dashboard/NotificationsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -288,6 +290,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <WebhooksPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/integrations"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <IntegrationsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <NotificationsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

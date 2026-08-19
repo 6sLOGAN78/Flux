@@ -2,7 +2,7 @@
 id: TASK-644
 title: Integrations Directory & Real-Time In-App Notification Center
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_603_app_shell_navigation.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/03_saas/task_305_notifications.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_305_notifications.md)
 
 ## 5. Acceptance Criteria
-- [ ] App connector cards show connection status (`Connected`, `Connect`) with setup modal.
-- [ ] Notification drawer displays unread count badge in header and auto-updates upon clicking Mark All Read.
-- [ ] Severity pills differentiate between `info` (blue), `warning` (amber), and `alert` (rose).
+- [x] App connector cards show connection status (`Connected`, `Connect`) with setup modal.
+- [x] Notification drawer displays unread count badge in header and auto-updates upon clicking Mark All Read.
+- [x] Severity pills differentiate between `info` (blue), `warning` (amber), and `alert` (rose).
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/developer/IntegrationsPage.tsx`
 - `apps/frontend/src/components/notifications/NotificationDrawer.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write notification mark-read mutation unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Integrations and Notifications.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write notification mark-read mutation unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Integrations and Notifications.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/developer/IntegrationsPage.test.tsx`
