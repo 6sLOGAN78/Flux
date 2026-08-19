@@ -31,6 +31,7 @@ import { WebhooksPage } from '@/pages/developer/WebhooksPage';
 import { IntegrationsPage } from '@/pages/developer/IntegrationsPage';
 import { NotificationsPage } from '@/pages/dashboard/NotificationsPage';
 import { AIInsightsPage } from '@/pages/enterprise/AIInsightsPage';
+import { SecurityScannerPage } from '@/pages/enterprise/SecurityScannerPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -331,6 +332,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <AIInsightsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/enterprise/security"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <SecurityScannerPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/security"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <SecurityScannerPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
