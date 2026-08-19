@@ -19,6 +19,7 @@ import { LinkDetailPage } from '@/pages/links/LinkDetailPage';
 import { CategoriesPage } from '@/pages/links/CategoriesPage';
 import { CampaignsPage } from '@/pages/growth/CampaignsPage';
 import { SmartRoutingPage } from '@/pages/growth/SmartRoutingPage';
+import { ABTestingPage } from '@/pages/growth/ABTestingPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -138,6 +139,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <SmartRoutingPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/traffic-splits"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ABTestingPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ab-testing"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ABTestingPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
