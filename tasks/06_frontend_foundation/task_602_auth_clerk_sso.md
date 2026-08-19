@@ -2,7 +2,7 @@
 id: TASK-602
 title: Clerk Authentication Provider, Protected Routes & SSO Handler
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_601_api_client_query.md
@@ -39,9 +39,9 @@ Target source files:
 - [docs/saas/saml_scim_sso.md](file:///home/logan78/Desktop/flux/docs/enterprise/saml_scim_sso.md)
 
 ## 5. Acceptance Criteria
-- [ ] Unauthenticated requests to protected routes redirect cleanly to `/sign-in` with return URL state.
-- [ ] Authenticated users visiting `/sign-in` or `/sign-up` redirect to `/dashboard`.
-- [ ] Enterprise SSO page `/auth/sso` captures company domain and triggers SAML 2.0 IdP initiation.
+- [x] Unauthenticated requests to protected routes redirect cleanly to `/sign-in` with return URL state.
+- [x] Authenticated users visiting `/sign-in` or `/sign-up` redirect to `/dashboard`.
+- [x] Enterprise SSO page `/auth/sso` captures company domain and triggers SAML 2.0 IdP initiation.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/components/auth/ProtectedRoute.tsx`
@@ -50,11 +50,11 @@ Target source files:
 - `apps/frontend/src/pages/auth/SSOPage.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write routing unit tests simulating authenticated and unauthenticated states.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement auth wrappers and pages.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write routing unit tests simulating authenticated and unauthenticated states.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement auth wrappers and pages.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/components/auth/ProtectedRoute.test.tsx`
