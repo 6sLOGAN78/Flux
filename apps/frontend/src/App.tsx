@@ -24,6 +24,7 @@ import { DomainsPage } from '@/pages/growth/DomainsPage';
 import { AnalyticsPage } from '@/pages/analytics/AnalyticsPage';
 import { AttributionPage } from '@/pages/analytics/AttributionPage';
 import { FunnelsPage } from '@/pages/analytics/FunnelsPage';
+import { WorkspacesPage } from '@/pages/settings/WorkspacesPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -204,6 +205,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <FunnelsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <WorkspacesPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/workspaces"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <WorkspacesPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

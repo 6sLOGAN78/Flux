@@ -2,7 +2,7 @@
 id: TASK-640
 title: Organization Workspaces & Team RBAC Management
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_603_app_shell_navigation.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/03_saas/task_301_tenant_rbac.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_301_tenant_rbac.md)
 
 ## 5. Acceptance Criteria
-- [ ] Lists active team members with role badges and avatar chips.
-- [ ] Invite Member modal allows selecting role level and entering recipient emails.
-- [ ] Non-owner users cannot invite owners or alter workspace billing settings.
+- [x] Lists active team members with role badges and avatar chips.
+- [x] Invite Member modal allows selecting role level and entering recipient emails.
+- [x] Non-owner users cannot invite owners or alter workspace billing settings.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/settings/WorkspacesPage.tsx`
 - `apps/frontend/src/components/settings/TeamMemberTable.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write member role permission unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Workspaces page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write member role permission unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Workspaces page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/settings/WorkspacesPage.test.tsx`
