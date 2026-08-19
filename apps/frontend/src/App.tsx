@@ -14,6 +14,7 @@ import { SignInPage } from '@/pages/auth/SignInPage';
 import { SignUpPage } from '@/pages/auth/SignUpPage';
 import { SSOPage } from '@/pages/auth/SSOPage';
 import { OverviewPage } from '@/pages/dashboard/OverviewPage';
+import { LinksListPage } from '@/pages/links/LinksListPage';
 
 export function App() {
   const clerkPubKey = env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -71,11 +72,7 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <AppLayout>
-                      <div className="space-y-6">
-                        <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-                          Links
-                        </h1>
-                      </div>
+                      <LinksListPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
