@@ -20,6 +20,7 @@ import { CategoriesPage } from '@/pages/links/CategoriesPage';
 import { CampaignsPage } from '@/pages/growth/CampaignsPage';
 import { SmartRoutingPage } from '@/pages/growth/SmartRoutingPage';
 import { ABTestingPage } from '@/pages/growth/ABTestingPage';
+import { DomainsPage } from '@/pages/growth/DomainsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -159,6 +160,16 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <ABTestingPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/domains"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <DomainsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

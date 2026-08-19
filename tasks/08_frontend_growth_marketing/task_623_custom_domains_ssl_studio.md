@@ -2,7 +2,7 @@
 id: TASK-623
 title: Custom Branded Domains, Live DNS Checker & SSL Manager
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_604_ui_component_primitives.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/02_growth/task_203_custom_domains.md](file:///home/logan78/Desktop/flux/tasks/02_growth/task_203_custom_domains.md)
 
 ## 5. Acceptance Criteria
-- [ ] Registration modal generates verification CNAME and TXT challenge records for copy-pasting into Cloudflare/Route53.
-- [ ] Verify DNS button triggers backend lookup and updates verification status in real time.
-- [ ] SSL certificate status pill displays `active` (green), `pending` (amber), or `expired` (red).
+- [x] Registration modal generates verification CNAME and TXT challenge records for copy-pasting into Cloudflare/Route53.
+- [x] Verify DNS button triggers backend lookup and updates verification status in real time.
+- [x] SSL certificate status pill displays `active` (green), `pending` (amber), or `expired` (red).
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/growth/DomainsPage.tsx`
 - `apps/frontend/src/components/domains/DomainSetupModal.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write DNS record helper unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Domains page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write DNS record helper unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Domains page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/growth/DomainsPage.test.tsx`
