@@ -15,6 +15,9 @@ import { SignUpPage } from '@/pages/auth/SignUpPage';
 import { SSOPage } from '@/pages/auth/SSOPage';
 import { OverviewPage } from '@/pages/dashboard/OverviewPage';
 import { LinksListPage } from '@/pages/links/LinksListPage';
+import { LinkDetailPage } from '@/pages/links/LinkDetailPage';
+import { CategoriesPage } from '@/pages/links/CategoriesPage';
+import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
   const clerkPubKey = env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -73,6 +76,46 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <LinksListPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/links/:id"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <LinkDetailPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/qr-studio"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <div className="space-y-6">
+                        <div>
+                          <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+                            QR Studio
+                          </h1>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            Design, brand, and export high-resolution vector QR codes.
+                          </p>
+                        </div>
+                        <QRStudioCanvas />
+                      </div>
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/categories"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <CategoriesPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
