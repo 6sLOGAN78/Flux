@@ -2,7 +2,7 @@
 id: TASK-630
 title: ClickHouse Time-Series Analytics Explorer & Geographic Heatmap
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/07_frontend_core_ops/task_611_dashboard_overview.md
@@ -40,20 +40,20 @@ Target source files:
 - [tasks/02_growth/task_201_clickhouse_pipeline.md](file:///home/logan78/Desktop/flux/tasks/02_growth/task_201_clickhouse_pipeline.md)
 
 ## 5. Acceptance Criteria
-- [ ] Time-series area chart allows zooming, panning, and hovering with tooltips showing date and click volume.
-- [ ] Geographic distribution ranks top countries with flag icons, click counts, and percentage of total traffic.
-- [ ] Live Stream meter displays total ingested events and real-time gzip stream compression ratio factor.
+- [x] Time-series area chart allows zooming, panning, and hovering with tooltips showing date and click volume.
+- [x] Geographic distribution ranks top countries with flag icons, click counts, and percentage of total traffic.
+- [x] Live Stream meter displays total ingested events and real-time gzip stream compression ratio factor.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/analytics/AnalyticsPage.tsx`
 - `apps/frontend/src/components/analytics/TimeSeriesAreaChart.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write chart data transformation unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Analytics Explorer components.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write chart data transformation unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Analytics Explorer components.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/analytics/AnalyticsPage.test.tsx`

@@ -21,6 +21,7 @@ import { CampaignsPage } from '@/pages/growth/CampaignsPage';
 import { SmartRoutingPage } from '@/pages/growth/SmartRoutingPage';
 import { ABTestingPage } from '@/pages/growth/ABTestingPage';
 import { DomainsPage } from '@/pages/growth/DomainsPage';
+import { AnalyticsPage } from '@/pages/analytics/AnalyticsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -180,11 +181,7 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <AppLayout>
-                      <div className="space-y-6">
-                        <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-                          Analytics
-                        </h1>
-                      </div>
+                      <AnalyticsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
