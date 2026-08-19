@@ -1,0 +1,1 @@
+use taskfile and use all folder's all file one by one or each file by each one subagent and scan if they are implemeted or not and of they are working correctly and remove all bugs and all

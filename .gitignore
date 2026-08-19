@@ -28,6 +28,7 @@ dist/
 out/
 build/
 .cache/
+*.tsbuildinfo
 
 # Go Build Outputs & Binaries
 apps/backend/bin/

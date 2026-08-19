@@ -33,6 +33,12 @@
 | `jwt`, `auth`, `clerk` | [TASK-101](file:///home/logan78/Desktop/flux/tasks/01_core/task_101_auth_service.md) | [ai/SECURITY.md](file:///home/logan78/Desktop/flux/ai/SECURITY.md) |
 | `redirect`, `redis` | [TASK-103](file:///home/logan78/Desktop/flux/tasks/01_core/task_103_redirect_handler.md) | [redirect_engine.md](file:///home/logan78/Desktop/flux/docs/core/redirect_engine.md) |
 | `clickhouse` | [TASK-201](file:///home/logan78/Desktop/flux/tasks/02_growth/task_201_clickhouse_pipeline.md) | [time_series_analytics.md](file:///home/logan78/Desktop/flux/docs/growth/time_series_analytics.md) |
+| `frontend`, `vite`, `env` | [TASK-600](file:///home/logan78/Desktop/flux/tasks/06_frontend_foundation/task_600_frontend_scaffold_env.md) | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md) |
+| `ts-rest`, `query` | [TASK-601](file:///home/logan78/Desktop/flux/tasks/06_frontend_foundation/task_601_api_client_query.md) | [docs/ARCHITECTURE.md](file:///home/logan78/Desktop/flux/docs/ARCHITECTURE.md) |
+| `dashboard`, `overview` | [TASK-611](file:///home/logan78/Desktop/flux/tasks/07_frontend_core_ops/task_611_dashboard_overview.md) | [analytics_pipeline.md](file:///home/logan78/Desktop/flux/docs/core/analytics_pipeline.md) |
+| `links`, `table` | [TASK-612](file:///home/logan78/Desktop/flux/tasks/07_frontend_core_ops/task_612_links_management_hub.md) | [link_management.md](file:///home/logan78/Desktop/flux/docs/core/link_management.md) |
+| `utm`, `campaigns` | [TASK-620](file:///home/logan78/Desktop/flux/tasks/08_frontend_growth_marketing/task_620_campaigns_utm_builder.md) | [campaign_utm_builder.md](file:///home/logan78/Desktop/flux/docs/growth/campaign_utm_builder.md) |
+| `attribution`, `funnels` | [TASK-631](file:///home/logan78/Desktop/flux/tasks/09_frontend_analytics_attribution/task_631_attribution_engine_studio.md) | [attribution_engine.md](file:///home/logan78/Desktop/flux/docs/enterprise/attribution_engine.md) |
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
