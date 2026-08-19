@@ -22,6 +22,7 @@ import { SmartRoutingPage } from '@/pages/growth/SmartRoutingPage';
 import { ABTestingPage } from '@/pages/growth/ABTestingPage';
 import { DomainsPage } from '@/pages/growth/DomainsPage';
 import { AnalyticsPage } from '@/pages/analytics/AnalyticsPage';
+import { AttributionPage } from '@/pages/analytics/AttributionPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -182,6 +183,16 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <AnalyticsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/attribution"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <AttributionPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

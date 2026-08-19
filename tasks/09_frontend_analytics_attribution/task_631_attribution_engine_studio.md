@@ -2,7 +2,7 @@
 id: TASK-631
 title: Multi-Touch Attribution Model Studio & Touchpoint Journey Visualizer
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/09_frontend_analytics_attribution/task_630_timeseries_analytics_explorer.md
@@ -38,20 +38,20 @@ Target source files:
 - [tasks/04_enterprise/task_401_attribution_engine.md](file:///home/logan78/Desktop/flux/tasks/04_enterprise/task_401_attribution_engine.md)
 
 ## 5. Acceptance Criteria
-- [ ] Model selector tabs switch algorithm recalculations seamlessly.
-- [ ] Table highlights Attributed Conversions and Attributed Revenue with percentage share bars.
-- [ ] Visual journey flow demonstrates how weight is distributed across first touch (40%), middle touchpoints (20%), and conversion touch (40%) for position-based models.
+- [x] Model selector tabs switch algorithm recalculations seamlessly.
+- [x] Table highlights Attributed Conversions and Attributed Revenue with percentage share bars.
+- [x] Visual journey flow demonstrates how weight is distributed across first touch (40%), middle touchpoints (20%), and conversion touch (40%) for position-based models.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/analytics/AttributionPage.tsx`
 - `apps/frontend/src/components/attribution/ModelSelectorBar.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write attribution table calculation unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Attribution page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write attribution table calculation unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Attribution page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/analytics/AttributionPage.test.tsx`
