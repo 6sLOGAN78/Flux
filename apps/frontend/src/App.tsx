@@ -13,6 +13,7 @@ import { PricingPage } from '@/pages/public/PricingPage';
 import { SignInPage } from '@/pages/auth/SignInPage';
 import { SignUpPage } from '@/pages/auth/SignUpPage';
 import { SSOPage } from '@/pages/auth/SSOPage';
+import { OverviewPage } from '@/pages/dashboard/OverviewPage';
 
 export function App() {
   const clerkPubKey = env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -59,21 +60,7 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <AppLayout>
-                      <div className="space-y-6">
-                        <div>
-                          <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-                            Overview
-                          </h1>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                            Real-time platform metrics and active link routing status.
-                          </p>
-                        </div>
-                        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-zinc-950">
-                          <p className="text-xs text-zinc-500">
-                            Select a workspace to view your real-time ClickHouse metrics and links.
-                          </p>
-                        </div>
-                      </div>
+                      <OverviewPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }

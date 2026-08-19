@@ -2,7 +2,7 @@
 id: TASK-611
 title: Minimalist Overview Dashboard with Dub-Style Sparklines & Metrics
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_601_api_client_query.md
@@ -40,20 +40,20 @@ Target source files:
 - [PRODUCT.md](file:///home/logan78/Desktop/flux/PRODUCT.md)
 
 ## 5. Acceptance Criteria
-- [ ] 4 KPI cards styled with clean borders (`border-zinc-200 dark:border-zinc-800`), crisp numbers, and subtle percentage badges (+12% in emerald/zinc).
-- [ ] Dub-style clean hourly click sparkline with subtle fill opacity and clean tooltip without clutter.
-- [ ] Inline Quick Link shortening bar with solid black/white action button.
+- [x] 4 KPI cards styled with clean borders (`border-zinc-200 dark:border-zinc-800`), crisp numbers, and subtle percentage badges (+12% in emerald/zinc).
+- [x] Dub-style clean hourly click sparkline with subtle fill opacity and clean tooltip without clutter.
+- [x] Inline Quick Link shortening bar with solid black/white action button.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/dashboard/OverviewPage.tsx`
 - `apps/frontend/src/components/dashboard/MetricCardsGrid.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write Overview page unit test with mocked API client.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement Overview components.
-- [ ] Step 4: Confirm tests pass with `bun test`.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write Overview page unit test with mocked API client.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement Overview components.
+- [x] Step 4: Confirm tests pass with `bun test`.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/dashboard/OverviewPage.test.tsx`
