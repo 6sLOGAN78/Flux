@@ -2,7 +2,7 @@
 id: TASK-642
 title: Scoped API Key Generator & OAuth 2.0 Client Apps Manager
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Completed
 owner: Frontend Engineer
 depends_on:
   - tasks/06_frontend_foundation/task_604_ui_component_primitives.md
@@ -37,20 +37,20 @@ Target source files:
 - [tasks/03_saas/task_303_public_api.md](file:///home/logan78/Desktop/flux/tasks/03_saas/task_303_public_api.md)
 
 ## 5. Acceptance Criteria
-- [ ] Creating an API key displays the full raw secret token in a modal with warning: "Save this key now; it will not be shown again."
-- [ ] API Key list masks secret and shows `tokenPrefix` (e.g. `flx_live_a1b2...`) and active scopes.
-- [ ] OAuth Clients card allows generating `client_id` and rotating `client_secret`.
+- [x] Creating an API key displays the full raw secret token in a modal with warning: "Save this key now; it will not be shown again."
+- [x] API Key list masks secret and shows `tokenPrefix` (e.g. `flx_live_a1b2...`) and active scopes.
+- [x] OAuth Clients card allows generating `client_id` and rotating `client_secret`.
 
 ## 6. Target Deliverables
 - `apps/frontend/src/pages/developer/ApiKeysPage.tsx`
 - `apps/frontend/src/components/developer/CreateApiKeyModal.tsx`
 
 ## 7. Definition of Done (DoD)
-- [ ] Step 1: Write API key masking and clipboard unit tests.
-- [ ] Step 2: Confirm test failure.
-- [ ] Step 3: Implement API Keys page.
-- [ ] Step 4: Confirm tests pass.
-- [ ] Step 5: Verify zero linter warnings.
+- [x] Step 1: Write API key masking and clipboard unit tests.
+- [x] Step 2: Confirm test failure.
+- [x] Step 3: Implement API Keys page.
+- [x] Step 4: Confirm tests pass.
+- [x] Step 5: Verify zero linter warnings.
 
 ## 8. Testing Strategy
 - **Verification Command**: `cd apps/frontend && bun test src/pages/developer/ApiKeysPage.test.tsx`

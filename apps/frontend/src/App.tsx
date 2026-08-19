@@ -26,6 +26,7 @@ import { AttributionPage } from '@/pages/analytics/AttributionPage';
 import { FunnelsPage } from '@/pages/analytics/FunnelsPage';
 import { WorkspacesPage } from '@/pages/settings/WorkspacesPage';
 import { BillingPage } from '@/pages/settings/BillingPage';
+import { ApiKeysPage } from '@/pages/developer/ApiKeysPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -246,6 +247,26 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <BillingPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/developer"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ApiKeysPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/developer/api-keys"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ApiKeysPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
