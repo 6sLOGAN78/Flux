@@ -17,6 +17,7 @@ import { OverviewPage } from '@/pages/dashboard/OverviewPage';
 import { LinksListPage } from '@/pages/links/LinksListPage';
 import { LinkDetailPage } from '@/pages/links/LinkDetailPage';
 import { CategoriesPage } from '@/pages/links/CategoriesPage';
+import { CampaignsPage } from '@/pages/growth/CampaignsPage';
 import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
@@ -116,6 +117,16 @@ export function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <CategoriesPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/campaigns"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <CampaignsPage />
                     </AppLayout>
                   </ProtectedRoute>
                 }
