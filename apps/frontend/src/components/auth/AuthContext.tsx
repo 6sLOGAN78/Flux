@@ -10,16 +10,60 @@ export interface AuthContextType {
 }
 
 export const AuthContext = createContext<AuthContextType>({
-  isAuthenticated: false,
+  isAuthenticated: true,
   isLoaded: true,
-  token: null,
+  token: 'demo_jwt_token',
 });
 
 export function useAuth() {
   return useContext(AuthContext);
 }
 
-export function ClerkAuthProviderWrapper({ children }: { children: React.ReactNode }) {
+export function StandaloneAuthProvider({ children }: { children: React.ReactNode }) {
+  const [token, setToken] = useState<string | null>(() => {
+    return typeof window !== 'undefined'
+      ? localStorage.getItem('flux_demo_token') || 'demo_jwt_token'
+      : 'demo_jwt_token';
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return typeof window !== 'undefined'
+      ? localStorage.getItem('flux_demo_auth') !== 'false'
+      : true;
+  });
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setAuthToken(token || 'demo_jwt_token');
+    } else {
+      setAuthToken(null);
+    }
+  }, [isAuthenticated, token]);
+
+  const signOut = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('flux_demo_auth', 'false');
+    }
+    setIsAuthenticated(false);
+    setToken(null);
+    setAuthToken(null);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        isLoaded: true,
+        token,
+        signOut,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+function ClerkAuthSyncInner({ children }: { children: React.ReactNode }) {
   const clerk = useClerkAuth();
   const [token, setToken] = useState<string | null>(null);
 
@@ -69,4 +113,8 @@ export function ClerkAuthProviderWrapper({ children }: { children: React.ReactNo
       {children}
     </AuthContext.Provider>
   );
+}
+
+export function ClerkAuthProviderWrapper({ children }: { children: React.ReactNode }) {
+  return <ClerkAuthSyncInner>{children}</ClerkAuthSyncInner>;
 }

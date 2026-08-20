@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/queryClient';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { env } from '@/config/env';
-import { ClerkAuthProviderWrapper } from '@/components/auth/AuthContext';
+import { ClerkAuthProviderWrapper, StandaloneAuthProvider } from '@/components/auth/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PublicRoute } from '@/components/auth/PublicRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -37,26 +37,29 @@ import { QRStudioCanvas } from '@/components/qr/QRStudioCanvas';
 
 export function App() {
   const clerkPubKey = env.VITE_CLERK_PUBLISHABLE_KEY;
+  const hasValidClerkKey = Boolean(
+    clerkPubKey &&
+    clerkPubKey !== 'pk_test_placeholder' &&
+    !clerkPubKey.includes('placeholder') &&
+    (clerkPubKey.startsWith('pk_test_') || clerkPubKey.startsWith('pk_live_'))
+  );
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ClerkProvider publishableKey={clerkPubKey || 'pk_test_placeholder'}>
-        <ClerkAuthProviderWrapper>
-          <BrowserRouter>
-            <Routes>
-              {/* Public Marketing Routes */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
+  const appRouter = (
+    <BrowserRouter>
+      <Routes>
+        {/* Public Marketing Routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
 
-              {/* Public Auth Routes */}
-              <Route
-                path="/sign-in"
-                element={
-                  <PublicRoute>
-                    <SignInPage />
-                  </PublicRoute>
-                }
-              />
+        {/* Public Auth Routes */}
+        <Route
+          path="/sign-in"
+          element={
+            <PublicRoute>
+              <SignInPage />
+            </PublicRoute>
+          }
+        />
               <Route
                 path="/sign-up"
                 element={
@@ -392,8 +395,17 @@ export function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
-        </ClerkAuthProviderWrapper>
-      </ClerkProvider>
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {hasValidClerkKey ? (
+        <ClerkProvider publishableKey={clerkPubKey}>
+          <ClerkAuthProviderWrapper>{appRouter}</ClerkAuthProviderWrapper>
+        </ClerkProvider>
+      ) : (
+        <StandaloneAuthProvider>{appRouter}</StandaloneAuthProvider>
+      )}
     </QueryClientProvider>
   );
 }
