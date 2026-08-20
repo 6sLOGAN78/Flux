@@ -1,7 +1,8 @@
----id: TASK-501
+---
+id: TASK-501
 title: Multi-Region Cloudflare Workers Edge Redirects
 layer: Level 5 (Executable Task Unit)
-status: Ready
+status: Done
 owner: Feature Engineer
 depends_on:
   - docs/core/redirect_engine.md#part-iii
@@ -33,27 +34,27 @@ This task relies on specifications and schema contracts in:
   - [PERFORMANCE.md#slas](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md#slas)
 
 ## 5. Acceptance Criteria
-- [ ] Executes redirects at edge closest to visitor with sub-10ms global latency.
-- [ ] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
-- [ ] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
+- [x] Executes redirects at edge closest to visitor with sub-10ms global latency.
+- [x] Code follows all formatting and linting rules in [ai/CODING_STANDARDS.md](file:///home/logan78/Desktop/flux/ai/CODING_STANDARDS.md).
+- [x] Latency and memory usage adhere to targets in [ai/PERFORMANCE.md](file:///home/logan78/Desktop/flux/ai/PERFORMANCE.md).
 
 ## 6. Target Deliverables
 - `workers/redirect.js`
 
 ## 7. Definition of Done (DoD)
-- [ ] **Step 1: Write failing unit test** verifying expected feature behavior.
-- [ ] **Step 2: Confirm test failure**: Run `npm test -- workers/redirect.test.js`.
-- [ ] **Step 3: Write minimal implementation** inside target files.
-- [ ] **Step 4: Confirm test passes**: Run `npm test -- workers/redirect.test.js`.
-- [ ] **Step 5: Run linter**: Confirm zero warnings or errors.
+- [x] **Step 1: Write failing unit test** verifying expected feature behavior.
+- [x] **Step 2: Confirm test failure**: Run `bun test workers/redirect.test.js`.
+- [x] **Step 3: Write minimal implementation** inside target files.
+- [x] **Step 4: Confirm test passes**: Run `bun test workers/redirect.test.js`.
+- [x] **Step 5: Run linter**: Confirm zero warnings or errors.
 
 ## 8. Testing Strategy
 - **Unit Tests**: Test pure domain logic in isolation.
-- **Verification Command**: `npm test -- workers/redirect.test.js`
+- **Verification Command**: `bun test workers/redirect.test.js`
 
 ## 9. Documentation Updates
-- [ ] Mark task status as `Done` in this document frontmatter upon completion.
-- [ ] Update function/package docstrings if signatures were extended.
+- [x] Mark task status as `Done` in this document frontmatter upon completion.
+- [x] Update function/package docstrings if signatures were extended.
 
 <!-- KNOWLEDGE_GRAPH_NAVIGATION_START -->
 ---
