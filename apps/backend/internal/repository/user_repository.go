@@ -47,19 +47,17 @@ func (r *UserRepository) SyncUser(ctx context.Context, clerkID, email, name stri
 }
 
 // SyncWorkspace finds an existing workspace by Clerk Org ID or creates a new one.
-// If clerkOrgID is empty, it returns the user's personal workspace (null clerk_org_id).
+// If clerkOrgID is empty, it returns the user's personal workspace (null clerk_org_id, bound to owner_id).
 func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name string, userID uuid.UUID) (*user.Workspace, error) {
 	var query string
 	var args []interface{}
 
 	if clerkOrgID == "" {
 		// Personal workspace fallback for the user
-		
 		findPersonalQuery := `
-			SELECT w.id, w.clerk_org_id, w.name, w.created_at, w.updated_at
-			FROM workspaces w
-			JOIN workspace_members wm ON wm.workspace_id = w.id
-			WHERE w.clerk_org_id IS NULL AND wm.user_id = $1
+			SELECT id, clerk_org_id, name, created_at, updated_at
+			FROM workspaces
+			WHERE clerk_org_id IS NULL AND owner_id = $1
 			LIMIT 1
 		`
 		w := &user.Workspace{}
@@ -69,23 +67,16 @@ func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name str
 		}
 		
 		query = `
-			WITH w AS (
-				INSERT INTO workspaces (clerk_org_id, name)
-				VALUES (NULL, $1)
-				RETURNING id, clerk_org_id, name, created_at, updated_at
-			),
-			wm AS (
-				INSERT INTO workspace_members (workspace_id, user_id, role)
-				SELECT id, $2, 'owner' FROM w
-			)
-			SELECT id, clerk_org_id, name, created_at, updated_at FROM w
+			INSERT INTO workspaces (clerk_org_id, name, owner_id)
+			VALUES (NULL, $1, $2)
+			RETURNING id, clerk_org_id, name, created_at, updated_at
 		`
 		args = []interface{}{name, userID}
 	} else {
-		// Org workspace
+		// Org workspace (Source of truth is Clerk; no owner_id in Postgres, no local membership table)
 		query = `
-			INSERT INTO workspaces (clerk_org_id, name)
-			VALUES ($1, $2)
+			INSERT INTO workspaces (clerk_org_id, name, owner_id)
+			VALUES ($1, $2, NULL)
 			ON CONFLICT (clerk_org_id) DO UPDATE 
 			SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
 			RETURNING id, clerk_org_id, name, created_at, updated_at
@@ -99,18 +90,6 @@ func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name str
 	)
 	if err != nil {
 		return nil, fmt.Errorf("syncing workspace: %w", err)
-	}
-
-	// Ensure membership exists
-	if clerkOrgID != "" {
-		_, err = r.db.Exec(ctx, `
-			INSERT INTO workspace_members (workspace_id, user_id, role)
-			VALUES ($1, $2, 'admin')
-			ON CONFLICT (workspace_id, user_id) DO NOTHING
-		`, w.ID, userID)
-		if err != nil {
-			return nil, fmt.Errorf("adding workspace member: %w", err)
-		}
 	}
 
 	return w, nil

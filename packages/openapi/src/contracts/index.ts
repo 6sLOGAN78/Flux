@@ -19,6 +19,9 @@ import {
   ZCreateDomainInput,
   ZAuthMeResponse,
   ZAnalyticsSummaryResponse,
+  ZTimeseriesResponse,
+  ZTopLinksResponse,
+  ZReferrersResponse,
   ZLinkMetricsResponse,
   ZOrganization,
   ZWorkspace,
@@ -261,8 +264,6 @@ export const apiContract = c.router({
     },
   },
 
-  },
-
   // --- Webhooks ---
   createWebhook: {
     method: "POST",
@@ -327,11 +328,69 @@ export const apiContract = c.router({
   getAnalyticsSummary: {
     method: "GET",
     path: "/api/v1/analytics/summary",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+    }),
     responses: {
       200: ZAnalyticsSummaryResponse,
       401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
     },
     summary: "Get global analytics summary",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsTimeseries: {
+    method: "GET",
+    path: "/api/v1/analytics/timeseries",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      interval: z.string().optional(),
+    }),
+    responses: {
+      200: ZTimeseriesResponse,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get analytics timeseries data",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsTopLinks: {
+    method: "GET",
+    path: "/api/v1/analytics/top-links",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.string().optional(),
+    }),
+    responses: {
+      200: ZTopLinksResponse,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get top links",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsReferrers: {
+    method: "GET",
+    path: "/api/v1/analytics/referrers",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.string().optional(),
+    }),
+    responses: {
+      200: ZReferrersResponse,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get top referrers",
     metadata: {
       openApiTags: ["Analytics"],
       openApiSecurity: [{ bearerAuth: [] }],

@@ -28,7 +28,7 @@ func NewRedisStreamProducer(client *redis.Client, streamName string) *RedisStrea
 }
 
 // Publish writes the ClickEvent payload to the configured Redis Stream using XADD.
-func (p *RedisStreamProducer) Publish(ctx context.Context, event *analytics.ClickEvent) error {
+func (p *RedisStreamProducer) Publish(ctx context.Context, event *analytics.AnalyticsEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal click event: %w", err)
@@ -38,7 +38,7 @@ func (p *RedisStreamProducer) Publish(ctx context.Context, event *analytics.Clic
 		Stream: p.streamName,
 		Values: map[string]interface{}{
 			"payload": data,
-			"slug":    event.Slug,
+			"slug":    event.ShortCode,
 			"link_id": event.LinkID,
 		},
 	}

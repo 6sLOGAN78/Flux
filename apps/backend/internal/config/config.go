@@ -18,6 +18,8 @@ type Config struct {
 	ServerPort         string `koanf:"server_port"`
 	DatabaseURL        string `koanf:"database_url"`
 	RedisURL           string `koanf:"redis_url"`
+	AnalyticsRedisStream string `koanf:"analytics_redis_stream"`
+	ClickHouseURL      string `koanf:"clickhouse_url"`
 	JWTSecret          string `koanf:"jwt_secret"`
 	ClerkSecretKey     string `koanf:"clerk_secret_key"`
 	ResendAPIKey       string `koanf:"resend_api_key"`
@@ -95,6 +97,16 @@ func LoadConfig() (*Config, error) {
 		redisURL = "localhost:6379"
 	}
 
+	analyticsRedisStream := k.String("analytics_redis_stream")
+	if analyticsRedisStream == "" {
+		analyticsRedisStream = "analytics:events"
+	}
+	
+	clickHouseURL := k.String("clickhouse_url")
+	if clickHouseURL == "" {
+		clickHouseURL = "localhost:9000"
+	}
+
 	// 4. Auth & Clerk Secret Key
 	clerkSecretKey := k.String("flux_auth.secret_key")
 	if clerkSecretKey == "" {
@@ -135,6 +147,8 @@ func LoadConfig() (*Config, error) {
 		ServerPort:         port,
 		DatabaseURL:        dbURL,
 		RedisURL:           redisURL,
+		AnalyticsRedisStream: analyticsRedisStream,
+		ClickHouseURL:      clickHouseURL,
 		JWTSecret:          jwtSecret,
 		ClerkSecretKey:     clerkSecretKey,
 		ResendAPIKey:       resendKey,

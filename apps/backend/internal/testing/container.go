@@ -1,4 +1,3 @@
-// Package testing provides integration testing helpers, testcontainers, assertions, and mock database fixtures.
 package testing
 
 import (
@@ -11,13 +10,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// ContainerConfig holds container configuration parameters.
 type ContainerConfig struct {
 	Image string
 	Env   map[string]string
 }
 
-// PostgresContainer manages a containerized PostgreSQL instance for integration testing.
 type PostgresContainer struct {
 	Container testcontainers.Container
 	Host      string
@@ -25,7 +22,6 @@ type PostgresContainer struct {
 	DSN       string
 }
 
-// SetupPostgresContainer starts a Postgres testcontainer instance.
 func SetupPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:16-alpine",
@@ -48,26 +44,20 @@ func SetupPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get postgres host: %w", err)
+		return nil, err
 	}
 
 	port, err := container.MappedPort(ctx, "5432")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get postgres mapped port: %w", err)
+		return nil, err
 	}
 
 	portInt, _ := strconv.Atoi(port.Port())
 	dsn := fmt.Sprintf("postgres://test_user:test_password@%s:%s/flux_test?sslmode=disable", host, port.Port())
 
-	return &PostgresContainer{
-		Container: container,
-		Host:      host,
-		Port:      portInt,
-		DSN:       dsn,
-	}, nil
+	return &PostgresContainer{Container: container, Host: host, Port: portInt, DSN: dsn}, nil
 }
 
-// Terminate gracefully shuts down the container.
 func (p *PostgresContainer) Terminate(ctx context.Context) error {
 	if p.Container != nil {
 		return p.Container.Terminate(ctx)
@@ -75,7 +65,6 @@ func (p *PostgresContainer) Terminate(ctx context.Context) error {
 	return nil
 }
 
-// RedisContainer manages a containerized Redis instance for integration testing.
 type RedisContainer struct {
 	Container testcontainers.Container
 	Host      string
@@ -83,7 +72,6 @@ type RedisContainer struct {
 	Address   string
 }
 
-// SetupRedisContainer starts a Redis testcontainer instance.
 func SetupRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "redis:7-alpine",
@@ -101,29 +89,74 @@ func SetupRedisContainer(ctx context.Context) (*RedisContainer, error) {
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get redis host: %w", err)
+		return nil, err
 	}
 
 	port, err := container.MappedPort(ctx, "6379")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get redis mapped port: %w", err)
+		return nil, err
 	}
 
 	portInt, _ := strconv.Atoi(port.Port())
 	address := fmt.Sprintf("%s:%s", host, port.Port())
 
-	return &RedisContainer{
-		Container: container,
-		Host:      host,
-		Port:      portInt,
-		Address:   address,
-	}, nil
+	return &RedisContainer{Container: container, Host: host, Port: portInt, Address: address}, nil
 }
 
-// Terminate gracefully shuts down the container.
 func (r *RedisContainer) Terminate(ctx context.Context) error {
 	if r.Container != nil {
 		return r.Container.Terminate(ctx)
+	}
+	return nil
+}
+
+type ClickHouseContainer struct {
+	Container testcontainers.Container
+	Host      string
+	Port      int
+	Address   string
+}
+
+func SetupClickHouseContainer(ctx context.Context) (*ClickHouseContainer, error) {
+	req := testcontainers.ContainerRequest{
+		Image:        "clickhouse/clickhouse-server:latest",
+		ExposedPorts: []string{"9000/tcp"},
+		Env: map[string]string{
+			"CLICKHOUSE_USER": "default",
+			"CLICKHOUSE_PASSWORD": "testpassword",
+			"CLICKHOUSE_DB": "default",
+		},
+		WaitingFor:   wait.ForListeningPort("9000/tcp").WithStartupTimeout(60 * time.Second),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start clickhouse testcontainer: %w", err)
+	}
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := container.MappedPort(ctx, "9000")
+	if err != nil {
+		return nil, err
+	}
+
+	portInt, _ := strconv.Atoi(port.Port())
+	// Use DSN string for ClickHouse
+	address := fmt.Sprintf("clickhouse://default:testpassword@%s:%s/default", host, port.Port())
+
+	return &ClickHouseContainer{Container: container, Host: host, Port: portInt, Address: address}, nil
+}
+
+func (c *ClickHouseContainer) Terminate(ctx context.Context) error {
+	if c.Container != nil {
+		return c.Container.Terminate(ctx)
 	}
 	return nil
 }

@@ -8,27 +8,26 @@ import (
 	"time"
 
 	"flux/apps/backend/internal/model/analytics"
-	"flux/apps/backend/internal/repository"
 )
 
 // AsyncCollector collects click events asynchronously without blocking the caller thread.
 type AsyncCollector struct {
-	producer  repository.EventProducer
-	eventChan chan *analytics.ClickEvent
+	producer  analytics.AnalyticsPublisher
+	eventChan chan *analytics.AnalyticsEvent
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
 }
 
 // NewAsyncCollector initializes a new AsyncCollector instance.
-func NewAsyncCollector(producer repository.EventProducer, bufferSize int) *AsyncCollector {
+func NewAsyncCollector(producer analytics.AnalyticsPublisher, bufferSize int) *AsyncCollector {
 	if bufferSize <= 0 {
 		bufferSize = 5000
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &AsyncCollector{
 		producer:  producer,
-		eventChan: make(chan *analytics.ClickEvent, bufferSize),
+		eventChan: make(chan *analytics.AnalyticsEvent, bufferSize),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -48,7 +47,7 @@ func (c *AsyncCollector) Stop() {
 }
 
 // CollectAsync pushes a click event to the internal buffered channel non-blockingly.
-func (c *AsyncCollector) CollectAsync(event *analytics.ClickEvent) {
+func (c *AsyncCollector) CollectAsync(event *analytics.AnalyticsEvent) {
 	if event == nil {
 		return
 	}
@@ -59,7 +58,7 @@ func (c *AsyncCollector) CollectAsync(event *analytics.ClickEvent) {
 	select {
 	case c.eventChan <- event:
 	default:
-		log.Printf("warning: click event buffer full, dropping event for slug '%s'", event.Slug)
+		log.Printf("warning: click event buffer full, dropping event for slug '%s'", event.ShortCode)
 	}
 }
 
@@ -69,20 +68,20 @@ func (c *AsyncCollector) workerLoop() {
 	for event := range c.eventChan {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if c.producer != nil {
-			_ = c.producer.Publish(ctx, event)
+			_ = c.producer.PublishEvent(ctx, event)
 		}
 		cancel()
 	}
 }
 
-// EventEnricher enriches raw ClickEvent payloads with GeoIP and User-Agent metadata.
+// EventEnricher enriches raw AnalyticsEvent payloads with GeoIP and User-Agent metadata.
 type EventEnricher struct{}
 
 func NewEventEnricher() *EventEnricher {
 	return &EventEnricher{}
 }
 
-func (e *EventEnricher) Enrich(event *analytics.ClickEvent) {
+func (e *EventEnricher) Enrich(event *analytics.AnalyticsEvent) {
 	if event == nil {
 		return
 	}

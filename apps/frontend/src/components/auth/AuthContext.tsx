@@ -64,7 +64,7 @@ export function ClerkAuthProviderWrapper({ children }: { children: React.ReactNo
     return () => {
       isMounted = false;
     };
-  }, [clerk.isSignedIn, clerk.isLoaded, clerk.getToken]);
+  }, [clerk.isSignedIn, clerk.isLoaded, clerk.getToken, clerk.orgId]);
 
   return (
     <AuthContext.Provider

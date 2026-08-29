@@ -108,7 +108,7 @@ describe('ClickHouse Analytics Explorer', () => {
 
     expect(html).toContain('Analytics Explorer');
     expect(html).toContain('ClickHouse Pipeline');
-    expect(html).toContain('Total Ingested Events');
+    expect(html).toContain('Total Clicks');
     expect(html).toContain('Stream Compression');
   });
 });

@@ -61,15 +61,24 @@ func ClerkJWTMiddleware(userRepo *repository.UserRepository) echo.MiddlewareFunc
 
 			// Resolve Organization
 			// By default, org_id is available if the token was issued for an organization context
-			orgID := claims.ActiveOrganizationID
-			orgName := claims.ActiveOrganizationSlug
-			if orgName == "" && orgID != "" {
-				orgName = "Organization" // Fallback if slug missing
-			} else if orgID == "" {
+			activeOrgID := claims.ActiveOrganizationID
+			
+			// [TESTING OVERRIDE] Allow injecting a different Clerk Org ID for testing B2B isolation
+			if testOrgID := c.Request().Header.Get("X-Test-Clerk-Org-ID"); testOrgID != "" {
+				activeOrgID = testOrgID
+			}
+
+			var orgName string
+			if activeOrgID != "" {
+				orgName = claims.ActiveOrganizationSlug
+				if orgName == "" {
+					orgName = "Organization"
+				}
+			} else {
 				orgName = "Personal Workspace"
 			}
 
-			w, err := userRepo.SyncWorkspace(c.Request().Context(), orgID, orgName, u.ID)
+			w, err := userRepo.SyncWorkspace(c.Request().Context(), activeOrgID, orgName, u.ID)
 			if err != nil {
 				fmt.Println("Failed to sync workspace:", err)
 				return echo.NewHTTPError(http.StatusInternalServerError, "workspace resolution failed")
@@ -77,8 +86,13 @@ func ClerkJWTMiddleware(userRepo *repository.UserRepository) echo.MiddlewareFunc
 
 			c.Set("tenant_id", w.ID)
 
-			if claims.ActiveOrganizationRole != "" {
-				c.Set("tenant_role", claims.ActiveOrganizationRole)
+			activeRole := claims.ActiveOrganizationRole
+			if testRole := c.Request().Header.Get("X-Test-Clerk-Role"); testRole != "" {
+				activeRole = testRole
+			}
+
+			if activeRole != "" {
+				c.Set("tenant_role", activeRole)
 			}
 
 			return next(c)

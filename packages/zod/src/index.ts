@@ -111,11 +111,38 @@ export const ZHealthResponse = z.object({
 }).openapi({ description: "Health check status payload" });
 
 export const ZAnalyticsSummaryResponse = z.object({
-  totalLinks: z.number().int().openapi({ description: "Total shortened links", example: 1250 }),
-  totalClicks: z.number().int().openapi({ description: "Total recorded click events", example: 45000 }),
-  activeDomains: z.number().int().openapi({ description: "Total verified custom domains", example: 12 }),
-  topReferrer: z.string().openapi({ description: "Top referrer domain", example: "twitter.com" }),
+  total_clicks: z.number().openapi({ description: "Total recorded click events", example: 45000 }),
+  unique_visitors: z.number().openapi({ description: "Total unique visitors", example: 12000 }),
 }).openapi({ description: "High-level platform analytics summary" });
+
+export const ZTimeseriesDataPoint = z.object({
+  timestamp: z.string(),
+  clicks: z.number(),
+  unique_visitors: z.number(),
+});
+
+export const ZTimeseriesResponse = z.object({
+  data: z.array(ZTimeseriesDataPoint)
+});
+
+export const ZTopLink = z.object({
+  link_id: z.string(),
+  short_code: z.string(),
+  clicks: z.number(),
+});
+
+export const ZTopLinksResponse = z.object({
+  data: z.array(ZTopLink)
+});
+
+export const ZReferrerStat = z.object({
+  referrer: z.string(),
+  clicks: z.number(),
+});
+
+export const ZReferrersResponse = z.object({
+  data: z.array(ZReferrerStat)
+});
 
 export const ZLinkMetricsResponse = z.object({
   linkId: z.string().uuid().openapi({ description: "Target link UUID" }),
@@ -236,6 +263,9 @@ export type User = z.infer<typeof ZUser>;
 export type AuthMeResponse = z.infer<typeof ZAuthMeResponse>;
 export type HealthResponse = z.infer<typeof ZHealthResponse>;
 export type AnalyticsSummaryResponse = z.infer<typeof ZAnalyticsSummaryResponse>;
+export type TimeseriesResponse = z.infer<typeof ZTimeseriesResponse>;
+export type TopLinksResponse = z.infer<typeof ZTopLinksResponse>;
+export type ReferrersResponse = z.infer<typeof ZReferrersResponse>;
 export type LinkMetricsResponse = z.infer<typeof ZLinkMetricsResponse>;
 export type QRCustomization = z.infer<typeof ZQRCustomization>;
 export type ABVariant = z.infer<typeof ZABVariant>;

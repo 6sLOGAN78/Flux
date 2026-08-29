@@ -1,0 +1,127 @@
+package repository_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"flux/apps/backend/internal/db"
+	"flux/apps/backend/internal/model/analytics"
+	"flux/apps/backend/internal/repository"
+	pkgtesting "flux/apps/backend/internal/testing"
+)
+
+func TestClickHouseAnalyticsRepository_Integration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	chContainer, err := pkgtesting.SetupClickHouseContainer(ctx)
+	if err != nil {
+		t.Fatalf("failed to setup clickhouse container: %v", err)
+	}
+	defer chContainer.Terminate(context.Background())
+
+	chConn, err := db.InitClickHouse(chContainer.Address)
+	if err != nil {
+		t.Fatalf("failed to init clickhouse: %v", err)
+	}
+	
+	err = db.MigrateClickHouseSchema(ctx, chConn)
+	if err != nil {
+		t.Fatalf("failed to migrate schema: %v", err)
+	}
+
+	repo := repository.NewClickHouseAnalyticsRepository(chConn)
+
+	now := time.Now().UTC()
+	wsA := "workspace_A"
+	wsB := "workspace_B"
+	
+	// Insert test data
+	batch, err := chConn.PrepareBatch(ctx, "INSERT INTO analytics_events")
+	if err != nil {
+		t.Fatalf("failed to prepare batch: %v", err)
+	}
+	
+	events := []analytics.AnalyticsEvent{
+		// Workspace A: 2 distinct events, 1 duplicate event (same event_id), 1 different ip
+		{EventID: "evt_1", EventType: analytics.EventTypeLinkRedirect, Timestamp: now, LinkID: "link_1", WorkspaceID: wsA, ShortCode: "a1", Referrer: "google.com", IPHash: "ip_1"},
+		{EventID: "evt_1", EventType: analytics.EventTypeLinkRedirect, Timestamp: now, LinkID: "link_1", WorkspaceID: wsA, ShortCode: "a1", Referrer: "google.com", IPHash: "ip_1"}, // Duplicate!
+		{EventID: "evt_2", EventType: analytics.EventTypeLinkRedirect, Timestamp: now, LinkID: "link_2", WorkspaceID: wsA, ShortCode: "a2", Referrer: "twitter.com", IPHash: "ip_2"},
+		// Old event out of time range
+		{EventID: "evt_old", EventType: analytics.EventTypeLinkRedirect, Timestamp: now.Add(-40 * 24 * time.Hour), LinkID: "link_1", WorkspaceID: wsA, ShortCode: "a1", Referrer: "google.com", IPHash: "ip_1"},
+		
+		// Workspace B: 1 event
+		{EventID: "evt_3", EventType: analytics.EventTypeLinkRedirect, Timestamp: now, LinkID: "link_3", WorkspaceID: wsB, ShortCode: "b1", Referrer: "google.com", IPHash: "ip_3"},
+	}
+	
+	for _, e := range events {
+		err := batch.Append(e.EventID, string(e.EventType), e.Timestamp, e.LinkID, e.WorkspaceID, e.ShortCode, e.Referrer, e.UserAgent, e.IPHash)
+		if err != nil {
+			t.Fatalf("failed to append batch: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("failed to send batch: %v", err)
+	}
+
+	// Test 1: Workspace Isolation & Deduplication (Workspace A)
+	from := now.Add(-24 * time.Hour)
+	to := now.Add(24 * time.Hour)
+	
+	summaryA, err := repo.GetSummary(ctx, wsA, from, to)
+	if err != nil {
+		t.Fatalf("GetSummary failed: %v", err)
+	}
+	
+	if summaryA.TotalClicks != 2 { // evt_1 and evt_2
+		t.Errorf("expected 2 total clicks (deduplicated), got %d", summaryA.TotalClicks)
+	}
+	if summaryA.UniqueVisitors != 2 { // ip_1 and ip_2
+		t.Errorf("expected 2 unique visitors, got %d", summaryA.UniqueVisitors)
+	}
+	
+	// Test 2: Workspace Isolation (Workspace B)
+	summaryB, err := repo.GetSummary(ctx, wsB, from, to)
+	if err != nil {
+		t.Fatalf("GetSummary failed: %v", err)
+	}
+	if summaryB.TotalClicks != 1 {
+		t.Errorf("expected 1 total click for B, got %d", summaryB.TotalClicks)
+	}
+	
+	// Test 3: Date Filtering
+	fromOld := now.Add(-50 * 24 * time.Hour)
+	toOld := now.Add(-30 * 24 * time.Hour)
+	summaryOld, err := repo.GetSummary(ctx, wsA, fromOld, toOld)
+	if err != nil {
+		t.Fatalf("GetSummary old failed: %v", err)
+	}
+	if summaryOld.TotalClicks != 1 { // evt_old
+		t.Errorf("expected 1 click in old range, got %d", summaryOld.TotalClicks)
+	}
+	
+	// Test 4: Top Links
+	topLinks, err := repo.GetTopLinks(ctx, wsA, from, to, 10)
+	if err != nil {
+		t.Fatalf("GetTopLinks failed: %v", err)
+	}
+	if len(topLinks.Data) != 2 {
+		t.Fatalf("expected 2 top links, got %d", len(topLinks.Data))
+	}
+	// Deduplication should ensure link_1 has 1 click, not 2
+	for _, l := range topLinks.Data {
+		if l.LinkID == "link_1" && l.Clicks != 1 {
+			t.Errorf("expected link_1 to have 1 click (deduplicated), got %d", l.Clicks)
+		}
+	}
+	
+	// Test 5: Referrers
+	referrers, err := repo.GetReferrers(ctx, wsA, from, to, 10)
+	if err != nil {
+		t.Fatalf("GetReferrers failed: %v", err)
+	}
+	if len(referrers.Data) != 2 {
+		t.Fatalf("expected 2 referrers, got %d", len(referrers.Data))
+	}
+}

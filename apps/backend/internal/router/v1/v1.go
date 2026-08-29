@@ -32,7 +32,9 @@ func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyti
 
 	if analyticsHandler != nil {
 		protected.GET("/analytics/summary", analyticsHandler.GetSummary)
-		protected.GET("/analytics/links/:id", analyticsHandler.GetLinkMetrics)
+		protected.GET("/analytics/timeseries", analyticsHandler.GetTimeseries)
+		protected.GET("/analytics/top-links", analyticsHandler.GetTopLinks)
+		protected.GET("/analytics/referrers", analyticsHandler.GetReferrers)
 	}
 
 	if linksHandler != nil {

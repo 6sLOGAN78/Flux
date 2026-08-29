@@ -20,6 +20,8 @@ var ReservedSlugs = map[string]bool{
 // LinkRedirectTarget represents the resolved redirect target for a short link.
 type LinkRedirectTarget struct {
 	Slug                string     `json:"slug"`
+	LinkID              string     `json:"link_id"`
+	TenantID            string     `json:"tenant_id"`
 	DestinationURL      string     `json:"destination_url"`
 	Status              string     `json:"status"` // "active", "disabled", "expired", "deleted"
 	ExpiresAt           *time.Time `json:"expires_at,omitempty"`

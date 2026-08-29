@@ -63,3 +63,8 @@
 * **Status:** FIXED
 * **Details:** The second migration created the `link_categories` table but forgot to add the `category_id` column to `links`. Caused a SQLSTATE 42703 error in CreateLink. Fixed in Migration 005.
 
+
+### BUG-001A
+* **Issue:** `pgx.ErrNoRows` returning HTTP 500 on the wire despite being logged as a 404.
+* **Status:** FIXED
+* **Details:** Echo's default HTTP error handler did not understand our custom `errs.HTTPError` type returned by `sqlerr.HandleError`, causing it to swallow the 404 status and return a generic 500. Fixed by registering a custom `errs.CustomHTTPErrorHandler` on the Echo server instance that maps domain errors to standard HTTP JSON schemas correctly.

@@ -28,3 +28,24 @@
 ### Security Risks / Technical Debt:
 - **workspace_members**: Currently populates during JIT sync to map Personal Workspaces, but RBAC is purely deferred to Clerk token claims. Consider migrating personal workspaces to use `owner_id` directly to drop this join table.
 
+
+## V-003: Database Not-Found HTTP Mapping (BUG-001A)
+* **Date:** 2026-08-29
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- Standard `pgx.ErrNoRows` from the repository layer correctly bubble up through `sqlerr.HandleError` as a 404 domain error.
+- The `CustomHTTPErrorHandler` intercepts the domain error and forces an HTTP `404 Not Found` JSON response on the wire (previously defaulting to HTTP 500).
+- Cross-organization isolation properly yields an actual HTTP 404 to the unprivileged client.
+- Malformed UUID/Bad Requests appropriately yield an HTTP 400.
+
+## V-004: Analytics Event Generation & Isolation
+* **Date:** 2026-08-29
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- Analytics events are successfully generated upon a valid public short link redirect (`GET /:shortCode`).
+- Events accurately contain the parent `WorkspaceID` extracted safely from the Database backend, NOT requested by the client, maintaining cross-tenant data ownership.
+- Failing to publish an analytics event explicitly does *not* break or stall the HTTP redirect to the user.

@@ -7,9 +7,12 @@ import (
 
 	"flux/apps/backend/internal/config"
 	"flux/apps/backend/internal/database"
+	"flux/apps/backend/internal/db"
+	"flux/apps/backend/internal/errs"
 	"flux/apps/backend/internal/handler"
 	"flux/apps/backend/internal/logger"
 	customMiddleware "flux/apps/backend/internal/middleware"
+	"flux/apps/backend/internal/model/analytics"
 	"flux/apps/backend/internal/repository"
 	"flux/apps/backend/internal/router"
 	"flux/apps/backend/internal/service"
@@ -17,14 +20,17 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
 // Server represents the API server instance.
 type Server struct {
-	Echo   *echo.Echo
-	Config *config.Config
-	DBPool *pgxpool.Pool
+	Echo               *echo.Echo
+	Config             *config.Config
+	DBPool             *pgxpool.Pool
+	AnalyticsPublisher *service.RedisAnalyticsPublisher
+	ClickHouseConsumer *service.RedisAnalyticsConsumer
 }
 
 // NewServer initializes and wires all dependencies for the server.
@@ -54,9 +60,36 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	redirectRepo := repository.NewPostgresRedirectRepository(dbPool)
 	redirectSvc := service.NewRedirectService(redirectRepo, nil)
-	redirectHandler := handler.NewRedirectHandler(redirectSvc)
-	analyticsHandler := handler.NewAnalyticsHandler(nil)
-	
+
+	var pub *service.RedisAnalyticsPublisher
+	var pubInterface analytics.AnalyticsPublisher
+	var chConsumer *service.RedisAnalyticsConsumer
+	var analyticsProvider repository.AnalyticsProvider
+
+	if cfg.RedisURL != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+		pub = service.NewRedisAnalyticsPublisher(redisClient, cfg.AnalyticsRedisStream, 5000)
+		pub.Start()
+		pubInterface = pub
+
+		if cfg.ClickHouseURL != "" {
+			chConn, err := db.InitClickHouse(cfg.ClickHouseURL)
+			if err == nil {
+				_ = db.MigrateClickHouseSchema(context.Background(), chConn)
+				chConsumer = service.NewRedisAnalyticsConsumer(redisClient, chConn, cfg.AnalyticsRedisStream)
+				chConsumer.Start()
+				analyticsProvider = repository.NewClickHouseAnalyticsRepository(chConn)
+			} else {
+				log.Warn().Err(err).Msg("failed to connect to ClickHouse, consumer will not start")
+			}
+		}
+	} else {
+		pubInterface = service.NewLogAnalyticsPublisher()
+	}
+
+	redirectHandler := handler.NewRedirectHandler(redirectSvc, pubInterface)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsProvider)
+
 	linkRepo := repository.NewLinkRepository(dbPool)
 	linkSvc := service.NewLinkService(linkRepo)
 	linksHandler := handler.NewLinksHandler(linkSvc)
@@ -64,15 +97,18 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	userRepo := repository.NewUserRepository(dbPool)
 
 	e := echo.New()
+	e.HTTPErrorHandler = errs.CustomHTTPErrorHandler
 	customMiddleware.RegisterGlobalMiddlewares(e)
 	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
 
 	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler)
 
 	return &Server{
-		Echo:   e,
-		Config: cfg,
-		DBPool: dbPool,
+		Echo:               e,
+		Config:             cfg,
+		DBPool:             dbPool,
+		AnalyticsPublisher: pub,
+		ClickHouseConsumer: chConsumer,
 	}, nil
 }
 
@@ -83,4 +119,20 @@ func (s *Server) Start() error {
 		return err
 	}
 	return nil
+}
+
+// Stop shuts down the server gracefully, draining any pending background tasks.
+func (s *Server) Stop(ctx context.Context) error {
+	if s.ClickHouseConsumer != nil {
+		log.Info().Msg("stopping clickhouse consumer gracefully...")
+		s.ClickHouseConsumer.Stop(5 * time.Second)
+	}
+
+	if s.AnalyticsPublisher != nil {
+		log.Info().Msg("draining redis analytics publisher queue...")
+		s.AnalyticsPublisher.Stop(5 * time.Second)
+	}
+
+	log.Info().Msg("shutting down HTTP server...")
+	return s.Echo.Shutdown(ctx)
 }

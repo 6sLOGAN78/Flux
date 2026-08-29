@@ -65,7 +65,7 @@ func NewPostgresRedirectRepository(pool *pgxpool.Pool) *PostgresRedirectReposito
 
 func (r *PostgresRedirectRepository) GetBySlug(ctx context.Context, slug string) (*redirect.LinkRedirectTarget, error) {
 	stmt := `
-		SELECT destination_url
+		SELECT id::text, tenant_id::text, destination_url
 		FROM links
 		WHERE short_code = @slug
 	`
@@ -75,6 +75,8 @@ func (r *PostgresRedirectRepository) GetBySlug(ctx context.Context, slug string)
 	}
 	
 	type rowType struct {
+		ID             string `db:"id"`
+		TenantID       string `db:"tenant_id"`
 		DestinationURL string `db:"destination_url"`
 	}
 	
@@ -87,7 +89,10 @@ func (r *PostgresRedirectRepository) GetBySlug(ctx context.Context, slug string)
 	}
 
 	return &redirect.LinkRedirectTarget{
+		Slug:           slug,
+		LinkID:         item.ID,
+		TenantID:       item.TenantID,
 		DestinationURL: item.DestinationURL,
-		Status: "active",
+		Status:         "active",
 	}, nil
 }

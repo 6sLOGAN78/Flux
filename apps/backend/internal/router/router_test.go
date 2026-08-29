@@ -12,7 +12,7 @@ import (
 
 func TestInitRouter_HealthEndpoint(t *testing.T) {
 	e := echo.New()
-	router.InitRouter(e, nil, nil, nil, nil)
+	router.InitRouter(e, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()

@@ -66,3 +66,45 @@ func ToHTTPError(err error) *echo.HTTPError {
 		return echo.NewHTTPError(http.StatusInternalServerError, "internal server error")
 	}
 }
+
+// CustomHTTPErrorHandler is a centralized error handler for Echo.
+func CustomHTTPErrorHandler(err error, c echo.Context) {
+	if c.Response().Committed {
+		return
+	}
+
+	// Unpack echo.HTTPError if it's already an echo error (e.g. from middleware or router)
+	var he *echo.HTTPError
+	if errors.As(err, &he) {
+		// Already an echo error, but let's see if we can structure it
+		if he.Message == nil {
+			he.Message = http.StatusText(he.Code)
+		}
+	} else {
+		// Convert our domain errors to echo.HTTPError
+		he = ToHTTPError(err)
+	}
+
+	// Fallback generic format if it's not our struct
+	var response interface{}
+	switch m := he.Message.(type) {
+	case HTTPErrorResponse:
+		response = m
+	case string:
+		response = HTTPErrorResponse{
+			Status:  he.Code,
+			Message: m,
+		}
+	default:
+		response = HTTPErrorResponse{
+			Status:  he.Code,
+			Message: "An error occurred",
+		}
+	}
+
+	if c.Request().Method == http.MethodHead {
+		c.NoContent(he.Code)
+	} else {
+		c.JSON(he.Code, response)
+	}
+}

@@ -22,6 +22,8 @@ export interface TimeSeriesAreaChartProps {
   data: TimeSeriesPoint[];
   title?: string;
   className?: string;
+  activeRange?: string;
+  onRangeChange?: (range: string) => void;
 }
 
 const RANGES = ['1h', '24h', '7d', '30d', '90d'];
@@ -30,8 +32,16 @@ export function TimeSeriesAreaChart({
   data,
   title = 'Click Volume Over Time',
   className,
+  activeRange = '24h',
+  onRangeChange,
 }: TimeSeriesAreaChartProps) {
-  const [activeRange, setActiveRange] = useState('24h');
+  // If parent controls state, use it, else fallback (though parent should always control it now)
+  const [internalRange, setInternalRange] = useState('24h');
+  const currentRange = onRangeChange ? activeRange : internalRange;
+  const handleRangeChange = (r: string) => {
+    if (onRangeChange) onRangeChange(r);
+    else setInternalRange(r);
+  };
 
   const totalClicks = data.reduce((sum, p) => sum + p.clicks, 0);
   const totalUniques = data.reduce((sum, p) => sum + p.uniqueVisitors, 0);
@@ -72,10 +82,10 @@ export function TimeSeriesAreaChart({
             <button
               key={r}
               type="button"
-              onClick={() => setActiveRange(r)}
+              onClick={() => handleRangeChange(r)}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                activeRange === r
+                currentRange === r
                   ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
               )}
