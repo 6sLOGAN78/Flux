@@ -1,6 +1,7 @@
 import React from 'react';
-import { useLocation, Link } from 'react-router-dom';
-import { Search, Menu, Bell, User } from 'lucide-react';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { Search, Menu, Bell, LogOut, User } from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export interface HeaderProps {
   onOpenCommandPalette: () => void;
@@ -9,6 +10,8 @@ export interface HeaderProps {
 
 export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   const getBreadcrumbTitle = (pathname: string) => {
     const segments = pathname.split('/').filter(Boolean);
@@ -18,6 +21,13 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
       .split('-')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  };
+
+  const handleSignOut = async () => {
+    if (signOut) {
+      await signOut();
+    }
+    navigate('/sign-in');
   };
 
   return (
@@ -43,7 +53,7 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
         </div>
       </div>
 
-      {/* Right: Cmd+K search trigger & Actions */}
+      {/* Right: Cmd+K search trigger, Profile & Sign Out */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -58,13 +68,30 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
           </kbd>
         </button>
 
-        <button
-          type="button"
+        <Link
+          to="/notifications"
           aria-label="Notifications"
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900"
         >
           <Bell className="h-3.5 w-3.5" />
-        </button>
+        </Link>
+
+        {user && (
+          <div className="flex items-center gap-2 border-l border-zinc-200 pl-2 dark:border-zinc-800">
+            <span className="hidden text-xs font-medium text-zinc-700 dark:text-zinc-300 md:inline">
+              {user.email}
+            </span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title="Sign Out"
+              className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

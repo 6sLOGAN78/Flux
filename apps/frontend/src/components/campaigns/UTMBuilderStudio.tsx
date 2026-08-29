@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { getShortDomain } from '@/config/env';
 
 export interface UTMParams {
   baseUrl: string;
@@ -84,7 +85,7 @@ const CHANNEL_PRESETS = [
 ];
 
 export function UTMBuilderStudio({
-  initialBaseUrl = 'https://flux.to/pricing',
+  initialBaseUrl = `https://${getShortDomain()}/pricing`,
   onGenerateLink,
   isLoading = false,
   className,
@@ -236,7 +237,7 @@ export function UTMBuilderStudio({
         <div>
           <Input
             label="Custom Short Slug"
-            prefix="flux.to/"
+            prefix={`${getShortDomain()}/`}
             placeholder="campaign-slug"
             value={customSlug}
             onChange={(e) => setCustomSlug(e.target.value)}

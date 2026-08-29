@@ -3,7 +3,8 @@ import { z } from 'zod';
 export const envSchema = z.object({
   VITE_API_URL: z.string().url({ message: 'VITE_API_URL must be a valid URL' }).default('http://localhost:8080'),
   VITE_CLERK_PUBLISHABLE_KEY: z.string().optional().default('pk_test_placeholder'),
-  VITE_APP_URL: z.string().url({ message: 'VITE_APP_URL must be a valid URL' }).default('http://localhost:5173'),
+  VITE_APP_URL: z.string().url({ message: 'VITE_APP_URL must be a valid URL' }).default('http://localhost:3000'),
+  VITE_SHORT_DOMAIN: z.string().default('localhost:3000'),
   VITE_ENABLE_CLICKHOUSE_STREAM: z.string().optional().default('true'),
   VITE_ENABLE_AI_INSIGHTS: z.string().optional().default('true'),
 });
@@ -28,7 +29,12 @@ export const env = (() => {
     return envSchema.parse({
       VITE_API_URL: 'http://localhost:8080',
       VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_placeholder',
-      VITE_APP_URL: 'http://localhost:5173',
+      VITE_APP_URL: 'http://localhost:3000',
+      VITE_SHORT_DOMAIN: 'localhost:3000',
     });
   }
 })();
+
+export function getShortDomain(): string {
+  return env.VITE_SHORT_DOMAIN || 'localhost:3000';
+}

@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import { getShortDomain } from '@/config/env';
 
 export interface LinkItem {
   id: string;
@@ -98,7 +99,7 @@ export function LinksTable({
           </div>
         ) : (
           links.map((link) => {
-            const domain = link.domain || 'flux.to';
+            const domain = link.domain || getShortDomain();
             const shortUrl = `${domain}/${link.shortCode}`;
             const isSelected = selectedLinkIds.includes(link.id);
             const isCopied = copiedId === link.id;

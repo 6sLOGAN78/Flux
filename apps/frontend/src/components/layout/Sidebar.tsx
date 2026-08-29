@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { WorkspaceSwitcher, Workspace } from './WorkspaceSwitcher';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export interface NavItem {
   name: string;
@@ -54,11 +55,22 @@ const SETTINGS_NAV_ITEMS: NavItem[] = [
 ];
 
 export function Sidebar({
-  workspaces = DEFAULT_WORKSPACES,
+  workspaces,
   activeWorkspaceId = 'ws_default',
   onSelectWorkspace = () => {},
   onCloseMobile,
 }: SidebarProps) {
+  const { user } = useAuth();
+
+  const userWorkspaceName = user?.workspaceName || 'Development Workspace';
+
+  const defaultWorkspaces: Workspace[] = [
+    { id: 'ws_default', name: userWorkspaceName, slug: userWorkspaceName.toLowerCase().replace(/\s+/g, '-'), plan: 'Pro' },
+    { id: 'ws_personal', name: 'Personal Workspace', slug: 'personal', plan: 'Free' },
+  ];
+
+  const currentWorkspaces = workspaces && workspaces.length > 0 ? workspaces : defaultWorkspaces;
+
   return (
     <aside className="flex h-full w-64 flex-col border-r border-zinc-200 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-950/50">
       {/* Brand & Workspace Switcher */}
@@ -76,7 +88,7 @@ export function Sidebar({
         </div>
 
         <WorkspaceSwitcher
-          workspaces={workspaces}
+          workspaces={currentWorkspaces}
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
         />

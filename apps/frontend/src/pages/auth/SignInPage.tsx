@@ -1,19 +1,25 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { signIn } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      if (signIn) {
+        await signIn(email, password);
+      }
       navigate('/dashboard');
-    }, 400);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -88,7 +94,7 @@ export function SignInPage() {
 
         <div className="space-y-2">
           <Link
-            to="/auth/sso"
+            to="/sso"
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50"
           >
             <span>Single Sign-On (SAML / SSO)</span>

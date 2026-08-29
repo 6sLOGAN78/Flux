@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Copy, Check, ExternalLink, ArrowUpRight, BarChart2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { getShortDomain } from '@/config/env';
 
 export interface LinkActivityItem {
   id: string;
@@ -55,7 +56,7 @@ export function RecentActivityFeed({
 }: RecentActivityFeedProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const handleCopy = (id: string, shortCode: string, domain = 'flux.to') => {
+  const handleCopy = (id: string, shortCode: string, domain = getShortDomain()) => {
     navigator.clipboard?.writeText(`https://${domain}/${shortCode}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -97,7 +98,7 @@ export function RecentActivityFeed({
           </div>
         ) : (
           activities.map((item) => {
-            const domain = item.domain || 'flux.to';
+            const domain = item.domain || getShortDomain();
             const shortUrl = `${domain}/${item.shortCode}`;
             const isCopied = copiedId === item.id;
 

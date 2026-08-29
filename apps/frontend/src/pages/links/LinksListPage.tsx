@@ -15,6 +15,7 @@ import { LinksTable, LinkItem } from '@/components/links/LinksTable';
 import { CreateLinkDrawer } from '@/components/links/CreateLinkDrawer';
 import { BulkCategorizeModal } from '@/components/links/BulkCategorizeModal';
 import { useCreateLink, useBulkCategorize } from '@/hooks/useLinksQuery';
+import { getShortDomain } from '@/config/env';
 
 const INITIAL_MOCK_LINKS: LinkItem[] = [
   {
@@ -130,7 +131,7 @@ export function LinksListPage() {
             clicks: 0,
             createdAt: new Date().toISOString(),
             category: data.category,
-            domain: 'flux.to',
+            domain: getShortDomain(),
           };
           setLinks((prev) => [newLink, ...prev]);
           setIsDrawerOpen(false);
@@ -145,7 +146,7 @@ export function LinksListPage() {
             clicks: 0,
             createdAt: new Date().toISOString(),
             category: data.category,
-            domain: 'flux.to',
+            domain: getShortDomain(),
           };
           setLinks((prev) => [newLink, ...prev]);
           setIsDrawerOpen(false);

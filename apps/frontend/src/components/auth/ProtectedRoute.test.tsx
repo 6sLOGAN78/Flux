@@ -133,4 +133,19 @@ describe('Auth Pages', () => {
     expect(html).toContain('Company Domain');
     expect(html).toContain('Continue with SSO');
   });
+
+  it('renders with StandaloneAuthProvider providing auth context', () => {
+    const { StandaloneAuthProvider } = require('./AuthContext');
+    const html = renderToString(
+      <StandaloneAuthProvider>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <ProtectedRoute>
+            <div data-testid="dashboard-view">Flux Main Dashboard</div>
+          </ProtectedRoute>
+        </MemoryRouter>
+      </StandaloneAuthProvider>
+    );
+
+    expect(html).toContain('Flux Main Dashboard');
+  });
 });

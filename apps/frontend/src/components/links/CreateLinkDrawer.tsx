@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Link2, Sparkles, Wand2 } from 'lucide-react';
+import { X, Link2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { cn } from '@/lib/utils';
+import { getShortDomain } from '@/config/env';
 
 export interface CreateLinkDrawerProps {
   isOpen: boolean;
@@ -103,7 +103,7 @@ export function CreateLinkDrawer({
                 </button>
               </div>
               <Input
-                prefix="flux.to/"
+                prefix={`${getShortDomain()}/`}
                 placeholder="custom-slug"
                 value={customCode}
                 onChange={(e) => setCustomCode(e.target.value)}

@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export function SSOPage() {
   const [domain, setDomain] = useState('');
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSSO = (e: React.FormEvent) => {
+  const handleSSO = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsRedirecting(true);
-    setTimeout(() => {
-      window.location.href = `/api/v1/auth/sso/saml?domain=${encodeURIComponent(domain)}`;
-    }, 500);
+    try {
+      if (signIn) {
+        await signIn();
+      }
+      navigate('/dashboard');
+    } finally {
+      setIsRedirecting(false);
+    }
   };
 
   return (

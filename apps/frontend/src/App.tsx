@@ -170,6 +170,16 @@ export function App() {
                 }
               />
               <Route
+                path="/traffic-splitter"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ABTestingPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/ab-testing"
                 element={
                   <ProtectedRoute>
@@ -181,6 +191,16 @@ export function App() {
               />
               <Route
                 path="/domains"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <DomainsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/domains"
                 element={
                   <ProtectedRoute>
                     <AppLayout>
@@ -241,6 +261,16 @@ export function App() {
                 }
               />
               <Route
+                path="/settings/team"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <WorkspacesPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/settings/billing"
                 element={
                   <ProtectedRoute>
@@ -282,6 +312,16 @@ export function App() {
               />
               <Route
                 path="/developer/webhooks"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <WebhooksPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/webhooks"
                 element={
                   <ProtectedRoute>
                     <AppLayout>

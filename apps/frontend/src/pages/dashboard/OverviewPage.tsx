@@ -15,6 +15,7 @@ import { HourlyClickSparkline } from '@/components/dashboard/HourlyClickSparklin
 import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed';
 import { useAnalyticsSummary } from '@/hooks/useAnalyticsQuery';
 import { useCreateLink } from '@/hooks/useLinksQuery';
+import { getShortDomain } from '@/config/env';
 
 export function OverviewPage() {
   const [quickUrl, setQuickUrl] = useState('');
@@ -37,14 +38,14 @@ export function OverviewPage() {
       {
         onSuccess: (res: any) => {
           const slug = res?.shortCode || res?.customCode || quickSlug || 'link';
-          setCreatedShortUrl(`flux.to/${slug}`);
+          setCreatedShortUrl(`${getShortDomain()}/${slug}`);
           setQuickUrl('');
           setQuickSlug('');
         },
         onError: () => {
           // Simulated fallback for standalone demo / offline mode
           const slug = quickSlug || 'demo-' + Math.random().toString(36).substring(2, 7);
-          setCreatedShortUrl(`flux.to/${slug}`);
+          setCreatedShortUrl(`${getShortDomain()}/${slug}`);
         },
       }
     );
@@ -96,7 +97,7 @@ export function OverviewPage() {
           </div>
 
           <div className="flex w-full sm:w-56 items-center rounded-lg border border-zinc-200 bg-zinc-50/50 px-3 py-1.5 text-xs transition-colors focus-within:border-zinc-400 focus-within:bg-white dark:border-zinc-800 dark:bg-zinc-900/40 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-950">
-            <span className="select-none font-mono text-xs text-zinc-400">flux.to/</span>
+            <span className="select-none font-mono text-xs text-zinc-400">{getShortDomain()}/</span>
             <input
               type="text"
               value={quickSlug}
