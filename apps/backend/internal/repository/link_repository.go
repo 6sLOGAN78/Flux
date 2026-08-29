@@ -69,16 +69,20 @@ func (r *LinkRepository) CreateLink(
 	return &item, nil
 }
 
-func (r *LinkRepository) GetLinkByID(ctx context.Context, id uuid.UUID) (*link.Link, error) {
+func (r *LinkRepository) GetLinkByID(ctx context.Context, tenantID *uuid.UUID, id uuid.UUID) (*link.Link, error) {
 	stmt := `
 		SELECT *
 		FROM links
 		WHERE id = @id
 	`
+	args := pgx.NamedArgs{"id": id}
 
-	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{
-		"id": id,
-	})
+	if tenantID != nil {
+		stmt += " AND tenant_id = @tenant_id"
+		args["tenant_id"] = *tenantID
+	}
+
+	rows, err := r.pool.Query(ctx, stmt, args)
 	if err != nil {
 		return nil, sqlerr.HandleError(fmt.Errorf("failed to get link by id: %w", err))
 	}

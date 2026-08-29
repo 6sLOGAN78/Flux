@@ -47,7 +47,7 @@ export function LinksTable({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, shortUrl: string) => {
-    navigator.clipboard?.writeText(`https://${shortUrl}`);
+    navigator.clipboard?.writeText(`http${window.location.hostname === 'localhost' ? '' : 's'}://${shortUrl}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

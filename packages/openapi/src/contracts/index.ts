@@ -97,6 +97,29 @@ export const apiContract = c.router({
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },
+  getLinks: {
+    method: "GET",
+    path: "/api/v1/links",
+    query: z.object({
+      page: z.string().optional(),
+      limit: z.string().optional(),
+      search: z.string().optional(),
+    }),
+    responses: {
+      200: z.object({
+        data: z.array(ZLink),
+        total: z.number(),
+        page: z.number(),
+        limit: z.number(),
+        totalPages: z.number()
+      }),
+    },
+    summary: "List links with pagination",
+    metadata: {
+      openApiTags: ["Links"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
   getLink: {
     method: "GET",
     path: "/api/v1/links/:shortCode",
@@ -236,6 +259,8 @@ export const apiContract = c.router({
     metadata: {
       openApiTags: ["OAuth"],
     },
+  },
+
   },
 
   // --- Webhooks ---

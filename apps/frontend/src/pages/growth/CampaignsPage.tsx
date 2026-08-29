@@ -9,38 +9,8 @@ import {
 } from '@/components/campaigns/CampaignListTable';
 import { useCreateLink } from '@/hooks/useLinksQuery';
 
-const INITIAL_CAMPAIGNS: CampaignItem[] = [
-  {
-    id: 'cmp_1',
-    name: 'Q3 Product Hunt Launch',
-    channel: 'ProductHunt',
-    utmCampaign: 'ph_launch_v2',
-    totalClicks: 8420,
-    conversions: 612,
-    status: 'active',
-    createdAt: '2026-08-18T10:00:00Z',
-  },
-  {
-    id: 'cmp_2',
-    name: 'Twitter Developer Ads',
-    channel: 'Twitter',
-    utmCampaign: 'dev_ads_q3',
-    totalClicks: 3290,
-    conversions: 184,
-    status: 'active',
-    createdAt: '2026-08-16T14:00:00Z',
-  },
-  {
-    id: 'cmp_3',
-    name: 'Monthly Newsletter - Issue #42',
-    channel: 'Newsletter',
-    utmCampaign: 'newsletter_august',
-    totalClicks: 5120,
-    conversions: 430,
-    status: 'active',
-    createdAt: '2026-08-12T08:30:00Z',
-  },
-];
+// Empty state for new accounts
+const INITIAL_CAMPAIGNS: CampaignItem[] = [];
 
 export function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>(INITIAL_CAMPAIGNS);

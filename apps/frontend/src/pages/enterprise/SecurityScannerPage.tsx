@@ -19,26 +19,7 @@ const INITIAL_STATS: ThreatStats = {
   quarantineCount: 2,
 };
 
-const INITIAL_QUARANTINE: QuarantineLink[] = [
-  {
-    id: 'quar_1',
-    shortUrl: 'flux.to/promo-free',
-    destinationUrl: 'http://fake-banking-login.cc/auth',
-    threatType: 'phishing',
-    provider: 'Google Safe Browsing',
-    status: 'quarantined',
-    detectedAt: '2026-08-19T22:30:00Z',
-  },
-  {
-    id: 'quar_2',
-    shortUrl: 'flux.to/installer',
-    destinationUrl: 'http://trojan-download.xyz/payload.exe',
-    threatType: 'malware',
-    provider: 'VirusTotal',
-    status: 'blocked',
-    detectedAt: '2026-08-18T14:00:00Z',
-  },
-];
+const INITIAL_QUARANTINE: QuarantineLink[] = [];
 
 export function SecurityScannerPage() {
   const [stats, setStats] = useState<ThreatStats>(INITIAL_STATS);

@@ -375,6 +375,124 @@
             }
           }
         }
+      },
+      "get": {
+        "summary": "List links with pagination",
+        "tags": [
+          "Links"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Unique link identifier (UUID)",
+                            "example": "123e4567-e89b-12d3-a456-426614174000"
+                          },
+                          "shortCode": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 20,
+                            "description": "Custom or generated Base62 short code",
+                            "example": "xyz123"
+                          },
+                          "destinationUrl": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "Target URL for redirection",
+                            "example": "https://example.com/target-page"
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true,
+                            "description": "Optional link category UUID"
+                          },
+                          "tenantId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Tenant identifier for multi-tenant isolation"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "Link creation timestamp in ISO 8601 format"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "Link last update timestamp in ISO 8601 format"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "shortCode",
+                          "destinationUrl",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "description": "Shortened Link entity"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    },
+                    "totalPages": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "total",
+                    "page",
+                    "limit",
+                    "totalPages"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/links/{shortCode}": {

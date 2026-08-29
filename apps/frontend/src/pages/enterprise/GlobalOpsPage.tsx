@@ -8,86 +8,9 @@ import {
 } from '@/components/ops/GeoReplicationLatencyGrid';
 import { FailoverStatusCard } from '@/components/ops/FailoverStatusCard';
 
-const INITIAL_POPS: EdgePoP[] = [
-  {
-    id: 'pop_iad',
-    code: 'IAD-01',
-    city: 'Washington DC (Ashburn)',
-    region: 'North America',
-    latencyMs: 3.2,
-    status: 'healthy',
-    bgpRoutes: 14,
-  },
-  {
-    id: 'pop_sfo',
-    code: 'SFO-01',
-    city: 'San Francisco (Bay Area)',
-    region: 'North America',
-    latencyMs: 4.1,
-    status: 'healthy',
-    bgpRoutes: 14,
-  },
-  {
-    id: 'pop_lhr',
-    code: 'LHR-01',
-    city: 'London Heathrow',
-    region: 'Europe',
-    latencyMs: 5.8,
-    status: 'healthy',
-    bgpRoutes: 12,
-  },
-  {
-    id: 'pop_fra',
-    code: 'FRA-01',
-    city: 'Frankfurt Main',
-    region: 'Europe',
-    latencyMs: 6.2,
-    status: 'healthy',
-    bgpRoutes: 12,
-  },
-  {
-    id: 'pop_nrt',
-    code: 'NRT-01',
-    city: 'Tokyo Narita',
-    region: 'Asia Pacific',
-    latencyMs: 8.4,
-    status: 'healthy',
-    bgpRoutes: 10,
-  },
-  {
-    id: 'pop_sin',
-    code: 'SIN-01',
-    city: 'Singapore Changi',
-    region: 'Asia Pacific',
-    latencyMs: 9.1,
-    status: 'healthy',
-    bgpRoutes: 10,
-  },
-];
+const INITIAL_POPS: EdgePoP[] = [];
 
-const INITIAL_REPLICATION: ReplicationNode[] = [
-  {
-    region: 'us-east-1 (Primary)',
-    dbRole: 'primary',
-    replicationLagMs: 0,
-    syncStatus: 'in_sync',
-    slaMet: true,
-  },
-  {
-    region: 'eu-central-1 (Frankfurt)',
-    dbRole: 'standby',
-    replicationLagMs: 38,
-    syncStatus: 'in_sync',
-    slaMet: true,
-  },
-  {
-    region: 'ap-northeast-1 (Tokyo)',
-    dbRole: 'standby',
-    replicationLagMs: 62,
-    syncStatus: 'in_sync',
-    slaMet: true,
-  },
-];
+const INITIAL_REPLICATION: ReplicationNode[] = [];
 
 export function GlobalOpsPage() {
   const [pops, setPops] = useState<EdgePoP[]>(INITIAL_POPS);

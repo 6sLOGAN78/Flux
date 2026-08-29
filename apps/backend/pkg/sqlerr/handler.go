@@ -196,7 +196,7 @@ func HandleError(err error) error {
 			return errs.NewBadRequestError(userMessage, true, &errorCode, nil, sqlErr)
 
 		default:
-			return errs.NewInternalServerError()
+			fmt.Printf("SQL ERROR: %+v\n", err); return errs.NewInternalServerError()
 		}
 	}
 
@@ -213,5 +213,5 @@ func HandleError(err error) error {
 		return errs.NewNotFoundError("Resource not found", false, nil)
 	}
 
-	return errs.NewInternalServerError()
+	fmt.Printf("SQL ERROR: %+v\n", err); return errs.NewInternalServerError()
 }

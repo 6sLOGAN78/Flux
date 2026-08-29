@@ -9,33 +9,9 @@ import {
   OAuthClientItem,
 } from '@/components/developer/OAuthClientsCard';
 
-const INITIAL_KEYS: ApiKeyItem[] = [
-  {
-    id: 'key_1',
-    name: 'Production Ingestion Worker',
-    tokenPrefix: 'flx_live_a1b2...',
-    scopes: ['links:read', 'links:write', 'analytics:read'],
-    createdAt: '2026-08-01T00:00:00Z',
-    lastUsedAt: '2026-08-19T22:00:00Z',
-  },
-  {
-    id: 'key_2',
-    name: 'Read-only Analytics Dashboard',
-    tokenPrefix: 'flx_live_7c8d...',
-    scopes: ['analytics:read'],
-    createdAt: '2026-08-10T00:00:00Z',
-  },
-];
+const INITIAL_KEYS: ApiKeyItem[] = [];
 
-const INITIAL_OAUTH_CLIENTS: OAuthClientItem[] = [
-  {
-    id: 'oauth_1',
-    name: 'Slack Integration Bot',
-    clientId: 'flux_client_99a8b7',
-    redirectUris: ['https://slack.com/oauth/callback/flux'],
-    createdAt: '2026-07-20T00:00:00Z',
-  },
-];
+const INITIAL_OAUTH_CLIENTS: OAuthClientItem[] = [];
 
 export function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>(INITIAL_KEYS);

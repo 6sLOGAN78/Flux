@@ -5,36 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { CategoryGrid, CategoryItem } from '@/components/categories/CategoryGrid';
 
-const INITIAL_CATEGORIES: CategoryItem[] = [
-  {
-    id: 'cat_1',
-    name: 'Marketing Campaigns',
-    color: '#10b981',
-    description: 'Public marketing, landing page, and paid acquisition links',
-    linkCount: 24,
-  },
-  {
-    id: 'cat_2',
-    name: 'API Documentation',
-    color: '#3b82f6',
-    description: 'Developer portal endpoints, SDK quickstarts, and schema links',
-    linkCount: 12,
-  },
-  {
-    id: 'cat_3',
-    name: 'Product Releases',
-    color: '#8b5cf6',
-    description: 'Release changelogs, GitHub release tags, and feature flags',
-    linkCount: 8,
-  },
-  {
-    id: 'cat_4',
-    name: 'Social Media',
-    color: '#f59e0b',
-    description: 'Twitter / X, LinkedIn, and YouTube channel bio links',
-    linkCount: 19,
-  },
-];
+const INITIAL_CATEGORIES: CategoryItem[] = [];
 
 const COLOR_PRESETS = [
   '#10b981', // emerald

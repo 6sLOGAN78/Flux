@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/queryClient';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { env } from '@/config/env';
-import { ClerkAuthProviderWrapper, StandaloneAuthProvider } from '@/components/auth/AuthContext';
+import { ClerkAuthProviderWrapper } from '@/components/auth/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PublicRoute } from '@/components/auth/PublicRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -53,7 +53,7 @@ export function App() {
 
         {/* Public Auth Routes */}
         <Route
-          path="/sign-in"
+          path="/sign-in/*"
           element={
             <PublicRoute>
               <SignInPage />
@@ -61,7 +61,7 @@ export function App() {
           }
         />
               <Route
-                path="/sign-up"
+                path="/sign-up/*"
                 element={
                   <PublicRoute>
                     <SignUpPage />
@@ -437,15 +437,24 @@ export function App() {
           </BrowserRouter>
   );
 
+  if (!clerkPubKey) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-neutral-900 text-white">
+        <div className="text-center p-8 bg-neutral-800 rounded-lg shadow-lg max-w-md border border-red-500/20">
+          <h2 className="text-2xl font-bold mb-4 text-red-400">Missing Clerk Configuration</h2>
+          <p className="text-neutral-300">
+            Authentication has been migrated to Clerk, but <code className="bg-neutral-950 px-2 py-1 rounded text-red-300">VITE_CLERK_PUBLISHABLE_KEY</code> is not set in your environment variables.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
-      {hasValidClerkKey ? (
-        <ClerkProvider publishableKey={clerkPubKey}>
-          <ClerkAuthProviderWrapper>{appRouter}</ClerkAuthProviderWrapper>
-        </ClerkProvider>
-      ) : (
-        <StandaloneAuthProvider>{appRouter}</StandaloneAuthProvider>
-      )}
+      <ClerkProvider publishableKey={clerkPubKey}>
+        <ClerkAuthProviderWrapper>{appRouter}</ClerkAuthProviderWrapper>
+      </ClerkProvider>
     </QueryClientProvider>
   );
 }

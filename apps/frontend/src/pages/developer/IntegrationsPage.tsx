@@ -7,50 +7,7 @@ import {
   IntegrationApp,
 } from '@/components/integrations/AppConnectorCard';
 
-const INITIAL_APPS: IntegrationApp[] = [
-  {
-    id: 'slack',
-    name: 'Slack',
-    category: 'chat',
-    description: 'Receive real-time click spikes, routing alerts, and daily traffic digests directly in designated Slack channels.',
-    status: 'connected',
-  },
-  {
-    id: 'zapier',
-    name: 'Zapier',
-    category: 'automation',
-    description: 'Connect Flux link events and UTM attribution data with 5,000+ business productivity applications.',
-    status: 'not_connected',
-  },
-  {
-    id: 'hubspot',
-    name: 'HubSpot CRM',
-    category: 'crm',
-    description: 'Sync multi-touch attribution journeys and lead conversion parameters directly into HubSpot contacts.',
-    status: 'not_connected',
-  },
-  {
-    id: 'segment',
-    name: 'Segment (Twilio)',
-    category: 'analytics',
-    description: 'Stream server-side edge click events directly into Segment Connections and downstream data warehouses.',
-    status: 'connected',
-  },
-  {
-    id: 'discord',
-    name: 'Discord',
-    category: 'chat',
-    description: 'Send instant webhook alerts for SSL certificate renewals and anomalous traffic surges.',
-    status: 'not_connected',
-  },
-  {
-    id: 'make',
-    name: 'Make (Integromat)',
-    category: 'automation',
-    description: 'Design visual workflows to trigger bulk link shortening upon new CMS blog publications.',
-    status: 'not_connected',
-  },
-];
+const INITIAL_APPS: IntegrationApp[] = [];
 
 export function IntegrationsPage() {
   const [apps, setApps] = useState<IntegrationApp[]>(INITIAL_APPS);

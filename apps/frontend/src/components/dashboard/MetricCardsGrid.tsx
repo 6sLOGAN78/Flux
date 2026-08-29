@@ -33,15 +33,15 @@ function formatNumber(num: number): string {
 
 export function MetricCardsGrid({
   metrics = {
-    totalLinks: 12480,
-    totalClicks24h: 382400,
-    avgCtr: 4.8,
-    activeDomains: 6,
+    totalLinks: 0,
+    totalClicks24h: 0,
+    avgCtr: 0.0,
+    activeDomains: 0,
     trends: {
-      linksChange: '+8.4%',
-      clicksChange: '+14.2%',
-      ctrChange: '+0.6%',
-      domainsChange: '+2',
+      linksChange: '0%',
+      clicksChange: '0%',
+      ctrChange: '0%',
+      domainsChange: '0',
     },
   },
   isLoading = false,

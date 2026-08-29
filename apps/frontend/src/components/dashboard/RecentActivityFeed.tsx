@@ -19,36 +19,8 @@ export interface RecentActivityFeedProps {
   isLoading?: boolean;
 }
 
-const DEFAULT_ACTIVITIES: LinkActivityItem[] = [
-  {
-    id: 'act_1',
-    shortCode: 'v2-launch',
-    originalUrl: 'https://flux.to/blog/high-performance-edge-router-v2',
-    clicks: 1420,
-    createdAt: '2 mins ago',
-  },
-  {
-    id: 'act_2',
-    shortCode: 'docs-api',
-    originalUrl: 'https://flux.to/docs/reference/openapi-v1',
-    clicks: 890,
-    createdAt: '15 mins ago',
-  },
-  {
-    id: 'act_3',
-    shortCode: 'summer-sale',
-    originalUrl: 'https://store.acme.com/collections/summer-2026?utm_source=twitter',
-    clicks: 3410,
-    createdAt: '1 hour ago',
-  },
-  {
-    id: 'act_4',
-    shortCode: 'discord-invite',
-    originalUrl: 'https://discord.gg/flux-dev-mesh-community',
-    clicks: 560,
-    createdAt: '3 hours ago',
-  },
-];
+// Empty state for new accounts
+const DEFAULT_ACTIVITIES: LinkActivityItem[] = [];
 
 export function RecentActivityFeed({
   activities = DEFAULT_ACTIVITIES,
@@ -57,7 +29,7 @@ export function RecentActivityFeed({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, shortCode: string, domain = getShortDomain()) => {
-    navigator.clipboard?.writeText(`https://${domain}/${shortCode}`);
+    navigator.clipboard?.writeText(`http${window.location.hostname === 'localhost' ? '' : 's'}://${domain}/${shortCode}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

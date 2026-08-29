@@ -17,32 +17,7 @@ import {
 import { InviteMemberModal } from '@/components/settings/InviteMemberModal';
 import { CreateWorkspaceModal } from '@/components/settings/CreateWorkspaceModal';
 
-const INITIAL_MEMBERS: TeamMember[] = [
-  {
-    id: 'usr_1',
-    name: 'Alex Vance',
-    email: 'alex@acme.com',
-    role: 'owner',
-    status: 'active',
-    joinedAt: '2026-01-10T00:00:00Z',
-  },
-  {
-    id: 'usr_2',
-    name: 'Sarah Connor',
-    email: 'sarah@acme.com',
-    role: 'admin',
-    status: 'active',
-    joinedAt: '2026-02-15T00:00:00Z',
-  },
-  {
-    id: 'usr_3',
-    name: 'Elena Rostova',
-    email: 'elena@acme.com',
-    role: 'member',
-    status: 'pending',
-    joinedAt: '2026-08-18T00:00:00Z',
-  },
-];
+const INITIAL_MEMBERS: TeamMember[] = [];
 
 export function WorkspacesPage() {
   const [members, setMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);

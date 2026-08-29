@@ -5,32 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { NotificationItem } from '@/components/notifications/NotificationDrawer';
 import { cn } from '@/lib/utils';
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'notif_1',
-    title: 'Traffic Spike Alert',
-    message: 'Short link /summer-sale reached 10,000 clicks in the past 1 hour.',
-    severity: 'alert',
-    isRead: false,
-    createdAt: '2026-08-19T22:30:00Z',
-  },
-  {
-    id: 'notif_2',
-    title: 'Custom Domain SSL Active',
-    message: 'Certificate successfully provisioned for go.brand.com.',
-    severity: 'info',
-    isRead: true,
-    createdAt: '2026-08-18T12:00:00Z',
-  },
-  {
-    id: 'notif_3',
-    title: 'Usage Quota Warning',
-    message: 'Monthly clicks reached 85% of your 500k Pro plan threshold.',
-    severity: 'warning',
-    isRead: false,
-    createdAt: '2026-08-17T09:15:00Z',
-  },
-];
+const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
 
 export function NotificationsPage() {
   const [notifications, setNotifications] =

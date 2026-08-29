@@ -88,3 +88,19 @@ export function useBulkCategorize() {
     },
   });
 }
+
+export function useGetLinks(params?: { page?: string, limit?: string, search?: string }) {
+  return useQuery({
+    queryKey: [...linksQueryKeys.all, params],
+    queryFn: async () => {
+      // @ts-ignore - ignoring potential type mismatch for the newly added getLinks contract
+      const response = await apiClient.getLinks({
+        query: params || {},
+      });
+      if (response.status !== 200) {
+        throw new Error(extractErrorMessage(response.body, 'Failed to fetch links'));
+      }
+      return response.body;
+    },
+  });
+}

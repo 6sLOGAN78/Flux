@@ -42,18 +42,14 @@ export function OverviewPage() {
           setQuickUrl('');
           setQuickSlug('');
         },
-        onError: () => {
-          // Simulated fallback for standalone demo / offline mode
-          const slug = quickSlug || 'demo-' + Math.random().toString(36).substring(2, 7);
-          setCreatedShortUrl(`${getShortDomain()}/${slug}`);
-        },
+
       }
     );
   };
 
   const handleCopyCreated = () => {
     if (!createdShortUrl) return;
-    navigator.clipboard?.writeText(`https://${createdShortUrl}`);
+    navigator.clipboard?.writeText(`http${window.location.hostname === 'localhost' ? '' : 's'}://${createdShortUrl}`);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -126,7 +122,7 @@ export function OverviewPage() {
                 Created successfully:
               </span>
               <span className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">
-                https://{createdShortUrl}
+                {window.location.hostname === 'localhost' ? 'http' : 'https'}://{createdShortUrl}
               </span>
             </div>
             <button
@@ -156,10 +152,10 @@ export function OverviewPage() {
         metrics={
           analyticsData
             ? {
-                totalLinks: (analyticsData as any).totalLinks ?? 12480,
-                totalClicks24h: (analyticsData as any).totalClicks ?? 382400,
-                avgCtr: (analyticsData as any).avgCtr ?? 4.8,
-                activeDomains: (analyticsData as any).activeDomains ?? 6,
+                totalLinks: (analyticsData as any).totalLinks ?? 0,
+                totalClicks24h: (analyticsData as any).totalClicks ?? 0,
+                avgCtr: (analyticsData as any).avgCtr ?? 0,
+                activeDomains: (analyticsData as any).activeDomains ?? 0,
               }
             : undefined
         }

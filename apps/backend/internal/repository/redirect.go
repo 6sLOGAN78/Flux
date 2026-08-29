@@ -3,11 +3,15 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"flux/apps/backend/internal/model/redirect"
+	"flux/apps/backend/pkg/sqlerr"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -49,4 +53,41 @@ func (r *RedisRedirectCache) Set(ctx context.Context, slug string, target *redir
 func (r *RedisRedirectCache) Delete(ctx context.Context, slug string) error {
 	key := fmt.Sprintf("link:%s", slug)
 	return r.client.Del(ctx, key).Err()
+}
+
+type PostgresRedirectRepository struct {
+	pool *pgxpool.Pool
+}
+
+func NewPostgresRedirectRepository(pool *pgxpool.Pool) *PostgresRedirectRepository {
+	return &PostgresRedirectRepository{pool: pool}
+}
+
+func (r *PostgresRedirectRepository) GetBySlug(ctx context.Context, slug string) (*redirect.LinkRedirectTarget, error) {
+	stmt := `
+		SELECT destination_url
+		FROM links
+		WHERE short_code = @slug
+	`
+	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{"slug": slug})
+	if err != nil {
+		return nil, sqlerr.HandleError(fmt.Errorf("failed to query redirect: %w", err))
+	}
+	
+	type rowType struct {
+		DestinationURL string `db:"destination_url"`
+	}
+	
+	item, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[rowType])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, sqlerr.HandleError(fmt.Errorf("failed to collect redirect row: %w", err))
+	}
+
+	return &redirect.LinkRedirectTarget{
+		DestinationURL: item.DestinationURL,
+		Status: "active",
+	}, nil
 }

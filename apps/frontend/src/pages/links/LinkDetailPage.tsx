@@ -39,7 +39,7 @@ export function LinkDetailPage() {
   const shortUrl = `flux.to/${customCode}`;
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(`https://${shortUrl}`);
+    navigator.clipboard?.writeText(`http${window.location.hostname === 'localhost' ? '' : 's'}://${shortUrl}`);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -100,7 +100,7 @@ export function LinkDetailPage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-lg border border-zinc-200 bg-white px-3 py-1.5 shadow-xs dark:border-zinc-800 dark:bg-zinc-950">
             <span className="font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-              https://{shortUrl}
+              {window.location.hostname === 'localhost' ? 'http' : 'https'}://{shortUrl}
             </span>
             <button
               type="button"
@@ -241,7 +241,7 @@ export function LinkDetailPage() {
           </div>
         </div>
       ) : (
-        <QRStudioCanvas url={`https://${shortUrl}`} />
+        <QRStudioCanvas url={`http${window.location.hostname === 'localhost' ? '' : 's'}://${shortUrl}`} />
       )}
     </div>
   );

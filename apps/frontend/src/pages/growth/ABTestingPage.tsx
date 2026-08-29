@@ -11,20 +11,7 @@ import {
   VariantStats,
 } from '@/components/abtest/SignificanceScoreCard';
 
-const INITIAL_VARIANTS: ABVariant[] = [
-  {
-    id: 'var_a',
-    name: 'Variant A (Control)',
-    destinationUrl: 'https://flux.to/landing-v1',
-    weight: 50,
-  },
-  {
-    id: 'var_b',
-    name: 'Variant B (New Pricing Hero)',
-    destinationUrl: 'https://flux.to/landing-v2-pricing',
-    weight: 50,
-  },
-];
+const INITIAL_VARIANTS: ABVariant[] = [];
 
 export function ABTestingPage() {
   const [variants, setVariants] = useState<ABVariant[]>(INITIAL_VARIANTS);
@@ -33,14 +20,14 @@ export function ABTestingPage() {
 
   const controlStats: VariantStats = {
     name: variants[0]?.name || 'Variant A',
-    visitors: 2450,
-    conversions: 122, // 4.98%
+    visitors: 0,
+    conversions: 0,
   };
 
   const challengerStats: VariantStats = {
     name: variants[1]?.name || 'Variant B',
-    visitors: 2480,
-    conversions: 198, // 7.98%
+    visitors: 0,
+    conversions: 0,
   };
 
   const handlePromoteWinner = () => {

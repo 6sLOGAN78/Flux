@@ -12,59 +12,17 @@ import {
 import { InvoicesList, InvoiceItem } from '@/components/billing/InvoicesList';
 
 const INITIAL_PLAN: SubscriptionPlan = {
-  tier: 'pro',
-  name: 'Pro Tier',
-  priceMonthly: 49,
+  tier: 'free',
+  name: 'Free Tier',
+  priceMonthly: 0,
   status: 'active',
   renewalDate: '2026-09-15T00:00:00Z',
   stripePortalUrl: 'https://billing.stripe.com/p/session/test_session',
 };
 
-const INITIAL_QUOTAS: QuotaItem[] = [
-  {
-    label: 'Monthly Redirect Clicks',
-    current: 142500,
-    max: 500000,
-    unit: 'clicks',
-  },
-  {
-    label: 'Custom Branded Domains',
-    current: 3,
-    max: 5,
-    unit: 'domains',
-  },
-  {
-    label: 'Active Team Seats',
-    current: 3,
-    max: 10,
-    unit: 'seats',
-  },
-];
+const INITIAL_QUOTAS: QuotaItem[] = [];
 
-const INITIAL_INVOICES: InvoiceItem[] = [
-  {
-    id: 'inv_flux_aug2026',
-    date: '2026-08-15',
-    amount: 49.0,
-    status: 'paid',
-    pdfUrl: '#',
-  },
-  {
-    id: 'inv_flux_jul2026',
-    date: '2026-07-15',
-    amount: 49.0,
-    status: 'paid',
-    pdfUrl: '#',
-  },
-  {
-    id: 'inv_flux_jun2026',
-    date: '2026-06-15',
-    amount: 49.0,
-    status: 'paid',
-    pdfUrl: '#',
-  },
-];
-
+const INITIAL_INVOICES: InvoiceItem[] = [];
 export function BillingPage() {
   const [plan, setPlan] = useState<SubscriptionPlan>(INITIAL_PLAN);
   const [quotas, setQuotas] = useState<QuotaItem[]>(INITIAL_QUOTAS);

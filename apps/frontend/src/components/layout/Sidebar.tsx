@@ -31,10 +31,7 @@ export interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
-const DEFAULT_WORKSPACES: Workspace[] = [
-  { id: 'ws_default', name: 'Acme Corp', slug: 'acme', plan: 'Enterprise' },
-  { id: 'ws_personal', name: 'Personal', slug: 'personal', plan: 'Pro' },
-];
+const DEFAULT_WORKSPACES: Workspace[] = [];
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { name: 'Overview', href: '/dashboard', icon: <Layers className="h-4 w-4" /> },

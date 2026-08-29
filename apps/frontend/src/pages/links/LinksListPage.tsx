@@ -14,7 +14,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { LinksTable, LinkItem } from '@/components/links/LinksTable';
 import { CreateLinkDrawer } from '@/components/links/CreateLinkDrawer';
 import { BulkCategorizeModal } from '@/components/links/BulkCategorizeModal';
-import { useCreateLink, useBulkCategorize } from '@/hooks/useLinksQuery';
+import { useCreateLink, useBulkCategorize, useGetLinks } from '@/hooks/useLinksQuery';
 import { getShortDomain } from '@/config/env';
 
 const INITIAL_MOCK_LINKS: LinkItem[] = [
@@ -61,8 +61,19 @@ const INITIAL_MOCK_LINKS: LinkItem[] = [
 ];
 
 export function LinksListPage() {
-  const [links, setLinks] = useState<LinkItem[]>(INITIAL_MOCK_LINKS);
   const [searchQuery, setSearchQuery] = useState('');
+  const { data: queryData, isLoading, refetch } = useGetLinks({ search: searchQuery });
+  const rawLinks = queryData?.data || [];
+  const links: LinkItem[] = rawLinks.map((r: any) => ({
+    id: r.id,
+    shortCode: r.shortCode || r.short_code,
+    destinationUrl: r.destinationUrl || r.destination_url,
+    title: r.title,
+    clicks: r.clicks || 0,
+    createdAt: r.createdAt || r.created_at,
+    category: r.category || 'all',
+    domain: r.domain || getShortDomain(),
+  }));
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedLinkIds, setSelectedLinkIds] = useState<string[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -133,7 +144,6 @@ export function LinksListPage() {
             category: data.category,
             domain: getShortDomain(),
           };
-          setLinks((prev) => [newLink, ...prev]);
           setIsDrawerOpen(false);
         },
         onError: () => {
@@ -148,7 +158,6 @@ export function LinksListPage() {
             category: data.category,
             domain: getShortDomain(),
           };
-          setLinks((prev) => [newLink, ...prev]);
           setIsDrawerOpen(false);
         },
       }
@@ -163,11 +172,6 @@ export function LinksListPage() {
       },
       {
         onSettled: () => {
-          setLinks((prev) =>
-            prev.map((l) =>
-              selectedLinkIds.includes(l.id) ? { ...l, category: newCategory } : l
-            )
-          );
           setSelectedLinkIds([]);
           setIsBulkModalOpen(false);
         },
@@ -176,12 +180,10 @@ export function LinksListPage() {
   };
 
   const handleDeleteSelected = () => {
-    setLinks((prev) => prev.filter((l) => !selectedLinkIds.includes(l.id)));
     setSelectedLinkIds([]);
   };
 
   const handleDeleteSingle = (id: string) => {
-    setLinks((prev) => prev.filter((l) => l.id !== id));
     setSelectedLinkIds((prev) => prev.filter((item) => item !== id));
   };
 

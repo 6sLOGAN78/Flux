@@ -12,43 +12,7 @@ import {
 } from '@/components/revenue/UnitEconomicsCards';
 import { CreateFunnelModal } from '@/components/funnels/CreateFunnelModal';
 
-const INITIAL_STEPS: FunnelStepItem[] = [
-  {
-    id: 's1',
-    name: '1. Ad Link Click',
-    visitors: 10000,
-    dropoffPercentage: 0,
-    conversionRateFromStart: 100,
-  },
-  {
-    id: 's2',
-    name: '2. Landing Page View',
-    visitors: 6500,
-    dropoffPercentage: 35.0,
-    conversionRateFromStart: 65.0,
-  },
-  {
-    id: 's3',
-    name: '3. Pricing Page Visit',
-    visitors: 2600,
-    dropoffPercentage: 60.0,
-    conversionRateFromStart: 26.0,
-  },
-  {
-    id: 's4',
-    name: '4. Account Sign Up',
-    visitors: 910,
-    dropoffPercentage: 65.0,
-    conversionRateFromStart: 9.1,
-  },
-  {
-    id: 's5',
-    name: '5. Paid Subscription',
-    visitors: 431,
-    dropoffPercentage: 52.6,
-    conversionRateFromStart: 4.31,
-  },
-];
+const INITIAL_STEPS: FunnelStepItem[] = [];
 
 const INITIAL_ECONOMICS: UnitEconomicsData = {
   totalSpend: 24500,

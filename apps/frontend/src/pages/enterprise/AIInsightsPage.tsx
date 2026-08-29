@@ -21,66 +21,12 @@ import {
   OptimizationTip,
 } from '@/components/ai/OptimizationTipsCard';
 
-const MOCK_CHART_DATA: CTRPredictionPoint[] = [
-  { hour: '00:00', actual: 3.2, predicted: 3.1 },
-  { hour: '04:00', actual: 2.8, predicted: 2.9 },
-  { hour: '08:00', actual: 4.5, predicted: 4.3 },
-  { hour: '12:00', actual: 6.2, predicted: 6.0 },
-  { hour: '16:00', actual: 5.8, predicted: 5.9 },
-  { hour: '20:00', actual: null, predicted: 6.8 },
-  { hour: '23:59', actual: null, predicted: 7.4 },
-];
+// Empty state
+const MOCK_CHART_DATA: CTRPredictionPoint[] = [];
 
-const INITIAL_ANOMALIES: AnomalyEvent[] = [
-  {
-    id: 'anom_1',
-    type: 'traffic_spike',
-    slug: 'summer-sale',
-    zScore: 3.84,
-    description: 'Sudden +480% referral surge from Hacker News frontpage.',
-    timestamp: '2026-08-19T22:40:00Z',
-  },
-  {
-    id: 'anom_2',
-    type: 'bot_surge',
-    slug: 'checkout-v2',
-    zScore: 4.12,
-    description: 'Anomalous automated scraper crawler detected from AS15169.',
-    timestamp: '2026-08-19T22:35:00Z',
-  },
-  {
-    id: 'anom_3',
-    type: 'traffic_drop',
-    slug: 'pricing-matrix',
-    zScore: -2.94,
-    description: 'Traffic dropped 65% below seasonal moving average expectation.',
-    timestamp: '2026-08-19T21:15:00Z',
-  },
-];
+const INITIAL_ANOMALIES: AnomalyEvent[] = [];
 
-const INITIAL_TIPS: OptimizationTip[] = [
-  {
-    id: 'tip_1',
-    title: 'Optimal Distribution Window',
-    description: 'Publishing Twitter/X short links at 14:00 UTC yields 2.4x higher conversion rate than average.',
-    impact: 'high',
-    actionLabel: 'Schedule Campaign',
-  },
-  {
-    id: 'tip_2',
-    title: 'Bot Protection Threshold',
-    description: 'Enable Cloudflare Turnstile bot shield on /checkout-v2 to preserve downstream ad spend.',
-    impact: 'high',
-    actionLabel: 'Enable Bot Shield',
-  },
-  {
-    id: 'tip_3',
-    title: 'A/B Testing Variant Divergence',
-    description: 'Variant B on smart routing rule #4 has reached 98.2% statistical confidence over Variant A.',
-    impact: 'medium',
-    actionLabel: 'Promote Variant',
-  },
-];
+const INITIAL_TIPS: OptimizationTip[] = [];
 
 export function AIInsightsPage() {
   const [anomalies, setAnomalies] =

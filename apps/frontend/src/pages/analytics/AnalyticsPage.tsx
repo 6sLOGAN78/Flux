@@ -27,42 +27,17 @@ import {
 } from '@/components/analytics/DeviceDonutChart';
 import { useAnalyticsSummary } from '@/hooks/useAnalyticsQuery';
 
-const MOCK_TIME_SERIES: TimeSeriesPoint[] = [
-  { timestamp: '00:00', clicks: 120, uniqueVisitors: 90 },
-  { timestamp: '04:00', clicks: 240, uniqueVisitors: 190 },
-  { timestamp: '08:00', clicks: 890, uniqueVisitors: 720 },
-  { timestamp: '12:00', clicks: 1420, uniqueVisitors: 1100 },
-  { timestamp: '16:00', clicks: 1180, uniqueVisitors: 940 },
-  { timestamp: '20:00', clicks: 650, uniqueVisitors: 510 },
-  { timestamp: '23:59', clicks: 420, uniqueVisitors: 330 },
-];
+const MOCK_TIME_SERIES: TimeSeriesPoint[] = [];
 
-const MOCK_COUNTRIES: CountryStat[] = [
-  { countryCode: 'US', countryName: 'United States', clicks: 14200, percentage: 48.2 },
-  { countryCode: 'GB', countryName: 'United Kingdom', clicks: 6400, percentage: 21.7 },
-  { countryCode: 'DE', countryName: 'Germany', clicks: 3100, percentage: 10.5 },
-  { countryCode: 'JP', countryName: 'Japan', clicks: 2400, percentage: 8.1 },
-  { countryCode: 'CA', countryName: 'Canada', clicks: 1800, percentage: 6.1 },
-];
-
-const MOCK_REFERRERS: ReferrerItem[] = [
-  { domain: 'twitter.com', name: 'Twitter / X', clicks: 8200, percentage: 42.1 },
-  { domain: 'google.com', name: 'Google Search', clicks: 5900, percentage: 30.3 },
-  { domain: 'direct', name: 'Direct / Email', clicks: 3100, percentage: 15.9 },
-  { domain: 'linkedin.com', name: 'LinkedIn', clicks: 2300, percentage: 11.7 },
-];
-
-const MOCK_DEVICES: DeviceStat[] = [
-  { label: 'Mobile (iOS/Android)', value: 16400, percentage: 58.4, color: '#09090b' },
-  { label: 'Desktop (macOS/Windows)', value: 10500, percentage: 37.4, color: '#2563eb' },
-  { label: 'Tablet & Others', value: 1200, percentage: 4.2, color: '#10b981' },
-];
+const MOCK_COUNTRIES: CountryStat[] = [];
+const MOCK_REFERRERS: ReferrerItem[] = [];
+const MOCK_DEVICES: DeviceStat[] = [];
 
 export function AnalyticsPage() {
   const { data: analyticsData } = useAnalyticsSummary();
 
-  const totalClicks = analyticsData?.totalClicks ?? 248920;
-  const uniqueVisitors = 142300;
+  const totalClicks = analyticsData?.totalClicks ?? 0;
+  const uniqueVisitors = 0;
 
   return (
     <div className="space-y-6">

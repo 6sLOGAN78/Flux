@@ -1,7 +1,7 @@
 import React from 'react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, Bell, LogOut, User } from 'lucide-react';
-import { useAuth } from '@/components/auth/AuthContext';
+import { useLocation, Link } from 'react-router-dom';
+import { Search, Menu, Bell } from 'lucide-react';
+import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
 
 export interface HeaderProps {
   onOpenCommandPalette: () => void;
@@ -10,8 +10,6 @@ export interface HeaderProps {
 
 export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderProps) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { user, signOut } = useAuth();
 
   const getBreadcrumbTitle = (pathname: string) => {
     const segments = pathname.split('/').filter(Boolean);
@@ -21,13 +19,6 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
       .split('-')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-  };
-
-  const handleSignOut = async () => {
-    if (signOut) {
-      await signOut();
-    }
-    navigate('/sign-in');
   };
 
   return (
@@ -50,6 +41,21 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
           </Link>
           <span>/</span>
           <span className="text-zinc-900 dark:text-zinc-100">{getBreadcrumbTitle(location.pathname)}</span>
+        </div>
+        
+        <div className="ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-800 hidden sm:flex">
+          <OrganizationSwitcher 
+            hidePersonal={false} 
+            afterCreateOrganizationUrl="/dashboard"
+            afterLeaveOrganizationUrl="/dashboard"
+            afterSelectOrganizationUrl="/dashboard"
+            appearance={{
+              elements: {
+                organizationSwitcherTrigger: "text-zinc-900 dark:text-zinc-100 focus:outline-none",
+                organizationPreviewMainIdentifier: "text-zinc-900 font-semibold",
+              }
+            }}
+          />
         </div>
       </div>
 
@@ -76,22 +82,9 @@ export function Header({ onOpenCommandPalette, onToggleMobileSidebar }: HeaderPr
           <Bell className="h-3.5 w-3.5" />
         </Link>
 
-        {user && (
-          <div className="flex items-center gap-2 border-l border-zinc-200 pl-2 dark:border-zinc-800">
-            <span className="hidden text-xs font-medium text-zinc-700 dark:text-zinc-300 md:inline">
-              {user.email}
-            </span>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              title="Sign Out"
-              className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-red-950/30 dark:hover:text-red-400"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 border-l border-zinc-200 pl-2 ml-1 dark:border-zinc-800">
+          <UserButton afterSignOutUrl="/login" />
+        </div>
       </div>
     </header>
   );

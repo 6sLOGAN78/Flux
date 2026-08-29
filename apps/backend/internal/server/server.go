@@ -1,4 +1,3 @@
-// Package server provides Echo HTTP server lifecycle initialization and startup.
 package server
 
 import (
@@ -11,9 +10,11 @@ import (
 	"flux/apps/backend/internal/handler"
 	"flux/apps/backend/internal/logger"
 	customMiddleware "flux/apps/backend/internal/middleware"
+	"flux/apps/backend/internal/repository"
 	"flux/apps/backend/internal/router"
 	"flux/apps/backend/internal/service"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -45,16 +46,28 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		migCancel()
 	}
 
-	authSvc := service.NewAuthService(cfg.JWTSecret, cfg.ClerkSecretKey)
-	redirectSvc := service.NewRedirectService(nil, nil)
+	if cfg.ClerkSecretKey != "" {
+		clerk.SetKey(cfg.ClerkSecretKey)
+	} else {
+		log.Warn().Msg("CLERK_SECRET_KEY is empty, authentication may fail")
+	}
+
+	redirectRepo := repository.NewPostgresRedirectRepository(dbPool)
+	redirectSvc := service.NewRedirectService(redirectRepo, nil)
 	redirectHandler := handler.NewRedirectHandler(redirectSvc)
 	analyticsHandler := handler.NewAnalyticsHandler(nil)
+	
+	linkRepo := repository.NewLinkRepository(dbPool)
+	linkSvc := service.NewLinkService(linkRepo)
+	linksHandler := handler.NewLinksHandler(linkSvc)
+
+	userRepo := repository.NewUserRepository(dbPool)
 
 	e := echo.New()
 	customMiddleware.RegisterGlobalMiddlewares(e)
 	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
 
-	router.InitRouter(e, dbPool, authSvc, redirectHandler, analyticsHandler)
+	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler)
 
 	return &Server{
 		Echo:   e,

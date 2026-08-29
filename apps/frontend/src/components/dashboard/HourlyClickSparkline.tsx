@@ -23,24 +23,24 @@ export interface HourlyClickSparklineProps {
 }
 
 const DEFAULT_HOURLY_DATA: HourlyDataPoint[] = [
-  { hour: '00:00', clicks: 120 },
-  { hour: '02:00', clicks: 210 },
-  { hour: '04:00', clicks: 340 },
-  { hour: '06:00', clicks: 520 },
-  { hour: '08:00', clicks: 890 },
-  { hour: '10:00', clicks: 1240 },
-  { hour: '12:00', clicks: 1420 },
-  { hour: '14:00', clicks: 1680 },
-  { hour: '16:00', clicks: 2100 },
-  { hour: '18:00', clicks: 1950 },
-  { hour: '20:00', clicks: 1800 },
-  { hour: '22:00', clicks: 1350 },
+  { hour: '00:00', clicks: 0 },
+  { hour: '02:00', clicks: 0 },
+  { hour: '04:00', clicks: 0 },
+  { hour: '06:00', clicks: 0 },
+  { hour: '08:00', clicks: 0 },
+  { hour: '10:00', clicks: 0 },
+  { hour: '12:00', clicks: 0 },
+  { hour: '14:00', clicks: 0 },
+  { hour: '16:00', clicks: 0 },
+  { hour: '18:00', clicks: 0 },
+  { hour: '20:00', clicks: 0 },
+  { hour: '22:00', clicks: 0 },
 ];
 
 export function HourlyClickSparkline({
   data = DEFAULT_HOURLY_DATA,
   title = '24h Click Volume',
-  totalClicks = 13620,
+  totalClicks = 0,
   isLoading = false,
 }: HourlyClickSparklineProps) {
   return (

@@ -12,38 +12,9 @@ import {
   WebhookDeliveryItem,
 } from '@/components/webhooks/WebhookDeliveryHistory';
 
-const INITIAL_ENDPOINTS: WebhookEndpoint[] = [
-  {
-    id: 'wh_1',
-    url: 'https://api.acme.com/webhooks/flux',
-    events: ['link.created', 'click.recorded'],
-    status: 'active',
-    createdAt: '2026-08-10T00:00:00Z',
-  },
-];
+const INITIAL_ENDPOINTS: WebhookEndpoint[] = [];
 
-const INITIAL_DELIVERIES: WebhookDeliveryItem[] = [
-  {
-    id: 'del_1',
-    eventId: 'evt_99120',
-    event: 'click.recorded',
-    statusCode: 200,
-    latencyMs: 34,
-    timestamp: '2026-08-19T22:30:00Z',
-    requestPayload: JSON.stringify({ slug: 'summer-launch', clicks: 1420 }),
-    responseBody: '{"received": true}',
-  },
-  {
-    id: 'del_2',
-    eventId: 'evt_99121',
-    event: 'link.created',
-    statusCode: 500,
-    latencyMs: 128,
-    timestamp: '2026-08-19T22:28:00Z',
-    requestPayload: JSON.stringify({ slug: 'promo-2026', url: 'https://acme.com/promo' }),
-    responseBody: 'Internal Server Error',
-  },
-];
+const INITIAL_DELIVERIES: WebhookDeliveryItem[] = [];
 
 export function WebhooksPage() {
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>(INITIAL_ENDPOINTS);

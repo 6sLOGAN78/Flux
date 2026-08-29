@@ -15,44 +15,9 @@ import {
   DeepLinkConfig,
 } from '@/components/routing/DeepLinkConfigCard';
 
-const INITIAL_GEO_RULES: GeoRule[] = [
-  {
-    id: 'geo_1',
-    countryCode: 'GB',
-    countryName: 'United Kingdom',
-    destinationUrl: 'https://uk.store.acme.com',
-  },
-  {
-    id: 'geo_2',
-    countryCode: 'DE',
-    countryName: 'Germany',
-    destinationUrl: 'https://de.store.acme.com',
-  },
-  {
-    id: 'geo_3',
-    countryCode: 'JP',
-    countryName: 'Japan',
-    destinationUrl: 'https://jp.store.acme.com',
-  },
-];
+const INITIAL_GEO_RULES: GeoRule[] = [];
 
-const INITIAL_DEVICE_RULES: DeviceRule[] = [
-  {
-    id: 'dev_1',
-    deviceType: 'ios',
-    destinationUrl: 'https://apps.apple.com/app/id1548293021',
-  },
-  {
-    id: 'dev_2',
-    deviceType: 'android',
-    destinationUrl: 'https://play.google.com/store/apps/details?id=com.acme.app',
-  },
-  {
-    id: 'dev_3',
-    deviceType: 'desktop',
-    destinationUrl: 'https://acme.com/web-app',
-  },
-];
+const INITIAL_DEVICE_RULES: DeviceRule[] = [];
 
 export function SmartRoutingPage() {
   const [activeTab, setActiveTab] = useState('geo');

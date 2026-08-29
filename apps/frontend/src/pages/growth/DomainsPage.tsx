@@ -8,32 +8,7 @@ import {
 } from '@/components/domains/DNSVerificationCard';
 import { DomainSetupModal } from '@/components/domains/DomainSetupModal';
 
-const INITIAL_DOMAINS: CustomDomainItem[] = [
-  {
-    id: 'dom_1',
-    hostname: 'go.brand.com',
-    status: 'verified',
-    sslStatus: 'active',
-    cnameTarget: 'cname.flux.to',
-    txtVerificationKey: '_flux-challenge.go.brand.com',
-    txtVerificationValue: 'flux-vld-994810293',
-    rootRedirectUrl: 'https://brand.com',
-    clicksRouted: 49200,
-    createdAt: '2026-08-15T12:00:00Z',
-  },
-  {
-    id: 'dom_2',
-    hostname: 'links.acmecorp.io',
-    status: 'verified',
-    sslStatus: 'active',
-    cnameTarget: 'cname.flux.to',
-    txtVerificationKey: '_flux-challenge.links.acmecorp.io',
-    txtVerificationValue: 'flux-vld-318491829',
-    rootRedirectUrl: 'https://acmecorp.io',
-    clicksRouted: 18450,
-    createdAt: '2026-08-17T09:30:00Z',
-  },
-];
+const INITIAL_DOMAINS: CustomDomainItem[] = [];
 
 export function DomainsPage() {
   const [domains, setDomains] = useState<CustomDomainItem[]>(INITIAL_DOMAINS);
