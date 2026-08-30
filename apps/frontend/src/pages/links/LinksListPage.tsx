@@ -17,48 +17,6 @@ import { BulkCategorizeModal } from '@/components/links/BulkCategorizeModal';
 import { useCreateLink, useBulkCategorize, useGetLinks } from '@/hooks/useLinksQuery';
 import { getShortDomain } from '@/config/env';
 
-const INITIAL_MOCK_LINKS: LinkItem[] = [
-  {
-    id: 'link_1',
-    shortCode: 'v2-launch',
-    destinationUrl: 'https://flux.to/blog/high-performance-edge-router-v2',
-    title: 'V2 Launch Announcement',
-    clicks: 1420,
-    createdAt: '2026-08-19T10:00:00Z',
-    category: 'Marketing',
-    domain: 'flux.to',
-  },
-  {
-    id: 'link_2',
-    shortCode: 'api-reference',
-    destinationUrl: 'https://flux.to/docs/reference/openapi-v1',
-    title: 'Developer API Reference',
-    clicks: 890,
-    createdAt: '2026-08-18T14:30:00Z',
-    category: 'Documentation',
-    domain: 'flux.to',
-  },
-  {
-    id: 'link_3',
-    shortCode: 'summer-promo',
-    destinationUrl: 'https://store.acme.com/collections/summer-2026?utm_source=twitter',
-    title: 'Summer 2026 Apparel Sale',
-    clicks: 3410,
-    createdAt: '2026-08-17T09:15:00Z',
-    category: 'Marketing',
-    domain: 'flux.to',
-  },
-  {
-    id: 'link_4',
-    shortCode: 'discord-community',
-    destinationUrl: 'https://discord.gg/flux-dev-mesh-community',
-    title: 'Flux Developer Discord Community',
-    clicks: 560,
-    createdAt: '2026-08-15T11:00:00Z',
-    category: 'Social',
-    domain: 'flux.to',
-  },
-];
 
 export function LinksListPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,40 +83,29 @@ export function LinksListPage() {
     customCode?: string;
     title?: string;
     category?: string;
+    campaignId?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
   }) => {
     createLinkMutation.mutate(
       {
         destinationUrl: data.destinationUrl,
         customCode: data.customCode,
         title: data.title,
+        campaignId: data.campaignId,
+        utmSource: data.utmSource,
+        utmMedium: data.utmMedium,
+        utmCampaign: data.utmCampaign,
       },
       {
         onSuccess: (res: any) => {
-          const newLink: LinkItem = {
-            id: res?.id || `link_${Date.now()}`,
-            shortCode: res?.shortCode || res?.customCode || data.customCode || 'link',
-            destinationUrl: data.destinationUrl,
-            title: data.title,
-            clicks: 0,
-            createdAt: new Date().toISOString(),
-            category: data.category,
-            domain: getShortDomain(),
-          };
           setIsDrawerOpen(false);
+          // Wait for the query cache to refetch to update UI automatically
+          refetch();
         },
-        onError: () => {
-          // Fallback optimistic creation for standalone demo
-          const newLink: LinkItem = {
-            id: `link_${Date.now()}`,
-            shortCode: data.customCode || `demo-${Math.random().toString(36).substring(2, 6)}`,
-            destinationUrl: data.destinationUrl,
-            title: data.title,
-            clicks: 0,
-            createdAt: new Date().toISOString(),
-            category: data.category,
-            domain: getShortDomain(),
-          };
-          setIsDrawerOpen(false);
+        onError: (error) => {
+          console.error("Failed to create link:", error);
         },
       }
     );
@@ -284,6 +231,7 @@ export function LinksListPage() {
         onClose={() => setIsDrawerOpen(false)}
         onSubmit={handleCreateLink}
         isLoading={createLinkMutation.isPending}
+        error={createLinkMutation.error ? createLinkMutation.error.message || "Failed to create link. Please try again." : null}
       />
 
       {/* Bulk Categorize Modal */}

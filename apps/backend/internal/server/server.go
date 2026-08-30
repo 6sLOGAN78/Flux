@@ -31,6 +31,7 @@ type Server struct {
 	DBPool             *pgxpool.Pool
 	AnalyticsPublisher *service.RedisAnalyticsPublisher
 	ClickHouseConsumer *service.RedisAnalyticsConsumer
+	DomainWorker       *service.DomainVerificationWorker
 }
 
 // NewServer initializes and wires all dependencies for the server.
@@ -58,16 +59,18 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		log.Warn().Msg("CLERK_SECRET_KEY is empty, authentication may fail")
 	}
 
-	redirectRepo := repository.NewPostgresRedirectRepository(dbPool)
-	redirectSvc := service.NewRedirectService(redirectRepo, nil)
-
 	var pub *service.RedisAnalyticsPublisher
 	var pubInterface analytics.AnalyticsPublisher
 	var chConsumer *service.RedisAnalyticsConsumer
 	var analyticsProvider repository.AnalyticsProvider
+	var redirectCache repository.RedirectCache
 
 	if cfg.RedisURL != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+		
+		// Initialize the Redirect Cache
+		redirectCache = repository.NewRedisRedirectCache(redisClient)
+
 		pub = service.NewRedisAnalyticsPublisher(redisClient, cfg.AnalyticsRedisStream, 5000)
 		pub.Start()
 		pubInterface = pub
@@ -87,12 +90,31 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		pubInterface = service.NewLogAnalyticsPublisher()
 	}
 
+	redirectRepo := repository.NewPostgresRedirectRepository(dbPool)
+	redirectSvc := service.NewRedirectService(redirectRepo, redirectCache)
+
 	redirectHandler := handler.NewRedirectHandler(redirectSvc, pubInterface)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsProvider)
 
 	linkRepo := repository.NewLinkRepository(dbPool)
-	linkSvc := service.NewLinkService(linkRepo)
+	campaignRepo := repository.NewCampaignRepository(dbPool)
+	domainRepo := repository.NewDomainRepository(dbPool)
+	
+	linkSvc := service.NewLinkService(linkRepo, redirectCache, campaignRepo)
 	linksHandler := handler.NewLinksHandler(linkSvc)
+	
+	campaignSvc := service.NewCampaignService(campaignRepo, linkRepo, redirectCache)
+	campaignHandler := handler.NewCampaignHandler(campaignSvc)
+
+	domainSvc := service.NewDomainService(domainRepo, redirectCache, cfg.PlatformDomain)
+	domainHandler := handler.NewDomainHandler(domainSvc)
+
+	domainWorker := service.NewDomainVerificationWorker(domainRepo, redirectCache, nil, 0)
+	if dbPool != nil {
+		domainWorker.Start()
+	}
+
+	tlsAuthHandler := handler.NewTLSAuthHandler(domainRepo, cfg.InternalAPIKey)
 
 	userRepo := repository.NewUserRepository(dbPool)
 
@@ -101,7 +123,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	customMiddleware.RegisterGlobalMiddlewares(e)
 	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
 
-	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler)
+	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler)
 
 	return &Server{
 		Echo:               e,
@@ -109,6 +131,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		DBPool:             dbPool,
 		AnalyticsPublisher: pub,
 		ClickHouseConsumer: chConsumer,
+		DomainWorker:       domainWorker,
 	}, nil
 }
 
@@ -123,9 +146,14 @@ func (s *Server) Start() error {
 
 // Stop shuts down the server gracefully, draining any pending background tasks.
 func (s *Server) Stop(ctx context.Context) error {
-	if s.ClickHouseConsumer != nil {
-		log.Info().Msg("stopping clickhouse consumer gracefully...")
-		s.ClickHouseConsumer.Stop(5 * time.Second)
+	log.Info().Msg("shutting down HTTP server to stop accepting new requests...")
+	err := s.Echo.Shutdown(ctx)
+
+	if s.DomainWorker != nil {
+		log.Info().Msg("stopping domain verification worker gracefully...")
+		workerCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s.DomainWorker.Stop(workerCtx)
+		cancel()
 	}
 
 	if s.AnalyticsPublisher != nil {
@@ -133,6 +161,10 @@ func (s *Server) Stop(ctx context.Context) error {
 		s.AnalyticsPublisher.Stop(5 * time.Second)
 	}
 
-	log.Info().Msg("shutting down HTTP server...")
-	return s.Echo.Shutdown(ctx)
+	if s.ClickHouseConsumer != nil {
+		log.Info().Msg("stopping clickhouse consumer gracefully...")
+		s.ClickHouseConsumer.Stop(5 * time.Second)
+	}
+
+	return err
 }

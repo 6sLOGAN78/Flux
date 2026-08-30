@@ -11,8 +11,14 @@ type CreateLinkPayload struct {
 	DestinationURL string     `json:"destinationUrl" validate:"required,url"`
 	CustomCode     *string    `json:"customCode,omitempty" validate:"omitempty,min=3,max=20,alphanum"`
 	CategoryID     *uuid.UUID `json:"categoryId,omitempty" validate:"omitempty,uuid"`
+	CampaignID     *uuid.UUID `json:"campaignId,omitempty" validate:"omitempty,uuid"`
 	Title          *string    `json:"title,omitempty" validate:"omitempty,max=100"`
 	Description    *string    `json:"description,omitempty" validate:"omitempty,max=255"`
+	UTMSource      *string    `json:"utmSource,omitempty" validate:"omitempty,max=255"`
+	UTMMedium      *string    `json:"utmMedium,omitempty" validate:"omitempty,max=255"`
+	UTMCampaign    *string    `json:"utmCampaign,omitempty" validate:"omitempty,max=255"`
+	UTMTerm        *string    `json:"utmTerm,omitempty" validate:"omitempty,max=255"`
+	UTMContent     *string    `json:"utmContent,omitempty" validate:"omitempty,max=255"`
 }
 
 func (p *CreateLinkPayload) Validate() error {
@@ -26,8 +32,14 @@ type UpdateLinkPayload struct {
 	ID             uuid.UUID  `param:"id" validate:"required,uuid"`
 	DestinationURL *string    `json:"destinationUrl,omitempty" validate:"omitempty,url"`
 	CategoryID     *uuid.UUID `json:"categoryId,omitempty" validate:"omitempty,uuid"`
+	CampaignID     *uuid.UUID `json:"campaignId,omitempty" validate:"omitempty,uuid"`
 	Title          *string    `json:"title,omitempty" validate:"omitempty,max=100"`
 	Description    *string    `json:"description,omitempty" validate:"omitempty,max=255"`
+	UTMSource      *string    `json:"utmSource,omitempty" validate:"omitempty,max=255"`
+	UTMMedium      *string    `json:"utmMedium,omitempty" validate:"omitempty,max=255"`
+	UTMCampaign    *string    `json:"utmCampaign,omitempty" validate:"omitempty,max=255"`
+	UTMTerm        *string    `json:"utmTerm,omitempty" validate:"omitempty,max=255"`
+	UTMContent     *string    `json:"utmContent,omitempty" validate:"omitempty,max=255"`
 }
 
 func (p *UpdateLinkPayload) Validate() error {

@@ -182,3 +182,118 @@ func (r *ClickHouseAnalyticsRepository) GetReferrers(ctx context.Context, worksp
 
 	return &analytics.ReferrersResponse{Data: data}, nil
 }
+
+func (r *ClickHouseAnalyticsRepository) GetCampaignPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.CampaignPerformanceResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	query := `
+		SELECT 
+			campaign_id,
+			uniqExact(event_id) as clicks,
+			uniqExact(ip_hash) as unique_visitors
+		FROM analytics_events
+		WHERE workspace_id = @workspace_id
+		  AND timestamp >= @from 
+		  AND timestamp <= @to
+		GROUP BY campaign_id
+		ORDER BY clicks DESC
+		LIMIT @limit
+	`
+
+	rows, err := r.conn.Query(ctx, query,
+		clickhouse.Named("workspace_id", workspaceID),
+		clickhouse.Named("from", from),
+		clickhouse.Named("to", to),
+		clickhouse.Named("limit", limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("clickhouse campaign_performance query error: %w", err)
+	}
+	defer rows.Close()
+
+	var data []analytics.CampaignPerformance
+	for rows.Next() {
+		var p analytics.CampaignPerformance
+		if err := rows.Scan(&p.CampaignID, &p.Clicks, &p.UniqueVisitors); err != nil {
+			return nil, fmt.Errorf("clickhouse scan campaign_performance error: %w", err)
+		}
+		data = append(data, p)
+	}
+	
+	if data == nil {
+		data = []analytics.CampaignPerformance{}
+	}
+
+	return &analytics.CampaignPerformanceResponse{Data: data}, nil
+}
+
+func (r *ClickHouseAnalyticsRepository) GetUTMPerformance(ctx context.Context, workspaceID string, dimension string, from, to time.Time, limit int) (*analytics.UTMPerformanceResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	var dimCol string
+	switch dimension {
+	case "utm_source":
+		dimCol = "utm_source"
+	case "utm_medium":
+		dimCol = "utm_medium"
+	case "utm_campaign":
+		dimCol = "utm_campaign"
+	case "utm_term":
+		dimCol = "utm_term"
+	case "utm_content":
+		dimCol = "utm_content"
+	default:
+		dimCol = "utm_source"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			%s as utm_value,
+			uniqExact(event_id) as clicks,
+			uniqExact(ip_hash) as unique_visitors
+		FROM analytics_events
+		WHERE workspace_id = @workspace_id
+		  AND timestamp >= @from 
+		  AND timestamp <= @to
+		  AND %s IS NOT NULL
+		  AND %s != ''
+		GROUP BY utm_value
+		ORDER BY clicks DESC
+		LIMIT @limit
+	`, dimCol, dimCol, dimCol)
+
+	rows, err := r.conn.Query(ctx, query,
+		clickhouse.Named("workspace_id", workspaceID),
+		clickhouse.Named("from", from),
+		clickhouse.Named("to", to),
+		clickhouse.Named("limit", limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("clickhouse utm_performance query error: %w", err)
+	}
+	defer rows.Close()
+
+	var data []analytics.UTMPerformance
+	for rows.Next() {
+		var p analytics.UTMPerformance
+		// utm_value could be read as string pointer? No, WHERE IS NOT NULL filters it out, but just in case, read as *string
+		var utmVal *string
+		if err := rows.Scan(&utmVal, &p.Clicks, &p.UniqueVisitors); err != nil {
+			return nil, fmt.Errorf("clickhouse scan utm_performance error: %w", err)
+		}
+		if utmVal != nil {
+			p.UTMValue = *utmVal
+		}
+		data = append(data, p)
+	}
+	
+	if data == nil {
+		data = []analytics.UTMPerformance{}
+	}
+
+	return &analytics.UTMPerformanceResponse{Dimension: dimCol, Data: data}, nil
+}

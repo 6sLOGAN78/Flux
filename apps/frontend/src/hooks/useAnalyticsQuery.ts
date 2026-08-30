@@ -114,3 +114,36 @@ export function useStreamMetrics() {
     refetchInterval: 5000,
   });
 }
+
+export function useAnalyticsCampaigns(from?: string, to?: string) {
+  const { orgId } = useClerkAuth();
+  return useQuery({
+    queryKey: ['analytics', 'campaigns', orgId, from, to] as const,
+    queryFn: async () => {
+      const response = await apiClient.getAnalyticsCampaigns({
+        query: { from, to }
+      });
+      if (response.status !== 200) {
+        throw new Error('Failed to fetch campaign analytics');
+      }
+      return response.body;
+    },
+  });
+}
+
+export function useAnalyticsUTM(dimension: string, from?: string, to?: string) {
+  const { orgId } = useClerkAuth();
+  return useQuery({
+    queryKey: ['analytics', 'utm', dimension, orgId, from, to] as const,
+    queryFn: async () => {
+      const response = await apiClient.getAnalyticsUTM({
+        query: { dimension, from, to }
+      });
+      if (response.status !== 200) {
+        throw new Error('Failed to fetch UTM analytics');
+      }
+      return response.body;
+    },
+    enabled: Boolean(dimension),
+  });
+}

@@ -11,7 +11,7 @@ import (
 )
 
 // RegisterV1Routes attaches protected API v1 endpoints to Echo.
-func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler) {
+func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler, campaignHandler *handler.CampaignHandler, domainHandler *handler.DomainHandler) {
 	v1 := e.Group("/api/v1")
 	
 	// Protected routes
@@ -35,6 +35,8 @@ func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyti
 		protected.GET("/analytics/timeseries", analyticsHandler.GetTimeseries)
 		protected.GET("/analytics/top-links", analyticsHandler.GetTopLinks)
 		protected.GET("/analytics/referrers", analyticsHandler.GetReferrers)
+		protected.GET("/analytics/campaigns", analyticsHandler.GetCampaignPerformance)
+		protected.GET("/analytics/utm", analyticsHandler.GetUTMPerformance)
 	}
 
 	if linksHandler != nil {
@@ -44,5 +46,22 @@ func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyti
 		links.GET("/:id", linksHandler.GetLinkByID)
 		links.PATCH("/:id", linksHandler.UpdateLink)
 		links.DELETE("/:id", linksHandler.DeleteLink)
+	}
+	
+	if campaignHandler != nil {
+		campaigns := protected.Group("/campaigns")
+		campaigns.POST("", campaignHandler.CreateCampaign)
+		campaigns.GET("", campaignHandler.ListCampaigns)
+		campaigns.GET("/:id", campaignHandler.GetCampaign)
+		campaigns.PATCH("/:id", campaignHandler.UpdateCampaign)
+		campaigns.DELETE("/:id", campaignHandler.DeleteCampaign)
+	}
+
+	if domainHandler != nil {
+		domains := protected.Group("/domains")
+		domains.POST("", domainHandler.CreateDomain)
+		domains.GET("", domainHandler.GetDomains)
+		domains.GET("/:id", domainHandler.GetDomain)
+		domains.DELETE("/:id", domainHandler.DeleteDomain)
 	}
 }

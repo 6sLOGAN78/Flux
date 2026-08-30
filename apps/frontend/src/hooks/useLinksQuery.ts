@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import type { CreateLinkInput, UpdateLinkInput, BulkCategorizeInput } from '@flux/zod';
+import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 
 export const linksQueryKeys = {
-  all: ['links'] as const,
-  detail: (shortCode: string) => ['links', 'detail', shortCode] as const,
-  metrics: (id: string) => ['links', 'metrics', id] as const,
+  all: (orgId: string | null | undefined) => ['links', orgId] as const,
+  detail: (orgId: string | null | undefined, shortCode: string) => ['links', 'detail', orgId, shortCode] as const,
+  metrics: (orgId: string | null | undefined, id: string) => ['links', 'metrics', orgId, id] as const,
 };
 
 function extractErrorMessage(body: unknown, fallback: string): string {
@@ -16,8 +17,9 @@ function extractErrorMessage(body: unknown, fallback: string): string {
 }
 
 export function useGetLink(shortCode: string, enabled: boolean = true) {
+  const { orgId } = useClerkAuth();
   return useQuery({
-    queryKey: linksQueryKeys.detail(shortCode),
+    queryKey: linksQueryKeys.detail(orgId, shortCode),
     queryFn: async () => {
       const response = await apiClient.getLink({
         params: { shortCode },
@@ -33,6 +35,7 @@ export function useGetLink(shortCode: string, enabled: boolean = true) {
 
 export function useCreateLink() {
   const queryClient = useQueryClient();
+  const { orgId } = useClerkAuth();
   return useMutation({
     mutationFn: async (input: CreateLinkInput) => {
       const response = await apiClient.createLink({
@@ -44,13 +47,14 @@ export function useCreateLink() {
       return response.body;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all(orgId) });
     },
   });
 }
 
 export function useUpdateLink() {
   const queryClient = useQueryClient();
+  const { orgId } = useClerkAuth();
   return useMutation({
     mutationFn: async ({ id, body }: { id: string; body: UpdateLinkInput }) => {
       const response = await apiClient.updateLink({
@@ -63,9 +67,9 @@ export function useUpdateLink() {
       return response.body;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all(orgId) });
       if (data && typeof data === 'object' && 'shortCode' in data) {
-        queryClient.invalidateQueries({ queryKey: linksQueryKeys.detail(String(data.shortCode)) });
+        queryClient.invalidateQueries({ queryKey: linksQueryKeys.detail(orgId, String(data.shortCode)) });
       }
     },
   });
@@ -73,6 +77,7 @@ export function useUpdateLink() {
 
 export function useBulkCategorize() {
   const queryClient = useQueryClient();
+  const { orgId } = useClerkAuth();
   return useMutation({
     mutationFn: async (body: BulkCategorizeInput) => {
       const response = await apiClient.bulkCategorizeLinks({
@@ -84,16 +89,17 @@ export function useBulkCategorize() {
       return response.body;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: linksQueryKeys.all(orgId) });
     },
   });
 }
 
 export function useGetLinks(params?: { page?: string, limit?: string, search?: string }) {
+  const { orgId } = useClerkAuth();
   return useQuery({
-    queryKey: [...linksQueryKeys.all, params],
+    queryKey: [...linksQueryKeys.all(orgId), params],
     queryFn: async () => {
-      // @ts-ignore - ignoring potential type mismatch for the newly added getLinks contract
+      // @ts-ignore
       const response = await apiClient.getLinks({
         query: params || {},
       });

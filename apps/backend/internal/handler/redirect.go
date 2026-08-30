@@ -32,7 +32,9 @@ func (h *RedirectHandler) HandleRedirect(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "slug parameter is required")
 	}
 
-	target, err := h.svc.ResolveRedirect(c.Request().Context(), slug)
+	hostname := utils.NormalizeHostname(c.Request().Host)
+
+	target, err := h.svc.ResolveRedirect(c.Request().Context(), hostname, slug)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "short link not found")
@@ -70,6 +72,14 @@ func (h *RedirectHandler) HandleRedirect(c echo.Context) error {
 			LinkID:      target.LinkID,
 			WorkspaceID: target.TenantID,
 			ShortCode:   target.Slug,
+			CampaignID:  target.CampaignID,
+			UTMSource:   target.UTMSource,
+			UTMMedium:   target.UTMMedium,
+			UTMCampaign: target.UTMCampaign,
+			UTMTerm:     target.UTMTerm,
+			UTMContent:  target.UTMContent,
+			CustomDomainID: target.CustomDomainID,
+			Hostname:    target.Hostname,
 			Referrer:    c.Request().Referer(),
 			UserAgent:   c.Request().UserAgent(),
 			IPHash:      utils.HashIP(c.RealIP()),

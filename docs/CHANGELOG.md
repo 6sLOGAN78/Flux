@@ -58,3 +58,52 @@
   - Added strict date boundary controls preventing queries > 1 year and defaulting to rolling 30-days.
   - Implemented ClickHouse Repository layer with direct integration testing using testcontainers.
   - Resolved ClickHouse-go native startup networking race via resilient Ping retry wrapper.
+## [Unreleased]
+### Security & Reliability Fixes (BUG-001 Remediation)
+- **Security**: Removed `X-Test-Clerk-*` spoofing headers from production `ClerkJWTMiddleware` to guarantee multi-tenant isolation.
+- **Reliability**: Corrected graceful shutdown order in `server.go` to stop the Echo HTTP server *before* terminating the Redis analytics publisher, preventing panics and data loss.
+- **Reliability**: Deprecated per-call time-seeded PRNG in `links.go` for shortcode generation; now uses `crypto/rand` bounds, `pkg/base62`, and a 5-attempt unique-constraint retry loop.
+- **Security**: Hardened configuration validation to fail-closed if `CLERK_SECRET_KEY` is missing.
+- **Frontend**: Removed optimistic mock-success fallback in `LinksListPage.tsx` so API failures correctly surface to the user.
+### Performance Enhancements (FEAT-005)
+- **Caching**: Implemented a Redis-backed Cache-Aside strategy for public redirect resolution (`GET /:shortCode`).
+  - Added singleflight request coalescing to prevent cache stampedes on concurrent misses.
+  - Failures to reach Redis gracefully fall back to querying PostgreSQL without disrupting the end-user.
+  - Linked `LinkService` to explicitly invalidate cached entries on link modification or deletion.
+
+### Phase 3 - Click-time Attribution & Analytics Pipeline
+- Added `LinkRedirectTarget` UTM resolution at query time (`LEFT JOIN` on campaigns).
+- Implemented Cache Hit/Miss Parity for attribution data.
+- Eager invalidation of Redis redirect caches when Campaigns are modified or deleted.
+- Non-blocking injection of `CampaignID` and 5 standard UTMs into `AnalyticsEvent` payloads.
+- Mapped Analytics Consumer directly to ClickHouse schema for immutable historical tracking.
+
+### Phase 4 - Attribution Analytics API
+- Implemented `GET /api/v1/analytics/campaigns` returning click/visitor aggregation per campaign.
+- Implemented `GET /api/v1/analytics/utm` returning click/visitor aggregation per selected UTM dimension.
+- Maintained immutable historical tracking in ClickHouse without mutating old data.
+- Fixed `AnalyticsHandler` type assertion for `tenant_id` extracting `uuid.UUID` safely.
+- Added exhaustive integration tests for workspace isolation and historical attribution spanning cache/DB.
+- Added strict `@flux/zod` contract exports for campaign & UTM analytics performance.
+
+### Phase 11F - Campaign & UTM Frontend Integration
+- Wired up `CampaignsPage.tsx`, `CampaignListTable.tsx`, and `UTMBuilderStudio.tsx` to the real backend APIs.
+- Implemented `useCampaignsQuery.ts` and `useAnalyticsQuery.ts` hooks with proper React Query caching and Clerk `orgId` isolation.
+- Integrated `CreateLinkDrawer.tsx` to handle `campaignId` and UTM overrides.
+- Updated `AnalyticsPage.tsx` to include `UTMPerformanceTable.tsx` for real-time campaign attribution.
+- Removed legacy `MOCK_` and `INITIAL_` fallback data.
+- Fixed OpenAPI `@ts-rest/core` contract syntax errors.
+
+### Phase 12B - Custom Domain Data Model
+- Implemented `custom_domains` PostgreSQL schema (Migration 008) tracking domain state and DNS validation tokens.
+- Bound domains strongly to `tenant_id` ensuring isolated ownership per workspace.
+- Added strict normalizations (`CHECK (hostname = LOWER(hostname))`, `UNIQUE`, no trailing dots).
+- Connected `links` table to `custom_domains` via `custom_domain_id` (ON DELETE SET NULL).
+- Implemented repository layer and extensive DB-level integration tests via TestContainers.
+
+### Phase 12E - Custom Domain Routing & Cache
+- Updated `RedirectHandler` to extract and normalize `Host` header (stripping ports/trailing dots and lowercasing).
+- Re-architected Redis cache keys from `link:{slug}` to `redirect:{hostname}:{slug}` to isolate routing contexts.
+- Overhauled `GetByHostAndSlug` SQL query to assert strong tenant boundaries natively, preventing cross-tenant access via domain spoofing.
+- Augmented cache invalidation for Links and Campaigns to dynamically lookup and purge `redirect:{hostname}:{slug}` keys based on the link's custom domain attachment.
+- Preserved `CustomDomainID` and `Hostname` metadata into `AnalyticsEvent` payload for Phase 12G integration.

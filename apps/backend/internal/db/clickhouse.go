@@ -63,7 +63,13 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 		short_code String,
 		referrer String,
 		user_agent String,
-		ip_hash String
+		ip_hash String,
+		campaign_id Nullable(String),
+		utm_source Nullable(String),
+		utm_medium Nullable(String),
+		utm_campaign Nullable(String),
+		utm_term Nullable(String),
+		utm_content Nullable(String)
 	) ENGINE = MergeTree()
 	PARTITION BY toYYYYMM(timestamp)
 	ORDER BY (workspace_id, link_id, timestamp)
@@ -74,6 +80,24 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 
 	if err := conn.Exec(ctx, schema); err != nil {
 		return fmt.Errorf("failed to create analytics_events table: %w", err)
+	}
+
+	// For an already existing table, CREATE TABLE IF NOT EXISTS does nothing and ignores new columns.
+	// We must explicitly run ALTER TABLE ADD COLUMN IF NOT EXISTS to seamlessly upgrade the schema
+	// while keeping existing events backward compatible (new optional/nullable fields).
+	alterQueries := []string{
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS campaign_id Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_source Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_medium Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_campaign Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_term Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_content Nullable(String)",
+	}
+
+	for _, q := range alterQueries {
+		if err := conn.Exec(ctx, q); err != nil {
+			return fmt.Errorf("failed to alter analytics_events schema: %w", err)
+		}
 	}
 
 	log.Info().Msg("successfully applied ClickHouse schema migrations")

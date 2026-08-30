@@ -220,6 +220,12 @@ func (c *RedisAnalyticsConsumer) insertToClickHouse(events []analytics.Analytics
 			e.Referrer,
 			e.UserAgent,
 			e.IPHash,
+			e.CampaignID,
+			e.UTMSource,
+			e.UTMMedium,
+			e.UTMCampaign,
+			e.UTMTerm,
+			e.UTMContent,
 		)
 		if err != nil {
 			return err

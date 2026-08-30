@@ -35,16 +35,28 @@ func (r *LinkRepository) CreateLink(
 			destination_url,
 			tenant_id,
 			category_id,
+			campaign_id,
 			title,
-			description
+			description,
+			utm_source,
+			utm_medium,
+			utm_campaign,
+			utm_term,
+			utm_content
 		)
 		VALUES (
 			@short_code,
 			@destination_url,
 			@tenant_id,
 			@category_id,
+			@campaign_id,
 			@title,
-			@description
+			@description,
+			@utm_source,
+			@utm_medium,
+			@utm_campaign,
+			@utm_term,
+			@utm_content
 		)
 		RETURNING *
 	`
@@ -54,8 +66,14 @@ func (r *LinkRepository) CreateLink(
 		"destination_url": payload.DestinationURL,
 		"tenant_id":       tenantID,
 		"category_id":     payload.CategoryID,
+		"campaign_id":     payload.CampaignID,
 		"title":          payload.Title,
 		"description":    payload.Description,
+		"utm_source":     payload.UTMSource,
+		"utm_medium":     payload.UTMMedium,
+		"utm_campaign":   payload.UTMCampaign,
+		"utm_term":       payload.UTMTerm,
+		"utm_content":    payload.UTMContent,
 	})
 	if err != nil {
 		return nil, sqlerr.HandleError(fmt.Errorf("failed to execute create link query: %w", err))
@@ -220,6 +238,10 @@ func (r *LinkRepository) UpdateLink(
 		setClauses = append(setClauses, "category_id = @category_id")
 		args["category_id"] = *payload.CategoryID
 	}
+	if payload.CampaignID != nil {
+		setClauses = append(setClauses, "campaign_id = @campaign_id")
+		args["campaign_id"] = *payload.CampaignID
+	}
 	if payload.Title != nil {
 		setClauses = append(setClauses, "title = @title")
 		args["title"] = *payload.Title
@@ -227,6 +249,26 @@ func (r *LinkRepository) UpdateLink(
 	if payload.Description != nil {
 		setClauses = append(setClauses, "description = @description")
 		args["description"] = *payload.Description
+	}
+	if payload.UTMSource != nil {
+		setClauses = append(setClauses, "utm_source = @utm_source")
+		args["utm_source"] = *payload.UTMSource
+	}
+	if payload.UTMMedium != nil {
+		setClauses = append(setClauses, "utm_medium = @utm_medium")
+		args["utm_medium"] = *payload.UTMMedium
+	}
+	if payload.UTMCampaign != nil {
+		setClauses = append(setClauses, "utm_campaign = @utm_campaign")
+		args["utm_campaign"] = *payload.UTMCampaign
+	}
+	if payload.UTMTerm != nil {
+		setClauses = append(setClauses, "utm_term = @utm_term")
+		args["utm_term"] = *payload.UTMTerm
+	}
+	if payload.UTMContent != nil {
+		setClauses = append(setClauses, "utm_content = @utm_content")
+		args["utm_content"] = *payload.UTMContent
 	}
 
 	if len(setClauses) == 0 {

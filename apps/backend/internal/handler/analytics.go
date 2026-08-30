@@ -7,6 +7,7 @@ import (
 
 	"flux/apps/backend/internal/repository"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,11 +20,11 @@ func NewAnalyticsHandler(provider repository.AnalyticsProvider) *AnalyticsHandle
 }
 
 func (h *AnalyticsHandler) getTenantID(c echo.Context) (string, error) {
-	tenantID, ok := c.Get("tenant_id").(string)
-	if !ok || tenantID == "" {
+	tenantID, ok := c.Get("tenant_id").(uuid.UUID)
+	if !ok {
 		return "", echo.NewHTTPError(http.StatusUnauthorized, "workspace context not found")
 	}
-	return tenantID, nil
+	return tenantID.String(), nil
 }
 
 // parseDateRange parses `from` and `to` query parameters, applying sensible defaults and limits.
@@ -170,4 +171,73 @@ func (h *AnalyticsHandler) GetReferrers(c echo.Context) error {
 // Deprecated link-specific endpoint that must be scoped by tenant ID and link ID
 func (h *AnalyticsHandler) GetLinkMetrics(c echo.Context) error {
 	return echo.NewHTTPError(http.StatusNotImplemented, "use standard workspace-scoped /analytics endpoints")
+}
+
+func (h *AnalyticsHandler) GetCampaignPerformance(c echo.Context) error {
+	tenantID, err := h.getTenantID(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := parseDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	limit := 50
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+
+	perf, err := h.provider.GetCampaignPerformance(c.Request().Context(), tenantID, from, to, limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to retrieve campaign performance")
+	}
+
+	return c.JSON(http.StatusOK, perf)
+}
+
+func (h *AnalyticsHandler) GetUTMPerformance(c echo.Context) error {
+	tenantID, err := h.getTenantID(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := parseDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	limit := 50
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+
+	dimension := c.QueryParam("dimension")
+	if dimension == "" {
+		dimension = "utm_source"
+	}
+
+	validDimensions := map[string]bool{
+		"utm_source":   true,
+		"utm_medium":   true,
+		"utm_campaign": true,
+		"utm_term":     true,
+		"utm_content":  true,
+	}
+
+	if !validDimensions[dimension] {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid UTM dimension")
+	}
+
+	perf, err := h.provider.GetUTMPerformance(c.Request().Context(), tenantID, dimension, from, to, limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to retrieve UTM performance")
+	}
+
+	return c.JSON(http.StatusOK, perf)
 }

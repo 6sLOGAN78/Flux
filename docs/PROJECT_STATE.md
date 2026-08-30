@@ -5,36 +5,33 @@
 * **Purpose**: URL shortening, dynamic link routing, analytics, SaaS multi-tenancy, attribution platform.
 * **Problem**: Claims to solve enterprise link management, attribution, and analytics at scale.
 * **Target Users**: Marketers, developers, enterprises.
-* **Current Objective**: Move from a "mocked/vaporware" state into an actual functional MVP.
+* **Current Objective**: Establish a trustworthy, production-hardened baseline.
 
 ## Current State
-* **What works**: Basic CRUD for links (creation, listing, updating, deleting) backed by PostgreSQL. Simple HTTP 302/301 redirects using database lookups.
-* **What partially works**: The frontend UI is highly polished but operates almost entirely on mock data, local state, and unimplemented APIs.
-* **What is broken**: Analytics endpoints return 500 (provider is `nil`). Redis cache is passed as `nil`.
-* **What is missing**: 90% of the advertised features (Campaigns, Billing, Workspaces, Webhooks, Domains, AI, ClickHouse event ingestion, Advanced Routing) are not implemented in the backend/database.
-* **What is experimental**: The entire `apps/backend/internal/modules` directory contains Go logic that is disconnected from the HTTP server and database.
+* **What works**: Link CRUD is fully functional and isolated by tenant. Real-time Analytics ingestion (Redis Streams -> ClickHouse) is deployed and powering the frontend dashboard. Authentication uses Clerk exclusively with secure tenant mapping. Campaigns and UTM tracking are fully functional end-to-end with immutable attribution.
+* **What partially works**: Custom Domains, Webhooks, Billing, and AI are currently just mock UI shells pending backend implementation.
+* **What is broken**: Nothing in the critical path. Previous production blockers (auth spoofing, graceful shutdown, short-code PRNG collisions) have been remediated.
+* **What is missing**: Advanced feature modules (Custom Domains, Billing, Webhooks, AI).
 * **What is deprecated**: N/A
 
 ## Technology Stack
-* **Frontend**: React 19, Vite, TypeScript, Tailwind CSS.
-* **Backend**: Go 1.25, Echo v4.
-* **Database**: PostgreSQL (pgx/v5). ClickHouse (schema only). Redis (not wired).
+* **Frontend**: React 19, Vite, TypeScript, Tailwind CSS, Clerk, React Query.
+* **Backend**: Go 1.25, Echo v4, Clerk SDK.
+* **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: Architecture Reality Check & Backend Wiring
+* **Phase**: PHASE 12 - Custom Domains & Edge TLS (Task 12F Complete)
 * **Status**: IN PROGRESS
-* **Why**: The repository presents a massive surface area of features but only implements basic link shortening. The priority is to wire the existing UI to actual database/backend implementations.
+* **Why**: The Data Model (12B), Routing Engine (12E), Core API (12C), DNS Worker (12D), and TLS Auth API (12F) have been established. Ready for frontend or analytics expansion.
 
 ## Current Priorities
-1. Implement Redis caching for redirects.
-2. Implement ClickHouse event ingestion on redirect.
-3. Hook up the backend Analytics endpoint to ClickHouse.
-4. Expand the PostgreSQL schema to support the mock features in the UI.
+1. Expand features: Campaigns, UTM, Custom Domains.
+2. Expand features: Campaigns, UTM, Custom Domains.
 
 ## Blockers
-* Massive discrepancy between UI state and backend capability.
+* None.
 
 ## Stability
-* **Stable**: PostgreSQL link CRUD, basic frontend shell.
-* **Experimental**: Disconnected business logic modules.
-* **Risky**: Highly decoupled frontend that expects complex API contracts that don't exist.
+* **Stable**: Auth, Multi-tenancy, Link CRUD, Redirects, Analytics Pipeline, API.
+* **Experimental**: None currently.
+* **Risky**: None.

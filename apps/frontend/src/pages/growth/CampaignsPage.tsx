@@ -5,51 +5,62 @@ import { Tabs } from '@/components/ui/Tabs';
 import { UTMBuilderStudio } from '@/components/campaigns/UTMBuilderStudio';
 import {
   CampaignListTable,
-  CampaignItem,
 } from '@/components/campaigns/CampaignListTable';
 import { useCreateLink } from '@/hooks/useLinksQuery';
-
-// Empty state for new accounts
-const INITIAL_CAMPAIGNS: CampaignItem[] = [];
+import { useGetCampaigns, useCreateCampaign } from '@/hooks/useCampaignsQuery';
+import { useAnalyticsCampaigns } from '@/hooks/useAnalyticsQuery';
 
 export function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<CampaignItem[]>(INITIAL_CAMPAIGNS);
   const [activeTab, setActiveTab] = useState('campaigns');
 
+  const { data: campaignsData, isLoading: isCampLoading, isError: isCampError } = useGetCampaigns();
+  const { data: analyticsData, isLoading: isAnaLoading } = useAnalyticsCampaigns();
+  
+  const createCampaignMutation = useCreateCampaign();
   const createLinkMutation = useCreateLink();
 
-  const handleGenerateLink = (data: {
+  const handleGenerateLink = async (data: {
     finalUrl: string;
     campaignName: string;
     customSlug?: string;
   }) => {
-    createLinkMutation.mutate(
-      {
+    // First create the campaign
+    try {
+      const camp = await createCampaignMutation.mutateAsync({
+        name: data.campaignName,
+        utm_campaign: data.campaignName, // Usually they use the name as utm_campaign here
+      });
+
+      // Then create the link using the new campaign
+      createLinkMutation.mutate({
         destinationUrl: data.finalUrl,
         customCode: data.customSlug,
         title: data.campaignName,
-      },
-      {
+        campaignId: camp.id,
+      }, {
         onSettled: () => {
-          const newCampaign: CampaignItem = {
-            id: `cmp_${Date.now()}`,
-            name: data.campaignName,
-            channel: 'Multi-Channel',
-            utmCampaign: data.customSlug || 'custom_campaign',
-            totalClicks: 0,
-            conversions: 0,
-            status: 'active',
-            createdAt: new Date().toISOString(),
-          };
-          setCampaigns((prev) => [newCampaign, ...prev]);
           setActiveTab('campaigns');
-        },
-      }
-    );
+        }
+      });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
+  const campaignsList = (campaignsData || []).map((camp: any) => {
+    const perf = analyticsData?.data?.find((p: any) => p.campaign_id === camp.id);
+    return {
+      ...camp,
+      clicks: perf?.clicks || 0,
+      unique_visitors: perf?.unique_visitors || 0,
+    };
+  });
+
+  const isLoading = isCampLoading || isAnaLoading;
+  const isError = isCampError;
+
   const tabs = [
-    { id: 'campaigns', label: 'Active Campaigns', count: campaigns.length },
+    { id: 'campaigns', label: 'Active Campaigns', count: campaignsList.length },
     { id: 'builder', label: 'Visual UTM Builder' },
   ];
 
@@ -86,11 +97,17 @@ export function CampaignsPage() {
 
       {/* Content */}
       {activeTab === 'campaigns' ? (
-        <CampaignListTable campaigns={campaigns} />
+        isLoading ? (
+          <div className="text-zinc-500 p-4 text-center">Loading campaigns...</div>
+        ) : isError ? (
+          <div className="text-red-500 p-4 text-center">Error loading campaigns.</div>
+        ) : (
+          <CampaignListTable campaigns={campaignsList as any} />
+        )
       ) : (
         <UTMBuilderStudio
           onGenerateLink={handleGenerateLink}
-          isLoading={createLinkMutation.isPending}
+          isLoading={createCampaignMutation.isPending}
         />
       )}
     </div>

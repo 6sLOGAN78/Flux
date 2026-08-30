@@ -41,15 +41,8 @@ func ClerkJWTMiddleware(userRepo *repository.UserRepository) echo.MiddlewareFunc
 			// Let's extract email/name if we have them. 
 			// We can parse the standard claims.
 			email := ""
-			// Just safe fallback to empty string, we can do full SDK lookup if we really need it, but usually the token has enough.
 			clerkUserID := claims.Subject
 
-			// [TESTING OVERRIDE] Allow injecting a different Clerk User ID for testing isolation
-			if testUID := c.Request().Header.Get("X-Test-Clerk-User-ID"); testUID != "" && claims.Subject != "" {
-				clerkUserID = testUID
-				email = testUID + "@example.com" // mock unique email
-			}
-			
 			u, err := userRepo.SyncUser(c.Request().Context(), clerkUserID, email, "")
 			if err != nil {
 				fmt.Println("Failed to sync user:", err)
@@ -62,11 +55,6 @@ func ClerkJWTMiddleware(userRepo *repository.UserRepository) echo.MiddlewareFunc
 			// Resolve Organization
 			// By default, org_id is available if the token was issued for an organization context
 			activeOrgID := claims.ActiveOrganizationID
-			
-			// [TESTING OVERRIDE] Allow injecting a different Clerk Org ID for testing B2B isolation
-			if testOrgID := c.Request().Header.Get("X-Test-Clerk-Org-ID"); testOrgID != "" {
-				activeOrgID = testOrgID
-			}
 
 			var orgName string
 			if activeOrgID != "" {
@@ -87,10 +75,6 @@ func ClerkJWTMiddleware(userRepo *repository.UserRepository) echo.MiddlewareFunc
 			c.Set("tenant_id", w.ID)
 
 			activeRole := claims.ActiveOrganizationRole
-			if testRole := c.Request().Header.Get("X-Test-Clerk-Role"); testRole != "" {
-				activeRole = testRole
-			}
-
 			if activeRole != "" {
 				c.Set("tenant_role", activeRole)
 			}

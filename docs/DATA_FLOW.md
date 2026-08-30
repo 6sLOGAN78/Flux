@@ -22,17 +22,34 @@ RedirectHandler
 RedirectService
  ↓ (Skips Redis cache because it is nil)
 PostgresRedirectRepository
- ↓ (SELECT destination_url FROM links)
-RedirectHandler
- ↓ (HTTP 301/302)
-Browser
-```
-
-## 3. Analytics (Broken)
+## 2. Redirect Resolution (Cache-Aside)
 ```text
 Browser (GET /xyz123)
  ↓
 RedirectHandler
  ↓
-(No click event emitted!)
+Redis (Cache GET)
+ ├── HIT → Return 301/302
+ └── MISS → Query PostgreSQL
+             ↓
+            Redis (Cache SET, TTL: 24h)
+             ↓
+            Return 301/302
+```
+
+## 3. Analytics (Functional)
+```text
+Browser (GET /xyz123)
+ ↓
+RedirectHandler (Retrieves Link via PG)
+ ↓
+AnalyticsEvent generated
+ ↓
+Bounded Go Channel (AnalyticsPublisher)
+ ↓ (Async)
+Redis Stream (analytics:events)
+ ↓
+ClickHouse Consumer (XREADGROUP)
+ ↓ (Batch Insert)
+ClickHouse (MergeTree)
 ```

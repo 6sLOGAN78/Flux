@@ -20,16 +20,28 @@ export const ZCreateLinkInput = z.object({
   destinationUrl: z.string().url().openapi({ description: "Destination URL to shorten", example: "https://example.com/long-url" }),
   customCode: z.string().min(3).max(20).optional().openapi({ description: "Optional custom short code slug", example: "my-custom-alias" }),
   categoryId: z.string().uuid().optional().openapi({ description: "Optional category UUID assignment" }),
+  campaignId: z.string().uuid().optional().openapi({ description: "Optional campaign UUID assignment" }),
   title: z.string().max(100).optional().openapi({ description: "Optional title for the link", example: "Product Launch Page" }),
   description: z.string().max(255).optional().openapi({ description: "Optional description", example: "Summer sale landing page" }),
+  utmSource: z.string().max(255).optional(),
+  utmMedium: z.string().max(255).optional(),
+  utmCampaign: z.string().max(255).optional(),
+  utmTerm: z.string().max(255).optional(),
+  utmContent: z.string().max(255).optional(),
 }).openapi({ description: "Input payload for creating a shortened link" });
 
 export const ZUpdateLinkInput = z.object({
   destinationUrl: z.string().url().optional().openapi({ description: "Updated destination URL" }),
   categoryId: z.string().uuid().nullable().optional().openapi({ description: "Updated category UUID or null to unassign" }),
-  title: z.string().max(100).optional().openapi({ description: "Updated link title" }),
-  description: z.string().max(255).optional().openapi({ description: "Updated link description" }),
-}).openapi({ description: "Input payload for updating a link" });
+  campaignId: z.string().uuid().nullable().optional().openapi({ description: "Updated campaign UUID or null to unassign" }),
+  title: z.string().max(100).nullable().optional().openapi({ description: "Updated title" }),
+  description: z.string().max(255).nullable().optional().openapi({ description: "Updated description" }),
+  utmSource: z.string().max(255).nullable().optional(),
+  utmMedium: z.string().max(255).nullable().optional(),
+  utmCampaign: z.string().max(255).nullable().optional(),
+  utmTerm: z.string().max(255).nullable().optional(),
+  utmContent: z.string().max(255).nullable().optional(),
+}).openapi({ description: "Input payload for updating a shortened link" });
 
 export const ZBulkCategorizeInput = z.object({
   linkIds: z.array(z.string().uuid()).openapi({ description: "Array of link UUIDs to categorize" }),
@@ -77,15 +89,13 @@ export const ZCreateCampaignInput = z.object({
 
 export const ZCustomDomain = z.object({
   id: z.string().uuid().openapi({ description: "Custom domain UUID" }),
-  domain: z.string().openapi({ description: "Branded hostname", example: "link.acme.com" }),
-  verification_token: z.string().openapi({ description: "DNS challenge verification token", example: "flux-verify=abc123" }),
-  is_verified: z.boolean().openapi({ description: "CNAME verification status", example: true }),
-  ssl_status: z.string().openapi({ description: "ACME TLS/SSL certificate status", example: "active" }),
+  hostname: z.string().openapi({ description: "Branded hostname", example: "link.acme.com" }),
+  verification_token: z.string().optional().openapi({ description: "DNS challenge verification token (only returned on creation)", example: "flux-verify=abc123" }),
+  status: z.string().openapi({ description: "Verification status", example: "active" }),
 }).openapi({ description: "Custom branded domain entity" });
 
 export const ZCreateDomainInput = z.object({
-  domain: z.string().openapi({ description: "Domain hostname to configure", example: "link.acme.com" }),
-  custom_root_redirect: z.string().url().optional().openapi({ description: "Root domain fallback URL" }),
+  hostname: z.string().openapi({ description: "Domain hostname to configure", example: "link.acme.com" }),
 }).openapi({ description: "Input payload for adding a custom domain" });
 
 // --- User & Auth Schemas ---
@@ -587,3 +597,29 @@ export type ClusterFailoverStatus = z.infer<typeof ZClusterFailoverStatus>;
 
 
 
+
+export const ZCampaignPerformance = z.object({
+  campaign_id: z.string().uuid().nullable().openapi({ description: "Campaign ID (null if no campaign)" }),
+  clicks: z.number().int().openapi({ description: "Total clicks" }),
+  unique_visitors: z.number().int().openapi({ description: "Total unique visitors" }),
+}).openapi({ description: "Campaign performance metrics" });
+
+export const ZCampaignPerformanceResponse = z.object({
+  data: z.array(ZCampaignPerformance),
+}).openapi({ description: "Response containing campaign performance data" });
+
+export const ZUTMPerformance = z.object({
+  utm_value: z.string().openapi({ description: "The grouped UTM value" }),
+  clicks: z.number().int().openapi({ description: "Total clicks" }),
+  unique_visitors: z.number().int().openapi({ description: "Total unique visitors" }),
+}).openapi({ description: "UTM performance metrics" });
+
+export const ZUTMPerformanceResponse = z.object({
+  dimension: z.string().openapi({ description: "The dimension requested (e.g. utm_source)" }),
+  data: z.array(ZUTMPerformance),
+}).openapi({ description: "Response containing UTM performance data" });
+
+export type CampaignPerformance = z.infer<typeof ZCampaignPerformance>;
+export type CampaignPerformanceResponse = z.infer<typeof ZCampaignPerformanceResponse>;
+export type UTMPerformance = z.infer<typeof ZUTMPerformance>;
+export type UTMPerformanceResponse = z.infer<typeof ZUTMPerformanceResponse>;

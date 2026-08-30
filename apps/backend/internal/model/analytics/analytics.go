@@ -21,6 +21,18 @@ type AnalyticsEvent struct {
 	WorkspaceID string    `json:"workspace_id"`
 	ShortCode   string    `json:"short_code"`
 
+	// Attribution & Campaigns (Resolved at click-time)
+	CampaignID  *string `json:"campaign_id,omitempty"`
+	UTMSource   *string `json:"utm_source,omitempty"`
+	UTMMedium   *string `json:"utm_medium,omitempty"`
+	UTMCampaign *string `json:"utm_campaign,omitempty"`
+	UTMTerm     *string `json:"utm_term,omitempty"`
+	UTMContent  *string `json:"utm_content,omitempty"`
+	
+	// Custom Domains
+	CustomDomainID *string `json:"custom_domain_id,omitempty"`
+	Hostname       string  `json:"hostname,omitempty"`
+
 	// Metadata
 	Referrer  string `json:"referrer,omitempty"`
 	UserAgent string `json:"user_agent,omitempty"`
@@ -75,4 +87,25 @@ type ReferrerStat struct {
 
 type ReferrersResponse struct {
 	Data []ReferrerStat `json:"data"`
+}
+
+type CampaignPerformance struct {
+	CampaignID     *string `json:"campaign_id"`
+	Clicks         uint64  `json:"clicks"`
+	UniqueVisitors uint64  `json:"unique_visitors"`
+}
+
+type CampaignPerformanceResponse struct {
+	Data []CampaignPerformance `json:"data"`
+}
+
+type UTMPerformance struct {
+	UTMValue       string `json:"utm_value"`
+	Clicks         uint64 `json:"clicks"`
+	UniqueVisitors uint64 `json:"unique_visitors"`
+}
+
+type UTMPerformanceResponse struct {
+	Dimension string           `json:"dimension"`
+	Data      []UTMPerformance `json:"data"`
 }

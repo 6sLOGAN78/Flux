@@ -21,7 +21,7 @@ import {
   ZAnalyticsSummaryResponse,
   ZTimeseriesResponse,
   ZTopLinksResponse,
-  ZReferrersResponse,
+  ZReferrersResponse, ZCampaignPerformanceResponse, ZUTMPerformanceResponse,
   ZLinkMetricsResponse,
   ZOrganization,
   ZWorkspace,
@@ -201,6 +201,62 @@ export const apiContract = c.router({
       openApiSecurity: [{ bearerAuth: [] }],
     },
   },
+  getCampaigns: {
+    method: "GET",
+    path: "/api/v1/campaigns",
+    responses: {
+      200: z.array(ZCampaign),
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "List campaigns",
+    metadata: {
+      openApiTags: ["Campaigns"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getCampaign: {
+    method: "GET",
+    path: "/api/v1/campaigns/:id",
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: ZCampaign,
+      404: z.object({ error: z.string().openapi({ example: "Campaign not found" }) }),
+    },
+    summary: "Get a specific campaign",
+    metadata: {
+      openApiTags: ["Campaigns"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  updateCampaign: {
+    method: "PATCH",
+    path: "/api/v1/campaigns/:id",
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: ZCreateCampaignInput.partial(),
+    responses: {
+      200: ZCampaign,
+      404: z.object({ error: z.string().openapi({ example: "Campaign not found" }) }),
+    },
+    summary: "Update campaign",
+    metadata: {
+      openApiTags: ["Campaigns"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  deleteCampaign: {
+    method: "DELETE",
+    path: "/api/v1/campaigns/:id",
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      204: z.undefined(),
+      404: z.object({ error: z.string().openapi({ example: "Campaign not found" }) }),
+    },
+    summary: "Delete campaign",
+    metadata: {
+      openApiTags: ["Campaigns"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
 
   // --- Domains ---
   createDomain: {
@@ -212,6 +268,51 @@ export const apiContract = c.router({
       400: z.object({ error: z.string().openapi({ example: "Invalid domain" }) }),
     },
     summary: "Register custom branded domain",
+    metadata: {
+      openApiTags: ["Domains"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getDomains: {
+    method: "GET",
+    path: "/api/v1/domains",
+    responses: {
+      200: z.object({ data: z.array(ZCustomDomain) }),
+    },
+    summary: "List custom domains",
+    metadata: {
+      openApiTags: ["Domains"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getDomain: {
+    method: "GET",
+    path: "/api/v1/domains/:id",
+    pathParams: z.object({
+      id: z.string().uuid(),
+    }),
+    responses: {
+      200: ZCustomDomain,
+      404: z.object({ error: z.string() }),
+    },
+    summary: "Get custom domain by ID",
+    metadata: {
+      openApiTags: ["Domains"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  deleteDomain: {
+    method: "DELETE",
+    path: "/api/v1/domains/:id",
+    pathParams: z.object({
+      id: z.string().uuid(),
+    }),
+    body: z.any().optional(), // ts-rest requires body or no body, we'll allow empty
+    responses: {
+      204: z.undefined(),
+      404: z.object({ error: z.string() }),
+    },
+    summary: "Delete custom domain",
     metadata: {
       openApiTags: ["Domains"],
       openApiSecurity: [{ bearerAuth: [] }],
@@ -391,6 +492,43 @@ export const apiContract = c.router({
       401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
     },
     summary: "Get top referrers",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsCampaigns: {
+    method: "GET",
+    path: "/api/v1/analytics/campaigns",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.string().optional(),
+    }),
+    responses: {
+      200: ZCampaignPerformanceResponse,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get campaign performance metrics",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsUTM: {
+    method: "GET",
+    path: "/api/v1/analytics/utm",
+    query: z.object({
+      dimension: z.string().optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      limit: z.string().optional(),
+    }),
+    responses: {
+      200: ZUTMPerformanceResponse,
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get UTM performance metrics by dimension",
     metadata: {
       openApiTags: ["Analytics"],
       openApiSecurity: [{ bearerAuth: [] }],

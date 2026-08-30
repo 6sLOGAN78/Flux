@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"github.com/google/uuid"
 
 	"flux/apps/backend/internal/handler"
 
@@ -50,7 +51,7 @@ func TestAnalyticsHandler_MissingProvider(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/summary", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.Set("tenant_id", "mock_tenant")
+	c.Set("tenant_id", uuid.MustParse("00000000-0000-0000-0000-000000000000"))
 
 	analyticsH := handler.NewAnalyticsHandler(nil)
 	err := analyticsH.GetSummary(c)

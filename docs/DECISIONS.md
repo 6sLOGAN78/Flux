@@ -48,3 +48,15 @@
   - Duplicate events (e.g., resulting from a crash before `XACK`) are permitted to exist in the underlying table. Query-time deduplication (`uniqExact(event_id)`) will be used to resolve exact analytical counts where required.
   - At-least-once delivery is structurally guaranteed because `XACK` strictly follows the successful ClickHouse batch response.
   - Events have an automatic TTL of 90 days built into the schema.
+
+## DEC-004: Cache-Aside Redis Architecture for Redirects
+* **Context**: Public link resolution queries Postgres for every redirect, causing a bottleneck under heavy load.
+* **Decision**: Implement a Redis cache using the Cache-Aside pattern. Postgres remains the absolute source of truth.
+* **Details**: 
+  - **Key Format**: `link:redirect:<slug>`.
+  - **Payload**: JSON serialization of `LinkRedirectTarget`.
+  - **TTL**: 24 hours.
+  - **Invalidation**: `LinkService` deletes the key on update/delete operations.
+  - **Singleflight**: Implemented via `golang.org/x/sync/singleflight` to prevent cache stampedes on concurrent misses for the same slug.
+  - **Negative Caching**: Explicitly rejected. Missing slugs are caught by `singleflight` for concurrency bursts and by Postgres indexes sequentially. No complex negative invalidation logic is needed.
+* **Consequences**: Redis outage gracefully falls back to Postgres. Link resolution performance scales horizontally.

@@ -27,4 +27,12 @@ type LinkRedirectTarget struct {
 	ExpiresAt           *time.Time `json:"expires_at,omitempty"`
 	IsPasswordProtected bool       `json:"is_password_protected"`
 	RedirectCode        int        `json:"redirect_code"` // 301 or 302
+	CampaignID          *string    `json:"campaign_id,omitempty"`
+	UTMSource           *string    `json:"utm_source,omitempty"`
+	UTMMedium           *string    `json:"utm_medium,omitempty"`
+	UTMCampaign         *string    `json:"utm_campaign,omitempty"`
+	UTMTerm             *string    `json:"utm_term,omitempty"`
+	UTMContent          *string    `json:"utm_content,omitempty"`
+	Hostname            string     `json:"hostname"`
+	CustomDomainID      *string    `json:"custom_domain_id,omitempty"`
 }

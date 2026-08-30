@@ -49,3 +49,58 @@
 - Analytics events are successfully generated upon a valid public short link redirect (`GET /:shortCode`).
 - Events accurately contain the parent `WorkspaceID` extracted safely from the Database backend, NOT requested by the client, maintaining cross-tenant data ownership.
 - Failing to publish an analytics event explicitly does *not* break or stall the HTTP redirect to the user.
+
+## V-003: Production Readiness & Remediation Audit
+* **Date:** 2026-08-30
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- **Authentication**: `X-Test-Clerk-*` headers completely purged from production middleware. Identity spoofing is impossible. Tested via `auth_test.go`.
+- **Shutdown**: `server.go` correctly shuts down HTTP server before terminating Redis and ClickHouse consumer threads.
+- **Short-Code Generation**: `generateShortCode()` uses `crypto/rand` securely and encodes via `pkg/base62`. DB collision retry loop explicitly tested.
+- **Configuration**: Server fails closed (`err != nil`) if `CLERK_SECRET_KEY` is omitted. Tested via `config_test.go`.
+- **Frontend Mocks**: Removed fake link fallback in `LinksListPage.tsx`. Error boundaries properly catch backend issues.
+
+## V-004: Redis Redirect Cache
+* **Date:** 2026-08-30
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- **Cache Hits**: Redirect responses pull natively from Redis without touching PostgreSQL.
+- **Cache Misses**: Concurrent bursts are coalesced securely using `golang.org/x/sync/singleflight`, resulting in a single database lookup for the target slug.
+- **Invalidation**: `UpdateLink` and `DeleteLink` mutations properly issue a cache invalidation request via `RedisRedirectCache.Delete`.
+- **Failure Isolation**: Simulated cache timeouts and unmarshaling faults gracefully fallback to Postgres database calls without harming the redirect HTTP lifecycle.
+
+## V-005: Phase 11F Frontend Integration Verification
+* **Date:** 2026-08-30
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- **Campaign CRUD**: Frontend `useCampaignsQuery` queries correctly map to `/api/v1/campaigns` using Clerk orgId scoping.
+- **Link Mutators**: `CreateLinkDrawer` correctly handles `campaignId`, `utmSource`, `utmMedium`, `utmCampaign` values.
+- **Analytics Visibility**: `AnalyticsPage` correctly implements `UTMPerformanceTable` fetching data from `/api/v1/analytics/utm` and `/api/v1/analytics/campaigns`.
+- **Compilation**: Full `npm run build` succeeds with zero TypeScript errors across `@flux/zod`, `@flux/openapi`, and `@flux/frontend`.
+- **Isolation**: React Query keys correctly scope to the tenant. Backend mocked data successfully eradicated.
+
+### V-006: Custom Domain Data Model (Phase 12B)
+- **Status**: PASSED
+- **Method**: Automated DB integration tests via TestContainers (`TestDomainRepository`).
+- **Assertions**:
+  - `custom_domains` successfully persists domains mapped to specific workspaces.
+  - Cross-tenant requests correctly return `ErrNotFound`.
+  - Duplicate domains (globally) trigger SQL constraint errors.
+  - Case-normalization and trailing-dot protections successfully block invalid domains.
+  - Deleting a domain safely sets the associated `links.custom_domain_id` to NULL without cascade deleting the links.
+
+### V-007: Custom Domain Routing & Security (Phase 12E)
+- **Status**: PASSED
+- **Method**: Automated DB integration tests via TestContainers (`TestRedirectSecurity_CustomDomains` and `TestRedirectParity_CacheHitMiss_UTMResolution`).
+- **Assertions**:
+  - `domain-a.com/slug` successfully routes to Workspace A's link.
+  - Cross-tenant requests (`domain-a.com` trying to access Workspace B's slug) correctly return `ErrNotFound`.
+  - Unverified, pending, and disabled domains successfully fail to route.
+  - Links without a custom domain remain accessible via the platform default domain.
+  - Parity is strictly preserved between Redis cache hits and PostgreSQL cache misses.

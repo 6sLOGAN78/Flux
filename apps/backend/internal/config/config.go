@@ -28,6 +28,8 @@ type Config struct {
 	AWSAccessKeyID     string `koanf:"aws_access_key_id"`
 	AWSSecretAccessKey string `koanf:"aws_secret_access_key"`
 	AWSUploadBucket    string `koanf:"aws_upload_bucket"`
+	PlatformDomain     string `koanf:"platform_domain"`
+	InternalAPIKey     string `koanf:"internal_api_key"`
 }
 
 // LoadConfig initializes application configuration from environment variables with defaults using koanf/v2.
@@ -142,6 +144,22 @@ func LoadConfig() (*Config, error) {
 	awsSecretKey := k.String("flux_aws.secret_access_key")
 	awsBucket := k.String("flux_aws.upload_bucket")
 
+	platformDomain := k.String("flux_platform.domain")
+	if platformDomain == "" {
+		platformDomain = os.Getenv("PLATFORM_DOMAIN")
+	}
+	if platformDomain == "" {
+		platformDomain = "flux.ly"
+	}
+
+	internalAPIKey := k.String("flux_internal.api_key")
+	if internalAPIKey == "" {
+		internalAPIKey = k.String("internal_api_key")
+	}
+	if internalAPIKey == "" {
+		internalAPIKey = os.Getenv("INTERNAL_API_KEY")
+	}
+
 	cfg := &Config{
 		PrimaryEnv:         primaryEnv,
 		ServerPort:         port,
@@ -157,6 +175,8 @@ func LoadConfig() (*Config, error) {
 		AWSAccessKeyID:     awsAccessKey,
 		AWSSecretAccessKey: awsSecretKey,
 		AWSUploadBucket:    awsBucket,
+		PlatformDomain:     platformDomain,
+		InternalAPIKey:     internalAPIKey,
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -176,6 +196,9 @@ func (c *Config) Validate() error {
 	}
 	if c.RedisURL == "" {
 		return errors.New("redis URL cannot be empty")
+	}
+	if c.ClerkSecretKey == "" {
+		return errors.New("clerk secret key cannot be empty (fail-closed security constraint)")
 	}
 	return nil
 }

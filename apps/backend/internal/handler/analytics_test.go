@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"github.com/google/uuid"
 	"time"
 
 	"flux/apps/backend/internal/handler"
@@ -17,7 +18,7 @@ import (
 type mockAnalyticsProvider struct{}
 
 func (m *mockAnalyticsProvider) GetSummary(ctx context.Context, workspaceID string, from, to time.Time) (*analytics.AnalyticsSummary, error) {
-	if workspaceID == "mock_ws" {
+	if workspaceID == "00000000-0000-0000-0000-000000000000" {
 		return &analytics.AnalyticsSummary{TotalClicks: 42, UniqueVisitors: 10}, nil
 	}
 	return &analytics.AnalyticsSummary{}, nil
@@ -65,7 +66,7 @@ func TestAnalyticsHandler_GetSummary_Authenticated(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	c.Set("tenant_id", "mock_ws")
+	c.Set("tenant_id", uuid.MustParse("00000000-0000-0000-0000-000000000000"))
 
 	err := h.GetSummary(c)
 	if err != nil {
@@ -92,7 +93,7 @@ func TestAnalyticsHandler_DateRangeParsing(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/summary?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.Set("tenant_id", "mock_ws")
+	c.Set("tenant_id", uuid.MustParse("00000000-0000-0000-0000-000000000000"))
 
 	err := h.GetSummary(c)
 	if err == nil {
@@ -106,7 +107,7 @@ func TestAnalyticsHandler_DateRangeParsing(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/summary?from=2020-01-01T00:00:00Z&to=2026-01-01T00:00:00Z", nil)
 	rec2 := httptest.NewRecorder()
 	c2 := e.NewContext(req2, rec2)
-	c2.Set("tenant_id", "mock_ws")
+	c2.Set("tenant_id", uuid.MustParse("00000000-0000-0000-0000-000000000000"))
 
 	err2 := h.GetSummary(c2)
 	if err2 == nil {
@@ -116,4 +117,12 @@ func TestAnalyticsHandler_DateRangeParsing(t *testing.T) {
 	if !ok2 || he2.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 Bad Request, got %v", err2)
 	}
+}
+
+func (m *mockAnalyticsProvider) GetCampaignPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.CampaignPerformanceResponse, error) {
+	return &analytics.CampaignPerformanceResponse{Data: []analytics.CampaignPerformance{}}, nil
+}
+
+func (m *mockAnalyticsProvider) GetUTMPerformance(ctx context.Context, workspaceID string, dimension string, from, to time.Time, limit int) (*analytics.UTMPerformanceResponse, error) {
+	return &analytics.UTMPerformanceResponse{Dimension: dimension, Data: []analytics.UTMPerformance{}}, nil
 }

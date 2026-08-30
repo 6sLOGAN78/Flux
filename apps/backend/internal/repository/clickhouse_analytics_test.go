@@ -56,7 +56,23 @@ func TestClickHouseAnalyticsRepository_Integration(t *testing.T) {
 	}
 	
 	for _, e := range events {
-		err := batch.Append(e.EventID, string(e.EventType), e.Timestamp, e.LinkID, e.WorkspaceID, e.ShortCode, e.Referrer, e.UserAgent, e.IPHash)
+		err := batch.Append(
+			e.EventID, 
+			string(e.EventType), 
+			e.Timestamp, 
+			e.LinkID, 
+			e.WorkspaceID, 
+			e.ShortCode, 
+			e.Referrer, 
+			e.UserAgent, 
+			e.IPHash,
+			(*string)(nil), // CampaignID
+			(*string)(nil), // UTMSource
+			(*string)(nil), // UTMMedium
+			(*string)(nil), // UTMCampaign
+			(*string)(nil), // UTMTerm
+			(*string)(nil), // UTMContent
+		)
 		if err != nil {
 			t.Fatalf("failed to append batch: %v", err)
 		}
@@ -123,5 +139,125 @@ func TestClickHouseAnalyticsRepository_Integration(t *testing.T) {
 	}
 	if len(referrers.Data) != 2 {
 		t.Fatalf("expected 2 referrers, got %d", len(referrers.Data))
+	}
+}
+
+func TestClickHouseAnalyticsRepository_CampaignUTMAttribution(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	chContainer, err := pkgtesting.SetupClickHouseContainer(ctx)
+	if err != nil {
+		t.Fatalf("failed to setup clickhouse container: %v", err)
+	}
+	defer chContainer.Terminate(ctx)
+
+	conn, err := db.InitClickHouse(chContainer.Address)
+	if err != nil {
+		t.Fatalf("failed to init clickhouse: %v", err)
+	}
+
+	err = db.MigrateClickHouseSchema(ctx, conn)
+	if err != nil {
+		t.Fatalf("failed to migrate schema: %v", err)
+	}
+
+	repo := repository.NewClickHouseAnalyticsRepository(conn)
+
+	// Workspace A and B
+	wsA := "wsA-att"
+	wsB := "wsB-att"
+	now := time.Now().UTC()
+
+	// Insert events representing historical attribution
+	batch, err := conn.PrepareBatch(ctx, "INSERT INTO analytics_events")
+	if err != nil {
+		t.Fatalf("failed to prepare batch: %v", err)
+	}
+
+	campA := "camp-a-uuid"
+	campB := "camp-b-uuid"
+	
+	valTwitter := "twitter"
+	valGoogle := "google"
+	valSocial := "social"
+	valCpc := "cpc"
+	valSummer := "summer"
+	valSummerSale := "summer-sale"
+
+	// Click 1: Link in Campaign A
+	_ = batch.Append(
+		"evt1", "link.redirect", now.Add(-1*time.Hour), "link1", wsA, "short1", "", "", "ip1",
+		&campA, &valTwitter, &valSocial, &valSummer, (*string)(nil), (*string)(nil),
+	)
+
+	// Click 2: SAME LINK moved to Campaign B (Historical attribution preservation)
+	_ = batch.Append(
+		"evt2", "link.redirect", now, "link1", wsA, "short1", "", "", "ip2",
+		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil),
+	)
+
+	// Click 3: Another link in Workspace B to test isolation
+	_ = batch.Append(
+		"evt3", "link.redirect", now, "linkB", wsB, "shortB", "", "", "ip3",
+		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil),
+	)
+
+	if err := batch.Send(); err != nil {
+		t.Fatalf("failed to send batch: %v", err)
+	}
+
+	from := now.Add(-24 * time.Hour)
+	to := now.Add(24 * time.Hour)
+
+	// --- Campaign Performance Test ---
+	campPerf, err := repo.GetCampaignPerformance(ctx, wsA, from, to, 10)
+	if err != nil {
+		t.Fatalf("failed GetCampaignPerformance: %v", err)
+	}
+	
+	if len(campPerf.Data) != 2 {
+		t.Fatalf("expected 2 campaigns in wsA, got %d", len(campPerf.Data))
+	}
+	
+	for _, p := range campPerf.Data {
+		if *p.CampaignID == campA {
+			if p.Clicks != 1 {
+				t.Errorf("expected campA clicks = 1, got %d", p.Clicks)
+			}
+		} else if *p.CampaignID == campB {
+			if p.Clicks != 1 {
+				t.Errorf("expected campB clicks = 1, got %d", p.Clicks)
+			}
+		} else {
+			t.Errorf("unexpected campaign: %v", *p.CampaignID)
+		}
+	}
+
+	// --- UTM Source Performance Test ---
+	utmSourcePerf, err := repo.GetUTMPerformance(ctx, wsA, "utm_source", from, to, 10)
+	if err != nil {
+		t.Fatalf("failed GetUTMPerformance for source: %v", err)
+	}
+	if len(utmSourcePerf.Data) != 2 {
+		t.Fatalf("expected 2 utm sources in wsA, got %d", len(utmSourcePerf.Data))
+	}
+
+	for _, p := range utmSourcePerf.Data {
+		if p.UTMValue == "twitter" && p.Clicks != 1 {
+			t.Errorf("expected twitter clicks = 1, got %d", p.Clicks)
+		}
+		if p.UTMValue == "google" && p.Clicks != 1 {
+			t.Errorf("expected google clicks = 1, got %d", p.Clicks)
+		}
+	}
+
+	// --- Workspace B Isolation Test ---
+	campPerfB, _ := repo.GetCampaignPerformance(ctx, wsB, from, to, 10)
+	if len(campPerfB.Data) != 1 {
+		t.Fatalf("expected 1 campaign in wsB, got %d", len(campPerfB.Data))
+	}
+	if *campPerfB.Data[0].CampaignID != campB || campPerfB.Data[0].Clicks != 1 {
+		t.Errorf("unexpected data for wsB: %+v", campPerfB.Data[0])
 	}
 }

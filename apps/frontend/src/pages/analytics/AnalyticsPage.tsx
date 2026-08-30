@@ -17,25 +17,16 @@ import {
   ReferrerBreakdownTable,
   ReferrerItem,
 } from '@/components/analytics/ReferrerBreakdownTable';
-import {
-  GeographicChoropleth,
-  CountryStat,
-} from '@/components/analytics/GeographicChoropleth';
-import {
-  DeviceDonutChart,
-  DeviceStat,
-} from '@/components/analytics/DeviceDonutChart';
+import { UTMPerformanceTable } from '@/components/analytics/UTMPerformanceTable';
 import { TopLinksTable } from '@/components/analytics/TopLinksTable';
-import { 
-  useAnalyticsSummary, 
+import {
+  useAnalyticsSummary,
   useAnalyticsTimeseries,
+  useAnalyticsTopLinks,
   useAnalyticsReferrers,
-  useAnalyticsTopLinks
 } from '@/hooks/useAnalyticsQuery';
 
 // Unimplemented on backend yet, preserving layout with empty state
-const MOCK_COUNTRIES: CountryStat[] = [];
-const MOCK_DEVICES: DeviceStat[] = [];
 
 export function AnalyticsPage() {
   const [activeRange, setActiveRange] = useState('30d');
@@ -96,7 +87,6 @@ export function AnalyticsPage() {
 
   // TopLinks query can be added similarly, though the dashboard currently doesn't have a component for it explicitly in the grid, 
   // wait, the prompt asks to connect the Top Links UI! Let me check if there's a top links component.
-  // There is GeographicChoropleth, ReferrerBreakdownTable, DeviceDonutChart in the grid.
   // Oh, wait! The prompt says: "Connect the existing top-links UI to: GET /api/v1/analytics/top-links"
   // Is there a TopLinks component? Let's check `src/components/analytics/`
 
@@ -245,7 +235,7 @@ export function AnalyticsPage() {
           <ReferrerBreakdownTable referrers={referrers} />
         </div>
         
-        <DeviceDonutChart devices={MOCK_DEVICES} />
+        <UTMPerformanceTable from={from} to={to} />
       </div>
     </div>
   );

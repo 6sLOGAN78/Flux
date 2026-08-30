@@ -19,7 +19,7 @@ import (
 
 type mockRedirectRepo struct{}
 
-func (m *mockRedirectRepo) GetBySlug(ctx context.Context, slug string) (*redirect.LinkRedirectTarget, error) {
+func (m *mockRedirectRepo) GetByHostAndSlug(ctx context.Context, hostname, slug string) (*redirect.LinkRedirectTarget, error) {
 	if slug == "exists" {
 		return &redirect.LinkRedirectTarget{
 			Slug:           "exists",

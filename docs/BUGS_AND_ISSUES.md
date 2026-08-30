@@ -2,13 +2,11 @@
 
 ## BUG-001
 **Severity:** CRITICAL
-**Status:** OPEN
+**Status:** FIXED
 **Title:** Analytics endpoints panic/fail due to nil provider
-**Location:** `apps/backend/internal/handler/analytics.go`, `apps/backend/internal/server/server.go`
-**Affected Feature:** FEAT-003
-**Description:** `GetSummary` and `GetLinkMetrics` return 500 errors because `AnalyticsProvider` is initialized as `nil` in `server.go`.
+**Description:** `GetSummary` and `GetLinkMetrics` returned 500 errors because `AnalyticsProvider` was initialized as `nil`.
 **Root Cause:** `analyticsHandler := handler.NewAnalyticsHandler(nil)`
-**Impact:** Frontend analytics pages cannot load real data.
+**Fix:** Bounded async Redis publisher, ClickHouse consumer, and Analytics Query API fully implemented and wired. Verified via production readiness audit.
 
 ## BUG-002
 **Severity:** HIGH
@@ -22,49 +20,50 @@
 
 ## BUG-003
 **Severity:** HIGH
-**Status:** OPEN
+**Status:** FIXED
 **Title:** Redirect clicks are not tracked
-**Location:** `apps/backend/internal/handler/redirect.go`
-**Affected Feature:** FEAT-004
-**Description:** Resolving a short link does not emit any events or write to ClickHouse.
-**Root Cause:** Implementation was never written.
-**Impact:** The analytics platform has no data to display.
+**Description:** Resolving a short link did not emit any events or write to ClickHouse.
+**Fix:** Redirect handler now fires AnalyticsEvent to bounded Redis Stream, ingested into ClickHouse. Verified via production readiness audit.
 
 ## BUG-004
 **Severity:** MEDIUM
-**Status:** OPEN
-**Title:** Shortcodes do not use Base62 encoder
-**Location:** `apps/backend/internal/service/links.go`
-**Affected Feature:** FEAT-014
-**Description:** `generateShortCode()` uses a random math generator instead of the custom `pkg/base62` implementation.
-**Root Cause:** Likely a temporary mock implementation that was never replaced.
+**Status:** FIXED
+**Title:** Shortcodes do not use Base62 encoder / PRNG collision risk
+**Description:** `generateShortCode()` used a per-call time-seeded random math generator and ignored Base62.
+**Fix:** Modified `links.go` to use `crypto/rand` bound to `base62.Encode`, wrapped in a database unique-constraint retry loop (max 5 retries).
 
 ## BUG-005
 **Severity:** CRITICAL
-**Status:** VERIFIED
+**Status:** PARTIALLY FIXED
 **Title:** Frontend pages rely on mock state / Demo auth bypass
-**Location:** `apps/frontend/src/pages/*`, `AuthContext.tsx`
-**Affected Feature:** FEAT-015, FEAT-006, FEAT-007, FEAT-008, FEAT-010
-**Description:** Previously, auth bypassed passwords and used fake mock state. Now, `AuthContext` uses real JWT `/auth/login` and `/auth/signup` against PostgreSQL. Many other pages (Campaigns, Billing) still use local mocked arrays.
-**Root Cause:** Lack of backend implementation initially.
-**Impact:** Auth is fixed. Other pages still need backend endpoints.
+**Description:** Links, Auth, and Analytics have been fully migrated to real APIs (Clerk Auth, React Query to real backend). Campaigns and Billing still use local mocked arrays.
+**Fix:** Mock optimistic success removed from `LinksListPage.tsx` onError blocks. Auth backdoor (X-Test-Clerk headers) completely stripped from production middleware.
 
 ## BUG-006
 **Severity:** CRITICAL
-**Status:** OPEN
+**Status:** FIXED
 **Title:** Database schema missing critical tables
-**Location:** `apps/backend/internal/database/migrations/*`
-**Affected Feature:** ALL
-**Description:** The Postgres schema only contains `links`, `link_categories`, and `link_attachments`. It is missing users, tenants, campaigns, domains, webhooks, invoices, etc.
-**Root Cause:** Migrations were never written.
+**Description:** The Postgres schema only contained links/categories.
+**Fix:** Clerk-integrated users and workspaces schema implemented securely.
 
-### BUG-004
-* **Issue:** `category_id` missing from `links` table
+### BUG-004 (Schema issue)
 * **Status:** FIXED
-* **Details:** The second migration created the `link_categories` table but forgot to add the `category_id` column to `links`. Caused a SQLSTATE 42703 error in CreateLink. Fixed in Migration 005.
-
+* **Details:** `category_id` missing from `links` table. Fixed in Migration 005.
 
 ### BUG-001A
-* **Issue:** `pgx.ErrNoRows` returning HTTP 500 on the wire despite being logged as a 404.
 * **Status:** FIXED
-* **Details:** Echo's default HTTP error handler did not understand our custom `errs.HTTPError` type returned by `sqlerr.HandleError`, causing it to swallow the 404 status and return a generic 500. Fixed by registering a custom `errs.CustomHTTPErrorHandler` on the Echo server instance that maps domain errors to standard HTTP JSON schemas correctly.
+* **Details:** `pgx.ErrNoRows` returning HTTP 500 on the wire despite being logged as a 404. Fixed by registering a custom `errs.CustomHTTPErrorHandler`.
+
+### BUG-007 (Audit finding)
+* **Severity:** HIGH
+* **Status:** FIXED
+* **Title:** Inverted graceful shutdown causes analytics data loss
+* **Description:** HTTP server was shut down after AnalyticsPublisher.
+* **Fix:** Reordered lifecycle in `server.go` to stop Echo before draining ingestion queues.
+
+### BUG-008 (Audit finding)
+* **Severity:** HIGH
+* **Status:** FIXED
+* **Title:** Missing CLERK_SECRET_KEY validation
+* **Description:** App could boot without auth secrets.
+* **Fix:** `config.Validate()` now fails closed securely.
