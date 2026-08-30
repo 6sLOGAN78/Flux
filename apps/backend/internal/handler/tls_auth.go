@@ -30,6 +30,10 @@ func (h *TLSAuthHandler) CheckAuthorization(c echo.Context) error {
 	}
 
 	token := c.Request().Header.Get("X-Internal-Token")
+	if token == "" {
+		token = c.QueryParam("token")
+	}
+
 	if token != h.apiKey {
 		return c.JSON(http.StatusUnauthorized, map[string]bool{"authorized": false})
 	}

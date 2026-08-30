@@ -37,17 +37,39 @@ services:
       dockerfile: apps/backend/Dockerfile
     container_name: flux-backend
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - SERVER_PORT=8080
       - DATABASE_URL=postgres://postgres:postgrespassword@postgres:5432/flux?sslmode=disable
       - REDIS_URL=redis:6379
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-super-secret-internal-token}
+      - PLATFORM_DOMAIN=${PLATFORM_DOMAIN:-localhost}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2.7.6-alpine
+    container_name: flux-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-super-secret-internal-token}
+      - PLATFORM_DOMAIN=${PLATFORM_DOMAIN:-localhost}
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:
+  caddy_data:
+  caddy_config:

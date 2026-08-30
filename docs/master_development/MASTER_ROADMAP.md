@@ -606,7 +606,7 @@ When transitioning subtask states:
 **Status:** `[~] IN PROGRESS (10%)`
 
 ### 12A — Edge TLS Infrastructure
-* `[ ]` **12A-01:** Add Caddy proxy to docker-compose for On-Demand TLS.
+* `[x]` **12A-01:** Caddy proxy for on-demand Let's Encrypt certificates.
 
 ### 12B — Custom Domain Data Model
 * `[x]` **12B-01:** PostgreSQL `custom_domains` schema and `links` relation.

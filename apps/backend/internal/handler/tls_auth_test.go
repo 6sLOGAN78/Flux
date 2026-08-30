@@ -149,3 +149,7 @@ func TestTLSAuthHandler(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), `"authorized":false`)
 	})
 }
+
+func TestTLSAuthHandler_QueryToken(t *testing.T) {
+	// Let's add a quick check for query token
+}

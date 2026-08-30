@@ -119,6 +119,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	userRepo := repository.NewUserRepository(dbPool)
 
 	e := echo.New()
+	e.IPExtractor = echo.ExtractIPFromRealIPHeader()
 	e.HTTPErrorHandler = errs.CustomHTTPErrorHandler
 	customMiddleware.RegisterGlobalMiddlewares(e)
 	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
