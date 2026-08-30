@@ -152,3 +152,60 @@ func TestRedirectParity_CacheHitMiss_UTMResolution(t *testing.T) {
 	assert.Equal(t, target3Miss.UTMCampaign, target3Hit.UTMCampaign)
 	assert.Equal(t, target3Miss.UTMSource, target3Hit.UTMSource)
 }
+
+func TestRedirectParity_CacheHitMiss_CustomDomains(t *testing.T) {
+	ctx := context.Background()
+	
+	pool, cleanupDB := setupParityTestDB(t)
+	defer cleanupDB()
+
+	redisContainer, err := pkgtesting.SetupRedisContainer(ctx)
+	require.NoError(t, err)
+	defer redisContainer.Terminate(ctx)
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisContainer.Address,
+	})
+	defer redisClient.Close()
+
+	pgRepo := repository.NewPostgresRedirectRepository(pool)
+	cacheRepo := repository.NewRedisRedirectCache(redisClient)
+
+	// Setup Test Data
+	workspaceID := uuid.New()
+	_, err = pool.Exec(ctx, "INSERT INTO workspaces (id, name) VALUES ($1, $2)", workspaceID, "Domain Workspace")
+	require.NoError(t, err)
+
+	domainID := uuid.New()
+	hostname := "analytics-parity.com"
+	_, err = pool.Exec(ctx, `
+		INSERT INTO custom_domains (id, tenant_id, hostname, status, verification_token) 
+		VALUES ($1, $2, $3, 'active', 'test')
+	`, domainID, workspaceID, hostname)
+	require.NoError(t, err)
+
+	shortCode := "domainlink"
+	_, err = pool.Exec(ctx, `
+		INSERT INTO links (id, tenant_id, short_code, destination_url, custom_domain_id) 
+		VALUES (gen_random_uuid(), $1, $2, 'https://test1.com', $3)
+	`, workspaceID, shortCode, domainID)
+	require.NoError(t, err)
+
+	// 1. Cache MISS
+	targetMiss, err := pgRepo.GetByHostAndSlug(ctx, hostname, shortCode)
+	require.NoError(t, err)
+	assert.Equal(t, domainID.String(), *targetMiss.CustomDomainID)
+	assert.Equal(t, hostname, targetMiss.Hostname)
+
+	// Cache it
+	err = cacheRepo.Set(ctx, hostname, shortCode, targetMiss, time.Minute)
+	require.NoError(t, err)
+
+	// 2. Cache HIT
+	targetHit, err := cacheRepo.Get(ctx, hostname, shortCode)
+	require.NoError(t, err)
+
+	// Ensure Parity
+	assert.Equal(t, targetMiss.CustomDomainID, targetHit.CustomDomainID)
+	assert.Equal(t, targetMiss.Hostname, targetHit.Hostname)
+}

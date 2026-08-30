@@ -9,6 +9,8 @@ import (
 	"flux/apps/backend/internal/model/analytics"
 	"flux/apps/backend/internal/repository"
 	pkgtesting "flux/apps/backend/internal/testing"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClickHouseAnalyticsRepository_Integration(t *testing.T) {
@@ -260,4 +262,62 @@ func TestClickHouseAnalyticsRepository_CampaignUTMAttribution(t *testing.T) {
 	if *campPerfB.Data[0].CampaignID != campB || campPerfB.Data[0].Clicks != 1 {
 		t.Errorf("unexpected data for wsB: %+v", campPerfB.Data[0])
 	}
+}
+
+func TestClickHouseAnalyticsRepository_GetDomainPerformance(t *testing.T) {
+	ctx := context.Background()
+	chContainer, err := pkgtesting.SetupClickHouseContainer(ctx)
+	require.NoError(t, err)
+	defer chContainer.Terminate(ctx)
+
+	conn, err := db.InitClickHouse(chContainer.Address)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	err = db.MigrateClickHouseSchema(ctx, conn)
+	require.NoError(t, err)
+
+	repo := repository.NewClickHouseAnalyticsRepository(conn)
+	
+	wsID := "ws-domain-test"
+	now := time.Now().UTC()
+	
+	// Create some events for this workspace
+	insertQuery := `
+		INSERT INTO analytics_events (event_id, event_type, timestamp, link_id, workspace_id, short_code, ip_hash, hostname, custom_domain_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	
+	batch, err := conn.PrepareBatch(ctx, insertQuery)
+	require.NoError(t, err)
+
+	batch.Append("e1", "link.redirect", now.Add(-time.Hour), "link1", wsID, "abcd", "ip1", "customer-a.com", "cd-1")
+	batch.Append("e2", "link.redirect", now.Add(-time.Hour), "link1", wsID, "abcd", "ip1", "customer-a.com", "cd-1")
+	batch.Append("e3", "link.redirect", now.Add(-time.Hour), "link1", wsID, "abcd", "ip2", "customer-a.com", "cd-1")
+	
+	batch.Append("e4", "link.redirect", now.Add(-time.Hour), "link2", wsID, "efgh", "ip3", "customer-b.com", "cd-2")
+	batch.Append("e5", "link.redirect", now.Add(-time.Hour), "link3", wsID, "ijkl", "ip4", nil, nil) // platform domain
+
+	require.NoError(t, batch.Send())
+	
+	resp, err := repo.GetDomainPerformance(ctx, wsID, now.Add(-2*time.Hour), now, 10)
+	require.NoError(t, err)
+	
+	assert.Len(t, resp.Data, 3)
+	
+	// Data should be ordered by clicks DESC
+	assert.Equal(t, "customer-a.com", resp.Data[0].Hostname)
+	assert.Equal(t, uint64(3), resp.Data[0].Clicks)
+	assert.Equal(t, uint64(2), resp.Data[0].UniqueVisitors) // ip1, ip2
+	
+	// Next could be platform or customer-b (both have 1 click)
+	// But let's check one of them
+	foundPlatform := false
+	for _, d := range resp.Data {
+		if d.Hostname == "platform" {
+			foundPlatform = true
+			assert.Equal(t, uint64(1), d.Clicks)
+		}
+	}
+	assert.True(t, foundPlatform)
 }

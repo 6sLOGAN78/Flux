@@ -20,9 +20,9 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 12 - Custom Domains & Edge TLS (Task 12A Complete)
+* **Phase**: PHASE 12 - Custom Domains & Edge TLS (Task 12G Complete)
 * **Status**: IN PROGRESS
-* **Why**: The Data Model (12B), Routing Engine (12E), Core API (12C), DNS Worker (12D), TLS Auth (12F), and Edge TLS Infrastructure (12A) are complete. Edge proxy securely proxies HTTPS. Ready for frontend UI and Analytics.
+* **Why**: Core domain infrastructure (12A-F) and Analytics Expansion (12G) are complete. Ready for frontend UI (12H) and final E2E (12I).
 
 ## Current Priorities
 1. Expand features: Campaigns, UTM, Custom Domains.

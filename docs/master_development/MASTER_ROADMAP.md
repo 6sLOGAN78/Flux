@@ -626,7 +626,10 @@ When transitioning subtask states:
 * `[x]` **12F-01:** Build `GET /api/internal/tls/ask` for Caddy dynamic SSL.
 
 ### 12G — Analytics Expansion
-* `[ ]` **12G-01:** Attach hostname dimensions to ClickHouse analytics.
+* `[x]` **12G-01:** Expand `AnalyticsEvent` struct with `custom_domain_id` and `hostname`.
+* `[x]` **12G-02:** Alter ClickHouse schema to include nullable domain columns.
+* `[x]` **12G-03:** Support caching domain properties in Redis for parity.
+* `[x]` **12G-04:** Extend `AnalyticsRepository` API with domain metrics support.
 
 ### 12H — Frontend Domains UI
 * `[ ]` **12H-01:** React views for domain management and DNS instructions.

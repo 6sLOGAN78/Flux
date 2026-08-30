@@ -241,3 +241,32 @@ func (h *AnalyticsHandler) GetUTMPerformance(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, perf)
 }
+
+// GetDomainPerformance handles GET /api/v1/analytics/domains
+func (h *AnalyticsHandler) GetDomainPerformance(c echo.Context) error {
+	tenantID, err := h.getTenantID(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := parseDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	limitStr := c.QueryParam("limit")
+	limit := 10
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	resp, err := h.provider.GetDomainPerformance(c.Request().Context(), tenantID, from, to, limit)
+	if err != nil {
+		c.Logger().Errorf("failed to get domain performance: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get domain performance")
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}

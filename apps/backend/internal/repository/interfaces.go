@@ -34,4 +34,5 @@ type AnalyticsProvider interface {
 	GetReferrers(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.ReferrersResponse, error)
 	GetCampaignPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.CampaignPerformanceResponse, error)
 	GetUTMPerformance(ctx context.Context, workspaceID string, dimension string, from, to time.Time, limit int) (*analytics.UTMPerformanceResponse, error)
+	GetDomainPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.DomainPerformanceResponse, error)
 }

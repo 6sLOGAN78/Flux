@@ -109,3 +109,13 @@ type UTMPerformanceResponse struct {
 	Dimension string           `json:"dimension"`
 	Data      []UTMPerformance `json:"data"`
 }
+
+type DomainPerformance struct {
+	Hostname       string `json:"hostname"`
+	Clicks         uint64 `json:"clicks"`
+	UniqueVisitors uint64 `json:"unique_visitors"`
+}
+
+type DomainPerformanceResponse struct {
+	Data []DomainPerformance `json:"data"`
+}

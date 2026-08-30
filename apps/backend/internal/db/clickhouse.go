@@ -69,7 +69,9 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 		utm_medium Nullable(String),
 		utm_campaign Nullable(String),
 		utm_term Nullable(String),
-		utm_content Nullable(String)
+		utm_content Nullable(String),
+		custom_domain_id Nullable(String),
+		hostname Nullable(String)
 	) ENGINE = MergeTree()
 	PARTITION BY toYYYYMM(timestamp)
 	ORDER BY (workspace_id, link_id, timestamp)
@@ -92,6 +94,8 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_campaign Nullable(String)",
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_term Nullable(String)",
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_content Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS custom_domain_id Nullable(String)",
+		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS hostname Nullable(String)",
 	}
 
 	for _, q := range alterQueries {

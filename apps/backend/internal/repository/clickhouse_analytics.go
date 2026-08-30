@@ -297,3 +297,50 @@ func (r *ClickHouseAnalyticsRepository) GetUTMPerformance(ctx context.Context, w
 
 	return &analytics.UTMPerformanceResponse{Dimension: dimCol, Data: data}, nil
 }
+
+func (r *ClickHouseAnalyticsRepository) GetDomainPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.DomainPerformanceResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+
+	query := `
+		SELECT 
+			if(isNull(hostname) OR hostname = '', 'platform', hostname) as host,
+			count(event_id) as clicks,
+			uniqExact(ip_hash) as unique_visitors
+		FROM analytics_events
+		WHERE workspace_id = @workspace_id
+		  AND timestamp >= @from
+		  AND timestamp <= @to
+		GROUP BY host
+		ORDER BY clicks DESC
+		LIMIT @limit
+	`
+	
+	rows, err := r.conn.Query(ctx, query,
+		clickhouse.Named("workspace_id", workspaceID),
+		clickhouse.Named("from", from),
+		clickhouse.Named("to", to),
+		clickhouse.Named("limit", limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query domain performance: %w", err)
+	}
+	defer rows.Close()
+
+	var data []analytics.DomainPerformance
+	for rows.Next() {
+		var host string
+		var clicks, uniqueVisitors uint64
+		if err := rows.Scan(&host, &clicks, &uniqueVisitors); err != nil {
+			return nil, fmt.Errorf("failed to scan domain performance row: %w", err)
+		}
+		data = append(data, analytics.DomainPerformance{
+			Hostname:       host,
+			Clicks:         clicks,
+			UniqueVisitors: uniqueVisitors,
+		})
+	}
+	
+	return &analytics.DomainPerformanceResponse{Data: data}, nil
+}

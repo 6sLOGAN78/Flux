@@ -210,6 +210,11 @@ func (c *RedisAnalyticsConsumer) insertToClickHouse(events []analytics.Analytics
 	}
 
 	for _, e := range events {
+		var hostPtr *string
+		if e.Hostname != "" {
+			hostPtr = &e.Hostname
+		}
+
 		err := batch.Append(
 			e.EventID,
 			string(e.EventType),
@@ -226,6 +231,8 @@ func (c *RedisAnalyticsConsumer) insertToClickHouse(events []analytics.Analytics
 			e.UTMCampaign,
 			e.UTMTerm,
 			e.UTMContent,
+			e.CustomDomainID,
+			hostPtr,
 		)
 		if err != nil {
 			return err
