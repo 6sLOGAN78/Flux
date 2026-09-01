@@ -23,6 +23,7 @@ import {
   ZTopLinksResponse,
   ZReferrersResponse, ZCampaignPerformanceResponse, ZUTMPerformanceResponse,
   ZLinkMetricsResponse,
+  ZAttributionResult,
   ZOrganization,
   ZWorkspace,
   ZWorkspaceMember,
@@ -545,6 +546,25 @@ export const apiContract = c.router({
       404: z.object({ error: z.string().openapi({ example: "Link metrics not found" }) }),
     },
     summary: "Get detailed time-series metrics for a specific link",
+    metadata: {
+      openApiTags: ["Analytics"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  getAnalyticsAttribution: {
+    method: "GET",
+    path: "/api/v1/analytics/attribution",
+    query: z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      model: z.string().optional(),
+    }),
+    responses: {
+      200: ZAttributionResult,
+      400: z.object({ error: z.string().openapi({ example: "Bad Request" }) }),
+      401: z.object({ error: z.string().openapi({ example: "Unauthorized" }) }),
+    },
+    summary: "Get campaign attribution",
     metadata: {
       openApiTags: ["Analytics"],
       openApiSecurity: [{ bearerAuth: [] }],

@@ -122,3 +122,6 @@
   - Native parameters, encoded sequences, and hash fragments correctly bypass overwrite or stripping.
   - Parity holds definitively between Postgres cache misses and Redis cache hits on target mappings.
   - Redundant or malicious `flux_cid` parameters are strictly overridden natively.
+
+### Phase 13D: Attribution API / Engine
+- Verify multi-touch linear conversion calculates revenue precisely evenly on click pipelines across `GET /api/v1/analytics/attribution`.

@@ -33,21 +33,21 @@
 | **17** | Production Hardening | `[~] IN PROGRESS` | 45% | Implement rate limiting & load testing verification |
 | **18** | Scale / Operations | `[ ] NOT STARTED` | 0% | Deferred to multi-region rollout |
 
-*Overall Repository Progress: 61.8% of 18 Master Phases Completed / Active.*
+*Overall Repository Progress: 66.7% of 18 Master Phases Completed / Active.*
 
 ---
 
 # CURRENT DEVELOPMENT POSITION
 
 ```text
-Current Phase:               PHASE 11 (COMPLETE)
-Current Task:                Phase 11 Complete
-Overall Status:              READY FOR PHASE 12
+Current Phase:               PHASE 13 (IN PROGRESS)
+Current Task:                Phase 13D Complete
+Overall Status:              ACTIVE
 Completed Phases:            Phase 00, Phase 01, Phase 02, Phase 03, Phase 04, Phase 05, Phase 06, Phase 07, Phase 08, Phase 09, Phase 11
-Partially Completed Phases:  Phase 10 (75%), Phase 17 (45%)
+Partially Completed Phases:  Phase 10 (75%), Phase 13 (66%), Phase 17 (45%)
 Needs Verification:          Task 10A-02 (Org Switcher UX)
 Blocked:                     None
-Next Recommended Task:       Phase 12 — Custom Domains & Edge TLS
+Next Recommended Task:       Phase 13E — Frontend Attribution UI
 ```
 
 ---
@@ -883,22 +883,27 @@ SCN 4844
 ---
 
 ## PHASE 13 — Multi-Touch Attribution
-**Depends On:** Phase 07, 11  
-**Blocks:** None  
-**Status:** `[~] PLANNING COMPLETE (10%)`
 
 ### 13A — Data Model & Migrations
 * `[x]` **13A-01:** Create ClickHouse `conversions` table migration.
 * `[x]` **13A-02:** Create ClickHouse `analytics_events.event_id` bloom filter migration.
 
-### 13B — Tracking & Ingestion
+### 13B — URL Decoration & Tracking
 * `[x]` **13B-01:** Update `RedirectHandler` to conditionally append `?flux_cid=<event_id>`.
+
+### 13C — Conversion Ingestion API
 * `[x]` **13C-01:** Implement `POST /api/v1/events/track` handler (Public endpoint).
 * `[x]` **13C-02:** Implement ClickHouse stream consumer for `conversions`.
 
-### 13C — Attribution API & Frontend
-* `[ ]` **13C-01:** Wire `calculator.go` to real data via `GET /api/v1/analytics/attribution`.
-* `[ ]` **13C-02:** Connect `AttributionPage.tsx` to real attribution queries.
+### 13D — Attribution API / Engine
+* `[x]` **13D-01:** Implement `GetConversionsWithTouchpoints` in ClickHouse.
+* `[x]` **13D-02:** Wire `calculator.go` to real data via `GET /api/v1/analytics/attribution`.
+
+### 13E — Frontend Attribution UI
+* `[ ]` **13E-01:** Connect `AttributionPage.tsx` to real attribution queries.
+
+### 13F — Final Verification
+* `[ ]` **13F-01:** Perform end-to-end attribution checks and audit tenant isolation.
 
 ### Phase 13 Checkpoint
 * `[ ]` Multi-touch attribution calculations match test models against real clickstream.

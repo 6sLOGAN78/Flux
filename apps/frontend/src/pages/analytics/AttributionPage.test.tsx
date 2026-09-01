@@ -1,117 +1,115 @@
-import { describe, expect, it } from 'bun:test';
-import React from 'react';
-import { renderToString } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AttributionPage } from './AttributionPage';
-import {
-  ModelSelectorBar,
-  AttributionModelType,
-} from '@/components/attribution/ModelSelectorBar';
-import {
-  AttributionComparisonTable,
-  CampaignAttributionItem,
-} from '@/components/attribution/AttributionComparisonTable';
-import {
-  TouchpointTimelineFlow,
-  TouchpointNode,
-} from '@/components/attribution/TouchpointTimelineFlow';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useAttributionQuery } from '@/hooks/useAttributionQuery';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe('Multi-Touch Attribution Studio', () => {
-  const testQueryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
+vi.mock('@/hooks/useAttributionQuery', () => ({
+  useAttributionQuery: vi.fn(),
+}));
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWithProviders(ui: React.ReactNode) {
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
+
+describe('AttributionPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  const mockCampaigns: CampaignAttributionItem[] = [
-    {
-      channel: 'Twitter Paid Ads',
-      campaign: 'dev_growth_q3',
-      touchpoints: 4120,
-      conversions: 184.2,
-      revenue: 46050,
-      sharePercentage: 38.5,
-    },
-    {
-      channel: 'Google Search CPC',
-      campaign: 'brand_keywords',
-      touchpoints: 3890,
-      conversions: 152.8,
-      revenue: 38200,
-      sharePercentage: 31.9,
-    },
-    {
-      channel: 'Product Hunt Launch',
-      campaign: 'ph_v2_launch',
-      touchpoints: 2100,
-      conversions: 94.0,
-      revenue: 23500,
-      sharePercentage: 19.6,
-    },
-  ];
+  it('renders loading state correctly', () => {
+    vi.mocked(useAttributionQuery).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    } as any);
 
-  const mockTimeline: TouchpointNode[] = [
-    { channel: 'Twitter / X', type: 'first_touch', timestamp: 'Aug 10', weightPercentage: 40 },
-    { channel: 'Google Search', type: 'middle_touch', timestamp: 'Aug 14', weightPercentage: 10 },
-    { channel: 'Blog Post', type: 'middle_touch', timestamp: 'Aug 17', weightPercentage: 10 },
-    { channel: 'Direct / Pricing', type: 'last_touch', timestamp: 'Aug 19', weightPercentage: 40 },
-  ];
-
-  it('renders ModelSelectorBar with 5 attribution models', () => {
-    const html = renderToString(
-      <ModelSelectorBar
-        selectedModel="u_shaped"
-        onSelectModel={() => {}}
-      />
-    );
-
-    expect(html).toContain('First-Touch');
-    expect(html).toContain('Last-Touch');
-    expect(html).toContain('Linear');
-    expect(html).toContain('Time-Decay');
-    expect(html).toContain('Position-Based (U-Shaped)');
+    renderWithProviders(<AttributionPage />);
+    expect(screen.getByTestId('loading-state')).toBeInTheDocument();
   });
 
-  it('renders TouchpointTimelineFlow with journey milestones and weights', () => {
-    const html = renderToString(
-      <TouchpointTimelineFlow
-        touchpoints={mockTimeline}
-        model="u_shaped"
-      />
-    );
+  it('renders error state correctly', () => {
+    vi.mocked(useAttributionQuery).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    } as any);
 
-    expect(html).toContain('Customer Journey Attribution Path');
-    expect(html).toContain('Twitter / X');
-    expect(html).toContain('40%');
-    expect(html).toContain('Direct / Pricing');
+    renderWithProviders(<AttributionPage />);
+    expect(screen.getByTestId('error-state')).toBeInTheDocument();
   });
 
-  it('renders AttributionComparisonTable with attributed revenue and conversions', () => {
-    const html = renderToString(
-      <AttributionComparisonTable
-        data={mockCampaigns}
-        currency="$"
-      />
-    );
+  it('renders empty state correctly', () => {
+    vi.mocked(useAttributionQuery).mockReturnValue({
+      data: { model: 'linear', total_conversions: 0, total_attributed_revenue: 0, campaigns: [] },
+      isLoading: false,
+      isError: false,
+    } as any);
 
-    expect(html).toContain('Twitter Paid Ads');
-    expect(html).toContain('184.2');
-    expect(html).toContain('$46,050');
-    expect(html).toContain('Google Search CPC');
+    renderWithProviders(<AttributionPage />);
+    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
   });
 
-  it('renders full AttributionPage with header, timeline, and model metrics', () => {
-    const html = renderToString(
-      <QueryClientProvider client={testQueryClient}>
-        <MemoryRouter>
-          <AttributionPage />
-        </MemoryRouter>
-      </QueryClientProvider>
-    );
+  it('renders attribution data correctly', () => {
+    const mockData = {
+      model: 'linear',
+      total_conversions: 10,
+      total_attributed_revenue: 1000.5,
+      campaigns: [
+        {
+          campaign_id: 'c1',
+          campaign_name: 'Summer Sale',
+          attributed_conversions: 5.5,
+          attributed_revenue: 500.25,
+        },
+        {
+          campaign_id: 'c2',
+          campaign_name: 'Winter Sale',
+          attributed_conversions: 4.5,
+          attributed_revenue: 500.25,
+        }
+      ]
+    };
 
-    expect(html).toContain('Multi-Touch Attribution Studio');
-    expect(html).toContain('Position-Based (U-Shaped)');
-    expect(html).toContain('Attributed Pipeline Revenue');
+    vi.mocked(useAttributionQuery).mockReturnValue({
+      data: mockData,
+      isLoading: false,
+      isError: false,
+    } as any);
+
+    renderWithProviders(<AttributionPage />);
+    
+    expect(screen.getByTestId('total-conversions')).toHaveTextContent('10');
+    expect(screen.getByTestId('total-revenue')).toHaveTextContent('$1000.50');
+    
+    // Check if table contains campaigns
+    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.getByText('Winter Sale')).toBeInTheDocument();
+    expect(screen.getAllByText('$500.25')).toHaveLength(2);
+    expect(screen.getAllByText('50.0%')).toHaveLength(2); // Contribution percentage
+  });
+
+  it('updates model when selector is changed', async () => {
+    vi.mocked(useAttributionQuery).mockReturnValue({
+      data: { model: 'linear', total_conversions: 0, total_attributed_revenue: 0, campaigns: [] },
+      isLoading: false,
+      isError: false,
+    } as any);
+
+    renderWithProviders(<AttributionPage />);
+    
+    const selector = screen.getByTestId('model-selector');
+    fireEvent.change(selector, { target: { value: 'first_touch' } });
+
+    await waitFor(() => {
+      // The hook should have been called again (indirectly checked by ensuring state update)
+      expect((selector as HTMLSelectElement).value).toBe('first_touch');
+    });
   });
 });

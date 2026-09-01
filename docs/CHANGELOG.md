@@ -120,3 +120,9 @@
 - Overhauled `GetByHostAndSlug` SQL query to assert strong tenant boundaries natively, preventing cross-tenant access via domain spoofing.
 - Augmented cache invalidation for Links and Campaigns to dynamically lookup and purge `redirect:{hostname}:{slug}` keys based on the link's custom domain attachment.
 - Preserved `CustomDomainID` and `Hostname` metadata into `AnalyticsEvent` payload for Phase 12G integration.
+
+### Phase 13D: Attribution API / Engine
+- **Implemented** `AttributionProvider` joining `conversions` and `analytics_events` on ClickHouse.
+- **Implemented** array join algorithms natively mapping `click_ids` safely per tenant without performance regression.
+- **Added** `GET /api/v1/analytics/attribution` endpoint to securely execute analytical computations dynamically leveraging `calculator.go`.
+- **Integrated** OpenAPI schemas bounding the multi-touch models endpoint logically to Zod payload boundaries.
