@@ -7,6 +7,7 @@ import (
 
 	"flux/apps/backend/internal/model/analytics"
 	"flux/apps/backend/internal/model/redirect"
+	"flux/apps/backend/internal/modules/attribution"
 )
 
 var ErrNotFound = errors.New("repository: resource not found")
@@ -35,4 +36,8 @@ type AnalyticsProvider interface {
 	GetCampaignPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.CampaignPerformanceResponse, error)
 	GetUTMPerformance(ctx context.Context, workspaceID string, dimension string, from, to time.Time, limit int) (*analytics.UTMPerformanceResponse, error)
 	GetDomainPerformance(ctx context.Context, workspaceID string, from, to time.Time, limit int) (*analytics.DomainPerformanceResponse, error)
+}
+
+type AttributionProvider interface {
+	GetConversionsWithTouchpoints(ctx context.Context, workspaceID string, from, to time.Time) ([]attribution.Conversion, error)
 }

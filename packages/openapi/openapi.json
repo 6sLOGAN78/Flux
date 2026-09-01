@@ -1890,6 +1890,94 @@
           }
         }
       }
+    },
+    "/api/v1/analytics/attribution": {
+      "get": {
+        "summary": "Get campaign attribution",
+        "description": "Calculates conversions and revenue attributed to campaigns using multi-touch models.",
+        "tags": [
+          "Analytics"
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "first_touch",
+                "last_touch",
+                "linear",
+                "time_decay",
+                "position_based"
+              ],
+              "default": "linear"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attribution data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    },
+                    "total_conversions": {
+                      "type": "integer"
+                    },
+                    "total_attributed_revenue": {
+                      "type": "number"
+                    },
+                    "campaigns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "campaign_id": {
+                            "type": "string"
+                          },
+                          "campaign_name": {
+                            "type": "string"
+                          },
+                          "attributed_conversions": {
+                            "type": "number"
+                          },
+                          "attributed_revenue": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {
