@@ -12,5 +12,5 @@ func TestInitRouter(t *testing.T) {
 	e := echo.New()
 	
 	// Ensure it initializes without panicking with nil dependencies (except Echo)
-	router.InitRouter(e, nil, nil, nil, nil, nil, nil, nil, nil)
+	router.InitRouter(e, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }

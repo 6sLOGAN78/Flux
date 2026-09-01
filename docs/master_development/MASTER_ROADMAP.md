@@ -893,8 +893,8 @@ SCN 4844
 
 ### 13B — Tracking & Ingestion
 * `[x]` **13B-01:** Update `RedirectHandler` to conditionally append `?flux_cid=<event_id>`.
-* `[ ]` **13B-02:** Implement `POST /api/v1/events/track` handler (Public endpoint).
-* `[ ]` **13B-03:** Implement ClickHouse stream consumer for `conversions`.
+* `[x]` **13C-01:** Implement `POST /api/v1/events/track` handler (Public endpoint).
+* `[x]` **13C-02:** Implement ClickHouse stream consumer for `conversions`.
 
 ### 13C — Attribution API & Frontend
 * `[ ]` **13C-01:** Wire `calculator.go` to real data via `GET /api/v1/analytics/attribution`.

@@ -119,3 +119,29 @@ type DomainPerformance struct {
 type DomainPerformanceResponse struct {
 	Data []DomainPerformance `json:"data"`
 }
+
+// ConversionEvent represents an external conversion event recorded by the tracking pixel.
+type ConversionEvent struct {
+	ConversionID   string    `json:"conversion_id"`
+	WorkspaceID    string    `json:"workspace_id"`
+	Timestamp      time.Time `json:"timestamp"`
+	ConversionName string    `json:"conversion_name"`
+	Revenue        float64   `json:"revenue"`
+	Currency       string    `json:"currency"`
+	ClickIDs       []string  `json:"click_ids"`
+	VisitorID      string    `json:"visitor_id,omitempty"`
+}
+
+// TrackConversionRequest is the payload sent by the public tracking pixel.
+type TrackConversionRequest struct {
+	ConversionID   string   `json:"conversion_id"`
+	ConversionName string   `json:"conversion_name"`
+	Revenue        float64  `json:"revenue"`
+	Currency       string   `json:"currency"`
+	ClickIDs       []string `json:"click_ids"`
+	VisitorID      string   `json:"visitor_id,omitempty"`
+}
+
+type ConversionPublisher interface {
+	PublishConversion(ctx context.Context, event *ConversionEvent) error
+}

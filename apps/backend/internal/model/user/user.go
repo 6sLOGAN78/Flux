@@ -18,9 +18,10 @@ type User struct {
 
 // Workspace represents a tenant workspace mapped from Clerk Organizations.
 type Workspace struct {
-	ID          uuid.UUID `json:"id" db:"id"`
-	ClerkOrgID  *string   `json:"clerk_org_id" db:"clerk_org_id"` // Nullable for personal workspaces
-	Name        string    `json:"name" db:"name"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID               uuid.UUID `json:"id" db:"id"`
+	ClerkOrgID       *string   `json:"clerk_org_id" db:"clerk_org_id"` // Nullable for personal workspaces
+	Name             string    `json:"name" db:"name"`
+	TrackingClientID uuid.UUID `json:"tracking_client_id" db:"tracking_client_id"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
 }

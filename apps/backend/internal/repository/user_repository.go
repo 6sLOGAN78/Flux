@@ -55,13 +55,13 @@ func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name str
 	if clerkOrgID == "" {
 		// Personal workspace fallback for the user
 		findPersonalQuery := `
-			SELECT id, clerk_org_id, name, created_at, updated_at
+			SELECT id, clerk_org_id, name, tracking_client_id, created_at, updated_at
 			FROM workspaces
 			WHERE clerk_org_id IS NULL AND owner_id = $1
 			LIMIT 1
 		`
 		w := &user.Workspace{}
-		err := r.db.QueryRow(ctx, findPersonalQuery, userID).Scan(&w.ID, &w.ClerkOrgID, &w.Name, &w.CreatedAt, &w.UpdatedAt)
+		err := r.db.QueryRow(ctx, findPersonalQuery, userID).Scan(&w.ID, &w.ClerkOrgID, &w.Name, &w.TrackingClientID, &w.CreatedAt, &w.UpdatedAt)
 		if err == nil {
 			return w, nil
 		}
@@ -69,7 +69,7 @@ func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name str
 		query = `
 			INSERT INTO workspaces (clerk_org_id, name, owner_id)
 			VALUES (NULL, $1, $2)
-			RETURNING id, clerk_org_id, name, created_at, updated_at
+			RETURNING id, clerk_org_id, name, tracking_client_id, created_at, updated_at
 		`
 		args = []interface{}{name, userID}
 	} else {
@@ -79,18 +79,35 @@ func (r *UserRepository) SyncWorkspace(ctx context.Context, clerkOrgID, name str
 			VALUES ($1, $2, NULL)
 			ON CONFLICT (clerk_org_id) DO UPDATE 
 			SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
-			RETURNING id, clerk_org_id, name, created_at, updated_at
+			RETURNING id, clerk_org_id, name, tracking_client_id, created_at, updated_at
 		`
 		args = []interface{}{clerkOrgID, name}
 	}
 
 	w := &user.Workspace{}
 	err := r.db.QueryRow(ctx, query, args...).Scan(
-		&w.ID, &w.ClerkOrgID, &w.Name, &w.CreatedAt, &w.UpdatedAt,
+		&w.ID, &w.ClerkOrgID, &w.Name, &w.TrackingClientID, &w.CreatedAt, &w.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("syncing workspace: %w", err)
 	}
 
+	return w, nil
+}
+
+func (r *UserRepository) GetWorkspaceByTrackingClientID(ctx context.Context, clientID string) (*user.Workspace, error) {
+	query := `
+		SELECT id, clerk_org_id, name, tracking_client_id, created_at, updated_at
+		FROM workspaces
+		WHERE tracking_client_id = $1
+		LIMIT 1
+	`
+	w := &user.Workspace{}
+	err := r.db.QueryRow(ctx, query, clientID).Scan(
+		&w.ID, &w.ClerkOrgID, &w.Name, &w.TrackingClientID, &w.CreatedAt, &w.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
 	return w, nil
 }

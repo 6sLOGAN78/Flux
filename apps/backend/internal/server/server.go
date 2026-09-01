@@ -31,6 +31,7 @@ type Server struct {
 	DBPool             *pgxpool.Pool
 	AnalyticsPublisher *service.RedisAnalyticsPublisher
 	ClickHouseConsumer *service.RedisAnalyticsConsumer
+	ConversionConsumer *service.RedisConversionConsumer
 	DomainWorker       *service.DomainVerificationWorker
 }
 
@@ -61,7 +62,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	var pub *service.RedisAnalyticsPublisher
 	var pubInterface analytics.AnalyticsPublisher
+	var convPubInterface analytics.ConversionPublisher
 	var chConsumer *service.RedisAnalyticsConsumer
+	var convConsumer *service.RedisConversionConsumer
 	var analyticsProvider repository.AnalyticsProvider
 	var redirectCache repository.RedirectCache
 
@@ -74,14 +77,21 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		pub = service.NewRedisAnalyticsPublisher(redisClient, cfg.AnalyticsRedisStream, 5000)
 		pub.Start()
 		pubInterface = pub
+		
+		// Conversion publisher
+		convPubInterface = service.NewRedisConversionPublisher(redisClient, "analytics:conversions")
 
 		if cfg.ClickHouseURL != "" {
 			chConn, err := db.InitClickHouse(cfg.ClickHouseURL)
 			if err == nil {
 				_ = db.MigrateClickHouseSchema(context.Background(), chConn)
+				analyticsProvider = repository.NewClickHouseAnalyticsRepository(chConn)
+				
 				chConsumer = service.NewRedisAnalyticsConsumer(redisClient, chConn, cfg.AnalyticsRedisStream)
 				chConsumer.Start()
-				analyticsProvider = repository.NewClickHouseAnalyticsRepository(chConn)
+
+				convConsumer = service.NewRedisConversionConsumer(redisClient, chConn, "analytics:conversions")
+				convConsumer.Start()
 			} else {
 				log.Warn().Err(err).Msg("failed to connect to ClickHouse, consumer will not start")
 			}
@@ -117,6 +127,17 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	tlsAuthHandler := handler.NewTLSAuthHandler(domainRepo, cfg.InternalAPIKey)
 
 	userRepo := repository.NewUserRepository(dbPool)
+	
+	var trackingHandler *handler.TrackingHandler
+	var limiterStore customMiddleware.LimiterStore
+	if convPubInterface != nil {
+		trackingHandler = handler.NewTrackingHandler(userRepo, convPubInterface)
+	}
+
+	if cfg.RedisURL != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+		limiterStore = customMiddleware.NewRedisSlidingWindowLimiter(redisClient)
+	}
 
 	e := echo.New()
 	e.IPExtractor = echo.ExtractIPFromRealIPHeader()
@@ -124,7 +145,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	customMiddleware.RegisterGlobalMiddlewares(e)
 	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
 
-	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler)
+	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler, trackingHandler, limiterStore)
 
 	return &Server{
 		Echo:               e,
@@ -132,6 +153,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		DBPool:             dbPool,
 		AnalyticsPublisher: pub,
 		ClickHouseConsumer: chConsumer,
+		ConversionConsumer: convConsumer,
 		DomainWorker:       domainWorker,
 	}, nil
 }
@@ -165,6 +187,11 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s.ClickHouseConsumer != nil {
 		log.Info().Msg("stopping clickhouse consumer gracefully...")
 		s.ClickHouseConsumer.Stop(5 * time.Second)
+	}
+	
+	if s.ConversionConsumer != nil {
+		log.Info().Msg("stopping conversion consumer gracefully...")
+		s.ConversionConsumer.Stop(5 * time.Second)
 	}
 
 	return err
