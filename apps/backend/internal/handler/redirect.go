@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"time"
 
 	"flux/apps/backend/internal/model/analytics"
@@ -63,31 +64,44 @@ func (h *RedirectHandler) HandleRedirect(c echo.Context) error {
 		code = http.StatusMovedPermanently
 	}
 
-	// Generate Analytics Event Non-Blockingly
-	if h.publisher != nil && target.Status == "active" {
-		event := &analytics.AnalyticsEvent{
-			EventID:     uuid.New().String(),
-			EventType:   analytics.EventTypeLinkRedirect,
-			Timestamp:   time.Now().UTC(),
-			LinkID:      target.LinkID,
-			WorkspaceID: target.TenantID,
-			ShortCode:   target.Slug,
-			CampaignID:  target.CampaignID,
-			UTMSource:   target.UTMSource,
-			UTMMedium:   target.UTMMedium,
-			UTMCampaign: target.UTMCampaign,
-			UTMTerm:     target.UTMTerm,
-			UTMContent:  target.UTMContent,
-			CustomDomainID: target.CustomDomainID,
-			Hostname:    target.Hostname,
-			Referrer:    c.Request().Referer(),
-			UserAgent:   c.Request().UserAgent(),
-			IPHash:      utils.HashIP(c.RealIP()),
+	destination := target.DestinationURL
+	eventID := uuid.New().String()
+
+	if target.Status == "active" {
+		// 13B: Decorate destination URL with flux_cid
+		if parsedURL, err := url.Parse(destination); err == nil {
+			q := parsedURL.Query()
+			q.Set("flux_cid", eventID)
+			parsedURL.RawQuery = q.Encode()
+			destination = parsedURL.String()
 		}
 
-		// Publish non-blockingly to the bounded queue
-		_ = h.publisher.PublishEvent(c.Request().Context(), event)
+		// Generate Analytics Event Non-Blockingly
+		if h.publisher != nil {
+			event := &analytics.AnalyticsEvent{
+				EventID:        eventID,
+				EventType:      analytics.EventTypeLinkRedirect,
+				Timestamp:      time.Now().UTC(),
+				LinkID:         target.LinkID,
+				WorkspaceID:    target.TenantID,
+				ShortCode:      target.Slug,
+				CampaignID:     target.CampaignID,
+				UTMSource:      target.UTMSource,
+				UTMMedium:      target.UTMMedium,
+				UTMCampaign:    target.UTMCampaign,
+				UTMTerm:        target.UTMTerm,
+				UTMContent:     target.UTMContent,
+				CustomDomainID: target.CustomDomainID,
+				Hostname:       target.Hostname,
+				Referrer:       c.Request().Referer(),
+				UserAgent:      c.Request().UserAgent(),
+				IPHash:         utils.HashIP(c.RealIP()),
+			}
+
+			// Publish non-blockingly to the bounded queue
+			_ = h.publisher.PublishEvent(c.Request().Context(), event)
+		}
 	}
 
-	return c.Redirect(code, target.DestinationURL)
+	return c.Redirect(code, destination)
 }

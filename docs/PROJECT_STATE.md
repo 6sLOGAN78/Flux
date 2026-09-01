@@ -20,9 +20,9 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 13 - Multi-Touch Attribution (Task 13A Complete)
+* **Phase**: PHASE 13 - Multi-Touch Attribution (Task 13B Complete)
 * **Status**: IN PROGRESS
-* **Why**: The Phase 13 Data Model and ClickHouse schema migrations for conversions and attribution bloom filters have been completed and verified. 13B (URL Decoration) is next.
+* **Why**: The Phase 13 URL Decoration & Click Tracking (13B) logic has been safely implemented, modifying the Redirect Handler to deterministically append `?flux_cid=` to all destinations. Next is 13C (Ingestion API).
 
 ## Current Priorities
 1. Expand features: Campaigns, UTM, Custom Domains.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-01 (Part 2)
+**Type:** FEATURE
+**Task:** 13B (URL Decoration & Tracking)
+**Change:** Modified `RedirectHandler` to natively inject `?flux_cid=<uuid>` onto all outbound link destinations using `net/url`.
+**Reason:** Establishes cross-domain tracking boundaries required by Multi-Touch attribution logic.
+
+
 ## 2026-09-01
 **Type:** FEATURE
 **Task:** 13A (Multi-Touch Attribution Data Model)

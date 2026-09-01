@@ -113,3 +113,12 @@
   - Arrays (`click_ids`) persist correctly to ClickHouse.
   - Schema creation is idempotent and safely ignores pre-existing tables.
   - The `idx_event_id` Data-Skipping Bloom Filter index applies correctly to `analytics_events`.
+
+### V-009: Click Tracking URL Decoration (Phase 13B)
+- **Status**: PASSED
+- **Method**: Go unit and integration tests (`TestRedirectHandler_URLDecoration`, `TestRedirectHandler_URLDecoration_CacheParity`).
+- **Assertions**:
+  - `flux_cid` successfully appends to redirect target URLs accurately.
+  - Native parameters, encoded sequences, and hash fragments correctly bypass overwrite or stripping.
+  - Parity holds definitively between Postgres cache misses and Redis cache hits on target mappings.
+  - Redundant or malicious `flux_cid` parameters are strictly overridden natively.

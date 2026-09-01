@@ -892,7 +892,7 @@ SCN 4844
 * `[x]` **13A-02:** Create ClickHouse `analytics_events.event_id` bloom filter migration.
 
 ### 13B — Tracking & Ingestion
-* `[ ]` **13B-01:** Update `RedirectHandler` to conditionally append `?flux_cid=<event_id>`.
+* `[x]` **13B-01:** Update `RedirectHandler` to conditionally append `?flux_cid=<event_id>`.
 * `[ ]` **13B-02:** Implement `POST /api/v1/events/track` handler (Public endpoint).
 * `[ ]` **13B-03:** Implement ClickHouse stream consumer for `conversions`.
 
