@@ -885,13 +885,20 @@ SCN 4844
 ## PHASE 13 — Multi-Touch Attribution
 **Depends On:** Phase 07, 11  
 **Blocks:** None  
-**Status:** `[ ] NOT STARTED (0%) - DEFERRED`
+**Status:** `[~] PLANNING COMPLETE (10%)`
 
-### 13A — Attribution Models
-* `[ ]` **13A-01:** Conversion event ingestion pipeline in ClickHouse.
-* `[ ]` **13A-02:** Wire `apps/backend/internal/modules/attribution/calculator.go` to live data.
-* `[ ]` **13A-03:** Multi-touch attribution API (`GET /api/v1/analytics/attribution`).
-* `[ ]` **13A-04:** Connect `AttributionPage.tsx` to real attribution queries.
+### 13A — Data Model & Migrations
+* `[x]` **13A-01:** Create ClickHouse `conversions` table migration.
+* `[x]` **13A-02:** Create ClickHouse `analytics_events.event_id` bloom filter migration.
+
+### 13B — Tracking & Ingestion
+* `[ ]` **13B-01:** Update `RedirectHandler` to conditionally append `?flux_cid=<event_id>`.
+* `[ ]` **13B-02:** Implement `POST /api/v1/events/track` handler (Public endpoint).
+* `[ ]` **13B-03:** Implement ClickHouse stream consumer for `conversions`.
+
+### 13C — Attribution API & Frontend
+* `[ ]` **13C-01:** Wire `calculator.go` to real data via `GET /api/v1/analytics/attribution`.
+* `[ ]` **13C-02:** Connect `AttributionPage.tsx` to real attribution queries.
 
 ### Phase 13 Checkpoint
 * `[ ]` Multi-touch attribution calculations match test models against real clickstream.

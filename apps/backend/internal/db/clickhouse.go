@@ -84,6 +84,25 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 		return fmt.Errorf("failed to create analytics_events table: %w", err)
 	}
 
+	conversionsSchema := `
+	CREATE TABLE IF NOT EXISTS conversions (
+		conversion_id String,
+		workspace_id String,
+		timestamp DateTime64(3, 'UTC'),
+		conversion_name String,
+		revenue Float64,
+		currency String,
+		click_ids Array(String),
+		visitor_id String
+	) ENGINE = MergeTree()
+	PARTITION BY toYYYYMM(timestamp)
+	ORDER BY (workspace_id, timestamp)
+	TTL toDateTime(timestamp) + INTERVAL 90 DAY;
+	`
+	if err := conn.Exec(ctx, conversionsSchema); err != nil {
+		return fmt.Errorf("failed to create conversions table: %w", err)
+	}
+
 	// For an already existing table, CREATE TABLE IF NOT EXISTS does nothing and ignores new columns.
 	// We must explicitly run ALTER TABLE ADD COLUMN IF NOT EXISTS to seamlessly upgrade the schema
 	// while keeping existing events backward compatible (new optional/nullable fields).
@@ -96,6 +115,7 @@ func MigrateClickHouseSchema(ctx context.Context, conn driver.Conn) error {
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS utm_content Nullable(String)",
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS custom_domain_id Nullable(String)",
 		"ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS hostname Nullable(String)",
+		"ALTER TABLE analytics_events ADD INDEX IF NOT EXISTS idx_event_id event_id TYPE bloom_filter(0.01) GRANULARITY 1",
 	}
 
 	for _, q := range alterQueries {

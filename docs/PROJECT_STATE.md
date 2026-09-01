@@ -20,9 +20,9 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 12 - Custom Domains & Edge TLS (COMPLETED)
-* **Status**: COMPLETE WITH DEPLOYMENT VERIFICATION REQUIRED
-* **Why**: The Custom Domains routing, verification, analytics, and frontend UI have all been fully verified via E2E test suites (12I). Public Let's Encrypt certificates require a live deployment. Ready for Phase 13.
+* **Phase**: PHASE 13 - Multi-Touch Attribution (Task 13A Complete)
+* **Status**: IN PROGRESS
+* **Why**: The Phase 13 Data Model and ClickHouse schema migrations for conversions and attribution bloom filters have been completed and verified. 13B (URL Decoration) is next.
 
 ## Current Priorities
 1. Expand features: Campaigns, UTM, Custom Domains.

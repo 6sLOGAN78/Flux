@@ -104,3 +104,12 @@
   - Unverified, pending, and disabled domains successfully fail to route.
   - Links without a custom domain remain accessible via the platform default domain.
   - Parity is strictly preserved between Redis cache hits and PostgreSQL cache misses.
+
+### V-008: Attribution Conversions Schema & Integrity (Phase 13A)
+- **Status**: PASSED
+- **Method**: Automated DB integration tests via TestContainers (`TestPhase13_ClickHouseSchemaMigration`).
+- **Assertions**:
+  - `conversions` table successfully established with correct workspace isolation.
+  - Arrays (`click_ids`) persist correctly to ClickHouse.
+  - Schema creation is idempotent and safely ignores pre-existing tables.
+  - The `idx_event_id` Data-Skipping Bloom Filter index applies correctly to `analytics_events`.

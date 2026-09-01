@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-01
+**Type:** FEATURE
+**Task:** 13A (Multi-Touch Attribution Data Model)
+**Change:** Created `conversions` ClickHouse table schema and `idx_event_id` Data-Skipping Bloom filter index for `analytics_events`.
+**Reason:** Establishes the foundational ingestion layer for Phase 13 Multi-Touch Attribution tracking.
+
 ## 2026-08-29
 **Type:** DOCUMENTATION
 **Task:** TASK-000 (Initial Audit)
