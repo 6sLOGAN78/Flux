@@ -126,3 +126,9 @@ func (m *mockAnalyticsProvider) GetCampaignPerformance(ctx context.Context, work
 func (m *mockAnalyticsProvider) GetUTMPerformance(ctx context.Context, workspaceID string, dimension string, from, to time.Time, limit int) (*analytics.UTMPerformanceResponse, error) {
 	return &analytics.UTMPerformanceResponse{Dimension: dimension, Data: []analytics.UTMPerformance{}}, nil
 }
+
+func (m *mockAnalyticsProvider) GetDomainPerformance(ctx context.Context, tenantID string, from, to time.Time, limit int) (*analytics.DomainPerformanceResponse, error) {
+	return &analytics.DomainPerformanceResponse{
+		Data: []analytics.DomainPerformance{},
+	}, nil
+}

@@ -852,7 +852,12 @@ SCN 4844
 * `[x]` **12H-06:** Build, test, and typecheck validation.
 
 ### 12I — E2E Security & Routing Verification
-* `[ ]` **12I-01:** Production verification and penetration testing limits.
+* `[x]` **12I-01:** Production verification and penetration testing limits.
+* `[x]` **12I-02:** Strict workspace segregation testing.
+* `[x]` **12I-03:** Host header injection tests.
+* `[x]` **12I-04:** TLS Authorization API validation.
+* `[x]` **12I-05:** End-to-end caching parity checks.
+* `[x]` **12I-06:** Final Phase 12 Sign-Off.
 
 ### Phase 12 Checkpoint
 * `[x]` Domain schema
@@ -861,8 +866,8 @@ SCN 4844
 * `[x]` Link relationship
 * `[x]` Migration
 * `[x]` Tests
-* `[ ]` DNS verification
-* `[ ]` Verification worker
+* `[x]` DNS verification
+* `[x]` Verification worker
 * `[x]` Routing
 * `[x]` Redis compatibility
 * `[x]` Cache invalidation

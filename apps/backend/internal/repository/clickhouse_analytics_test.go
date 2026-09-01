@@ -74,6 +74,8 @@ func TestClickHouseAnalyticsRepository_Integration(t *testing.T) {
 			(*string)(nil), // UTMCampaign
 			(*string)(nil), // UTMTerm
 			(*string)(nil), // UTMContent
+			(*string)(nil), // custom_domain_id
+			(*string)(nil), // hostname
 		)
 		if err != nil {
 			t.Fatalf("failed to append batch: %v", err)
@@ -190,19 +192,19 @@ func TestClickHouseAnalyticsRepository_CampaignUTMAttribution(t *testing.T) {
 	// Click 1: Link in Campaign A
 	_ = batch.Append(
 		"evt1", "link.redirect", now.Add(-1*time.Hour), "link1", wsA, "short1", "", "", "ip1",
-		&campA, &valTwitter, &valSocial, &valSummer, (*string)(nil), (*string)(nil),
+		&campA, &valTwitter, &valSocial, &valSummer, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 	)
 
 	// Click 2: SAME LINK moved to Campaign B (Historical attribution preservation)
 	_ = batch.Append(
 		"evt2", "link.redirect", now, "link1", wsA, "short1", "", "", "ip2",
-		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil),
+		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 	)
 
 	// Click 3: Another link in Workspace B to test isolation
 	_ = batch.Append(
 		"evt3", "link.redirect", now, "linkB", wsB, "shortB", "", "", "ip3",
-		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil),
+		&campB, &valGoogle, &valCpc, &valSummerSale, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 	)
 
 	if err := batch.Send(); err != nil {
