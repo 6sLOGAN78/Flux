@@ -1,45 +1,44 @@
 import React, { useState } from 'react';
-import { Globe, Plus, ShieldCheck, RefreshCw, Check } from 'lucide-react';
+import { Plus, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import {
-  DNSVerificationCard,
-  CustomDomainItem,
-} from '@/components/domains/DNSVerificationCard';
+import { DNSVerificationCard } from '@/components/domains/DNSVerificationCard';
 import { DomainSetupModal } from '@/components/domains/DomainSetupModal';
-
-const INITIAL_DOMAINS: CustomDomainItem[] = [];
+import { useGetDomains, useCreateDomain, useDeleteDomain } from '@/hooks/useDomainsQuery';
 
 export function DomainsPage() {
-  const [domains, setDomains] = useState<CustomDomainItem[]>(INITIAL_DOMAINS);
+  const { data: domains, isLoading, error, refetch } = useGetDomains();
+  const createDomain = useCreateDomain();
+  const deleteDomain = useDeleteDomain();
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const handleAddDomain = (hostname: string) => {
-    const newDomain: CustomDomainItem = {
-      id: `dom_${Date.now()}`,
-      hostname,
-      status: 'verified',
-      sslStatus: 'active',
-      cnameTarget: 'cname.flux.to',
-      txtVerificationKey: `_flux-challenge.${hostname}`,
-      txtVerificationValue: `flux-vld-${Math.random().toString(36).substring(2, 10)}`,
-      clicksRouted: 0,
-      createdAt: new Date().toISOString(),
-    };
-    setDomains((prev) => [newDomain, ...prev]);
-    setIsModalOpen(false);
+  const handleAddDomain = async (hostname: string) => {
+    setCreateError(null);
+    try {
+      await createDomain.mutateAsync({ hostname });
+      setIsModalOpen(false);
+    } catch (err: any) {
+      setCreateError(err.message || 'Failed to add domain');
+    }
   };
 
   const handleVerifyDNS = (id: string) => {
-    setVerifyingId(id);
-    setTimeout(() => {
-      setVerifyingId(null);
-    }, 800);
+    // There is no explicit verify endpoint in the openapi contract (12H instructions).
+    // DNS verification worker (12D) polls automatically. 
+    // We just refetch the domains list to see if the status changed.
+    refetch();
   };
 
-  const handleDeleteDomain = (id: string) => {
-    setDomains((prev) => prev.filter((d) => d.id !== id));
+  const handleDeleteDomain = async (id: string) => {
+    if (window.confirm("Remove domain? This may stop traffic from this custom domain.")) {
+      try {
+        await deleteDomain.mutateAsync(id);
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete domain');
+      }
+    }
   };
 
   return (
@@ -70,24 +69,52 @@ export function DomainsPage() {
         </Button>
       </div>
 
-      {/* Domain Cards List */}
-      <div className="space-y-4">
-        {domains.map((dom) => (
-          <DNSVerificationCard
-            key={dom.id}
-            domain={dom}
-            onVerifyDNS={handleVerifyDNS}
-            onDelete={handleDeleteDomain}
-            isVerifying={verifyingId === dom.id}
-          />
-        ))}
-      </div>
+      {/* Content */}
+      {isLoading ? (
+        <div className="flex h-32 items-center justify-center rounded-2xl border border-zinc-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-950">
+          <p className="text-sm text-zinc-500">Loading domains...</p>
+        </div>
+      ) : error ? (
+        <div className="flex h-32 items-center justify-center rounded-2xl border border-red-200 bg-red-50 p-6 dark:border-red-900/50 dark:bg-red-950/20">
+          <p className="text-sm text-red-600 dark:text-red-400">Failed to load domains: {(error as Error).message}</p>
+        </div>
+      ) : domains?.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-12 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <Globe className="mb-4 h-8 w-8 text-zinc-400 dark:text-zinc-600" />
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">No custom domains yet</h3>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Add a custom domain to create branded short links.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-6"
+            onClick={() => setIsModalOpen(true)}
+            leftIcon={<Plus className="h-4 w-4" />}
+          >
+            Add Domain
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {domains?.map((dom) => (
+            <DNSVerificationCard
+              key={dom.id}
+              domain={dom}
+              onVerifyDNS={handleVerifyDNS}
+              onDelete={handleDeleteDomain}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Domain Setup Modal */}
       <DomainSetupModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleAddDomain}
+        isLoading={createDomain.isPending}
+        error={createError}
       />
     </div>
   );

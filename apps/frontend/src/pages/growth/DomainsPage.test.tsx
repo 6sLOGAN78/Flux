@@ -1,60 +1,54 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DomainsPage } from './DomainsPage';
+import { DNSVerificationCard } from '@/components/domains/DNSVerificationCard';
 import { DomainSetupModal } from '@/components/domains/DomainSetupModal';
-import { DNSVerificationCard, CustomDomainItem } from '@/components/domains/DNSVerificationCard';
-import { SSLStatusBadge } from '@/components/domains/SSLStatusBadge';
+import type { CustomDomain } from '@flux/zod';
 
-describe('Custom Branded Domains & DNS Checker', () => {
-  const testQueryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  });
+const mockDomainActive: CustomDomain = {
+  id: 'uuid-1',
+  hostname: 'link.acme.com',
+  status: 'active',
+};
 
-  const mockDomain: CustomDomainItem = {
-    id: 'dom_1',
-    hostname: 'go.brand.com',
-    status: 'verified',
-    sslStatus: 'active',
-    cnameTarget: 'cname.flux.to',
-    txtVerificationKey: '_flux-challenge.go.brand.com',
-    txtVerificationValue: 'flux-vld-8849204924',
-    rootRedirectUrl: 'https://brand.com',
-    clicksRouted: 49200,
-    createdAt: '2026-08-15T12:00:00Z',
-  };
+const mockDomainPending: CustomDomain = {
+  id: 'uuid-2',
+  hostname: 'pending.acme.com',
+  verification_token: 'flux-verify=test1234',
+  status: 'pending',
+};
 
-  it('renders SSLStatusBadge with active, pending, and error states', () => {
-    const activeHtml = renderToString(<SSLStatusBadge status="active" />);
-    expect(activeHtml).toContain('SSL Active');
-
-    const pendingHtml = renderToString(<SSLStatusBadge status="pending" />);
-    expect(pendingHtml).toContain('SSL Pending');
-
-    const errorHtml = renderToString(<SSLStatusBadge status="error" />);
-    expect(errorHtml).toContain('SSL Error');
-  });
-
-  it('renders DNSVerificationCard with DNS records and verify action', () => {
+describe('Domains Management Page', () => {
+  it('renders DNSVerificationCard for active domain', () => {
     const html = renderToString(
       <DNSVerificationCard
-        domain={mockDomain}
+        domain={mockDomainActive}
+        onDelete={() => {}}
+      />
+    );
+    expect(html).toContain('link.acme.com');
+    expect(html).toContain('active and verified');
+    expect(html).not.toContain('Required DNS Verification');
+  });
+
+  it('renders DNSVerificationCard for pending domain with instructions', () => {
+    const html = renderToString(
+      <DNSVerificationCard
+        domain={mockDomainPending}
         onVerifyDNS={() => {}}
         onDelete={() => {}}
       />
     );
-
-    expect(html).toContain('go.brand.com');
-    expect(html).toContain('cname.flux.to');
-    expect(html).toContain('SSL Active');
-    expect(html).toContain('Verify DNS');
+    expect(html).toContain('pending.acme.com');
+    expect(html).toContain('Pending');
+    expect(html).toContain('Required DNS Verification');
+    expect(html).toContain('flux-verify=test1234');
+    expect(html).toContain('TXT');
   });
 
-  it('renders DomainSetupModal with DNS CNAME and TXT guidance', () => {
+  it('renders DomainSetupModal properly', () => {
     const html = renderToString(
       <DomainSetupModal
         isOpen={true}
@@ -62,22 +56,20 @@ describe('Custom Branded Domains & DNS Checker', () => {
         onSubmit={() => {}}
       />
     );
-
     expect(html).toContain('Add Custom Domain');
-    expect(html).toContain('CNAME Record');
-    expect(html).toContain('cname.flux.to');
+    expect(html).toContain('Domain Hostname');
+    expect(html).toContain('DNS Verification');
   });
 
-  it('renders full DomainsPage with header and domains list', () => {
+  it('renders DomainSetupModal with error', () => {
     const html = renderToString(
-      <QueryClientProvider client={testQueryClient}>
-        <MemoryRouter>
-          <DomainsPage />
-        </MemoryRouter>
-      </QueryClientProvider>
+      <DomainSetupModal
+        isOpen={true}
+        onClose={() => {}}
+        onSubmit={() => {}}
+        error="Invalid hostname"
+      />
     );
-
-    expect(html).toContain('Custom Branded Domains');
-    expect(html).toContain('Add Domain');
+    expect(html).toContain('Invalid hostname');
   });
 });

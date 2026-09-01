@@ -20,9 +20,9 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 12 - Custom Domains & Edge TLS (Task 12G Complete)
+* **Phase**: PHASE 12 - Custom Domains & Edge TLS (Task 12H Complete)
 * **Status**: IN PROGRESS
-* **Why**: Core domain infrastructure (12A-F) and Analytics Expansion (12G) are complete. Ready for frontend UI (12H) and final E2E (12I).
+* **Why**: The Frontend Domains UI (12H) has been successfully implemented and connected to the Phase 12 domain API. Remaining: 12I Final E2E.
 
 ## Current Priorities
 1. Expand features: Campaigns, UTM, Custom Domains.

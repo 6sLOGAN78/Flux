@@ -615,7 +615,219 @@ When transitioning subtask states:
 
 ### 12C — Core Domain API
 * `[x]` **12C-01:** Domain CRUD endpoints and Clerk tenant isolation.
+SHOW_ITS_WORK
+INVESTIGATE
+/
+SKEPTIC
+/
+RECEIPTS
+/
+TELEMETRY
+SYS.TIME
+18:46:17
+UTC+5.5
+RUN ANALYSIS
+↗
+KPI · INTELLIGENCE · TO · ACTION
+/01   OVERVIEW
+SHOW
+ITS WORK
+▹ GROUNDED. SKEPTICAL. AUDITABLE.
+A KPI engine that explains why a metric moved — every number traced to a tool call, a skeptic that kills the plausible-but-wrong story, and an honest "I don't know" when the evidence isn't there. The model never computes a number.
 
+START AN INVESTIGATION
+↗
+SEE ROLE-GATED VIEW
+↗
+> ENGINE_STATUS
+RESOLVED
+Δ_KPI __
+ZSCORE __
+CONF HIGH
+DETERMINISTIC CORE
+//SCN_01
+/02
+Investigate
+natural-language question → grounded answer
+Question
+Why did our net revenue drop last week?
+Persona
+
+Revenue / Finance Analyst
+RUN
+↗
+Scenarios
+
+SCN_01
+Revenue drop — full analysis
+
+SCN_02
+Same question, Ops Lead — role-gated
+
+SCN_03
+A diffuse move — must abstain
+
+SCN_04
+A newly launched window — sparse
+
+SCN_05
+A quiet week — gate ignores it
+/03
+The Answer
+NET REVENUE · revenue analyst
+HIGH CONFIDENCE
+What moved
+Causal memory recalls a known mechanism reaching net_revenue (confidence 0.99); 20 similar case(s) resolved before. Used as a prior. [F001]
+
+Most likely cause (HIGH confidence)
+house_bravos's delivery collapse drove the net_revenue drop. Late/failed fulfilment -> cancellations + poor reviews -> lost recognised revenue. [F003] [D001]
+
+How we know it survived scrutiny
+control_group ✓; temporal_alignment ✓; counterfactual ✓; signature ✓. Best hypothesis H001 explains 77% of the delta; temporal=✓, control=✓, corroborating_doc=✓, share>=50%=✓.
+
+A tempting explanation we rejected
+"A market-wide competitor flash sale pulled demand away, causing the drop." — rejected: Market-wide claim fails — house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
+
+Mix check
+move is mostly within-group; safe to attribute to drivers
+
+Recommended actions
+- house_bravos delivery collapse → *seller SLA / carrier routing*: Open a fulfilment incident with house_bravos; pause new-order routing and shift volume to a backup carrier until on-time recovers. _Expected: Recovers ~81,330 BRL, the ~77% share attributed to house_bravos. · Owner: Fulfilment Ops Lead · Confidence: HIGH · Monitor: Track on_time_delivery_rate for house_bravos daily; expect recovery within 7 days, else escalate._ - secondary category stockout → *supplier / inventory*: Confirm the category stockout with the supplier and expedite replenishment. _Expected: Addresses the smaller ~20% secondary share. · Owner: Category Manager · Confidence: MEDIUM · Monitor: Watch category fill-rate and cancellations weekly._
+
+RECOMMENDED ACTIONS
+HIGH
+house_bravos delivery collapse → seller SLA / carrier routing
+Open a fulfilment incident with house_bravos; pause new-order routing and shift volume to a backup carrier until on-time recovers.
+Impact: Recovers ~81,330 BRL, the ~77% share attributed to house_bravos. · Owner: Fulfilment Ops Lead
+MEDIUM
+secondary category stockout → supplier / inventory
+Confirm the category stockout with the supplier and expedite replenishment.
+Impact: Addresses the smaller ~20% secondary share. · Owner: Category Manager
+/04
+The Skeptic
+every hypothesis faces falsification — a rejected card is the skeptic working
+SURVIVED
+house_bravos's delivery collapse drove the net_revenue drop.
+77%
+Late/failed fulfilment -> cancellations + poor reviews -> lost recognised revenue.
+✓
+control_group
+house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
+✓
+temporal_alignment
+on_time_delivery_rate onset 2024-05-08 is before/with net_revenue onset 2024-05-12
+✓
+counterfactual
+Excluding house_bravos, the net_revenue shortfall goes from -105,021 to -23,691 — it explains 77% of the move.
+✓
+signature
+on_time_delivery_rate down (z=-18.89) ✓; avg_review_score down (z=-21.37) ✓
+REJECTED
+A market-wide competitor flash sale pulled demand away, causing the drop.
+External promotion diverts customers across the whole market.
+✗
+heterogeneity/control
+Market-wide claim fails — house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
+SURVIVED
+A stockout in the health_beauty category removed a smaller, separate share of revenue.
+20%
+Supplier stockout -> unfulfillable orders cancelled in that category.
+✓
+counterfactual
+Excluding health_beauty, the net_revenue shortfall goes from -105,021 to -83,977 — it explains 20% of the move.
+/05
+The Evidence Base
+deterministic attribution + the movement itself
+DRIVER ATTRIBUTION
+net_revenue
+house_bravos
+-81.3k · 77%
+house_lannister
+-13.4k · 13%
+house_baratheon
+-9.2k · 9%
+house_stark
+-3.0k · 3%
+house_arryn
+-1.3k · 1%
+house_martell
+163 · 0%
+net_revenue — WINDOW SHADED
+2024-05-08 → 2024-05-23
+/06
+Receipts
+every figure traces to a tool · source freshness + lineage
+FACTS — PROVENANCE-BOUND
+ID	Statement	Producer
+F001	Causal memory recalls a known mechanism reaching net_revenue (confidence 0.99); 20 similar case(s) resolved before. Used as a prior.	rule
+F002	Net Revenue (BRL) moved -11.9% (48559.0 vs baseline 55122.8); z=-8.94, material.	statistical
+F003	house_bravos contributed -81,330 to the move (+77% of the total delta).	deterministic
+F004	house_lannister contributed -13,377 to the move (+13% of the total delta).	deterministic
+F005	house_baratheon contributed -9,150 to the move (+9% of the total delta).	deterministic
+F006	Mix-shift check: move is mostly within-group; safe to attribute to drivers	statistical
+SOURCE orders_dw · GRAIN order_item · REFRESH hourly · SLA 3H · well_governed
+LINEAGE orders_dw.order_items → orders_dw.orders(status) → orders_dw.payments
+UNSTRUCTURED EVIDENCE
+ID	Src	Text
+D001	review	Delivery was extremely late, very disappointed.
+D002	news	MegaStore (competitor) launched a national flash sale May 12-15 with aggressive discounts.
+D003	crm	CRM note: supplier stockout on health_beauty SKUs; ~2-week fulfilment gap, several cancellations.
+D004	crm	Sales speculation: last week's revenue dip might just be the MegaStore promo pulling demand.
+D005	crm	Marketing: new loyalty email campaign scheduled for next quarter.
+[CHECK]
+Citations 3/3 resolve · clean=true
+/07
+Runtime Telemetry
+latency · model calls · tokens · cost · LLM vs non-LLM
+LATENCY
+205 MS
+LLM CALLS
+0
+TOKENS
+0
+EST. COST
+$0.00000
+The LLM computed 0 numbers. It wasn't called — the deterministic core produced every figure across 11 tool steps.
+statistical 4
+rule 1
+deterministic 4
+retrieval 2
+Step	Producer	ms	Model	Tokens	Cost
+detect_change(gate)	statistical	41.94	—	—	—
+causal_memory.prior	rule	0.16	—	—	—
+decompose_drivers	deterministic	5.9	—	—	—
+check_mix_shift	deterministic	5.47	—	—	—
+search_evidence(driver)	retrieval	2.45	—	—	—
+search_evidence(context)	retrieval	1.96	—	—	—
+compare_control_group	statistical	32.19	—	—	—
+test_temporal_alignment	statistical	41.15	—	—	—
+counterfactual_estimate	deterministic	22.8	—	—	—
+compare_control_group	statistical	29.19	—	—	—
+counterfactual_estimate	deterministic	21.86	—	—	—
+SHOW_ITS_WORK
+AIC 2026 · PS3 BUSINESSINTELLIGENCE.AI
+TEAM MANDALORIANS · IIT PATNA
+
+Engine
+Investigate
+Skeptic
+Receipts
+Telemetry
+Principles
+LLM ≠ truth
+Falsify, don't assert
+Abstain honestly
+Show the receipts
+Method
+Signal gate
+Driver waterfall
+Skeptic debate
+Causal memory
+● CONNECTION SECURE
+LATENCY 1716MS
+> ACCESS GRANTED_
+SCN 4844
+18:46:17
 ### 12D — DNS Verification Worker
 * `[x]` **12D-01:** Background polling worker for TXT/CNAME validation.
 
@@ -632,7 +844,12 @@ When transitioning subtask states:
 * `[x]` **12G-04:** Extend `AnalyticsRepository` API with domain metrics support.
 
 ### 12H — Frontend Domains UI
-* `[ ]` **12H-01:** React views for domain management and DNS instructions.
+* `[x]` **12H-01:** Domain management page and list.
+* `[x]` **12H-02:** Add domain flow and modal.
+* `[x]` **12H-03:** DNS verification instructions UX.
+* `[x]` **12H-04:** Delete domain flow.
+* `[x]` **12H-05:** React Query and Clerk org isolation.
+* `[x]` **12H-06:** Build, test, and typecheck validation.
 
 ### 12I — E2E Security & Routing Verification
 * `[ ]` **12I-01:** Production verification and penetration testing limits.
