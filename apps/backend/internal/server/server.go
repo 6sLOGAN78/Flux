@@ -163,7 +163,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	stripeWebhookHandler := handler.NewStripeWebhookHandler(dbPool, billingRepo, cfg)
 
 	billingHandler := handler.NewBillingHandler(billingRepo, cfg)
-	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler, trackingHandler, limiterStore, billingHandler)
+	webhookHandler := handler.NewWebhookHandler(repository.NewWebhookRepository(dbPool))
+	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler, trackingHandler, limiterStore, billingHandler, webhookHandler)
 	router.RegisterWebhookRoutes(e, stripeWebhookHandler)
 
 	return &Server{

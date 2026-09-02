@@ -228,13 +228,30 @@ export const ZOAuthTokenResponse = z.object({
 
 export const ZWebhook = z.object({
   id: z.string().uuid().openapi({ description: "Webhook UUID" }),
-  workspaceId: z.string().uuid().openapi({ description: "Workspace UUID" }),
-  url: z.string().url().openapi({ description: "Target callback URL", example: "https://api.acme.com/webhooks" }),
-  events: z.array(z.string()).openapi({ description: "Subscribed event triggers", example: ["link.created", "click.recorded"] }),
-  isActive: z.boolean().openapi({ description: "Active status", example: true }),
+  workspace_id: z.string().uuid().openapi({ description: "Workspace UUID" }),
+  endpoint_url: z.string().url().openapi({ description: "Target callback URL", example: "https://api.acme.com/webhooks" }),
+  secret: z.string().optional().openapi({ description: "Webhook Secret (only returned on creation)" }),
+  events: z.array(z.string()).openapi({ description: "Subscribed event triggers", example: ["link.redirect", "conversion"] }),
+  active: z.boolean().openapi({ description: "Active status", example: true }),
+  created_at: z.string().openapi({ description: "Created At timestamp" }),
+  updated_at: z.string().openapi({ description: "Updated At timestamp" }),
 }).openapi({ description: "Registered Webhook Endpoint entity" });
 
 // --- Notifications ---
+
+export const ZWebhookDelivery = z.object({
+  id: z.string().uuid(),
+  webhook_id: z.string().uuid(),
+  event_id: z.string(),
+  status: z.string(),
+  response_status: z.number().nullable(),
+  attempt_count: z.number(),
+  last_error: z.string().nullable(),
+  payload: z.any().nullable(),
+  next_attempt_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
 
 export const ZNotification = z.object({
   id: z.string().uuid().openapi({ description: "Notification UUID" }),

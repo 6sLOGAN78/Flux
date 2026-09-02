@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Plus, Shield, Zap } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -12,11 +12,8 @@ export interface CreateWebhookModalProps {
 }
 
 const AVAILABLE_EVENTS = [
-  { id: 'link.created', label: 'link.created', description: 'Triggered whenever a new short link is created' },
-  { id: 'link.updated', label: 'link.updated', description: 'Triggered when link destination or routing rules change' },
-  { id: 'click.recorded', label: 'click.recorded', description: 'Triggered on high-throughput link redirect clicks' },
-  { id: 'conversion.recorded', label: 'conversion.recorded', description: 'Triggered upon conversion pixel / attribution match' },
-  { id: 'domain.verified', label: 'domain.verified', description: 'Triggered when custom domain SSL is provisioned' },
+  { id: 'link.redirect', label: 'link.redirect', description: 'Triggered when a short link is clicked and redirected' },
+  { id: 'conversion', label: 'conversion', description: 'Triggered upon conversion pixel / attribution match' },
 ];
 
 export function CreateWebhookModal({
@@ -26,10 +23,7 @@ export function CreateWebhookModal({
   isLoading = false,
 }: CreateWebhookModalProps) {
   const [url, setUrl] = useState('');
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([
-    'link.created',
-    'click.recorded',
-  ]);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>(['link.redirect']);
 
   const toggleEvent = (eventId: string) => {
     setSelectedEvents((prev) =>
@@ -47,6 +41,7 @@ export function CreateWebhookModal({
       events: selectedEvents,
     });
     setUrl('');
+    setSelectedEvents(['link.redirect']);
   };
 
   return (

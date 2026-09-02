@@ -11,7 +11,7 @@ import (
 )
 
 // RegisterV1Routes attaches protected API v1 endpoints to Echo.
-func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler, campaignHandler *handler.CampaignHandler, domainHandler *handler.DomainHandler, billingHandler *handler.BillingHandler) {
+func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler, campaignHandler *handler.CampaignHandler, domainHandler *handler.DomainHandler, billingHandler *handler.BillingHandler, webhookHandler *handler.WebhookHandler) {
 	v1 := e.Group("/api/v1")
 	
 	// Protected routes
@@ -65,6 +65,15 @@ func RegisterV1Routes(e *echo.Echo, userRepo *repository.UserRepository, analyti
 		domains.GET("", domainHandler.GetDomains)
 		domains.GET("/:id", domainHandler.GetDomain)
 		domains.DELETE("/:id", domainHandler.DeleteDomain)
+	}
+
+	if webhookHandler != nil {
+		webhooks := protected.Group("/webhooks")
+		webhooks.POST("", webhookHandler.CreateWebhook)
+		webhooks.GET("", webhookHandler.ListWebhooks)
+		webhooks.PATCH("/:id", webhookHandler.UpdateWebhook)
+		webhooks.DELETE("/:id", webhookHandler.DeleteWebhook)
+		webhooks.GET("/:id/deliveries", webhookHandler.ListDeliveries)
 	}
 
 	if billingHandler != nil {

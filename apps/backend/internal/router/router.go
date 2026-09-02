@@ -14,7 +14,7 @@ import (
 )
 
 // InitRouter sets up system routes, API v1 routes, and the redirect engine route.
-func InitRouter(e *echo.Echo, dbPool *pgxpool.Pool, userRepo *repository.UserRepository, redirectHandler *handler.RedirectHandler, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler, campaignHandler *handler.CampaignHandler, domainHandler *handler.DomainHandler, tlsAuthHandler *handler.TLSAuthHandler, trackingHandler *handler.TrackingHandler, limiterStore customMiddleware.LimiterStore, billingHandler *handler.BillingHandler) {
+func InitRouter(e *echo.Echo, dbPool *pgxpool.Pool, userRepo *repository.UserRepository, redirectHandler *handler.RedirectHandler, analyticsHandler *handler.AnalyticsHandler, linksHandler *handler.LinksHandler, campaignHandler *handler.CampaignHandler, domainHandler *handler.DomainHandler, tlsAuthHandler *handler.TLSAuthHandler, trackingHandler *handler.TrackingHandler, limiterStore customMiddleware.LimiterStore, billingHandler *handler.BillingHandler, webhookHandler *handler.WebhookHandler) {
 	RegisterSystemRoutes(e, dbPool)
 
 	// Public routes (redirects and tracking)
@@ -45,5 +45,5 @@ func InitRouter(e *echo.Echo, dbPool *pgxpool.Pool, userRepo *repository.UserRep
 	}
 
 	// V1 API Routes
-	v1.RegisterV1Routes(e, userRepo, analyticsHandler, linksHandler, campaignHandler, domainHandler, billingHandler)
+	v1.RegisterV1Routes(e, userRepo, analyticsHandler, linksHandler, campaignHandler, domainHandler, billingHandler, webhookHandler)
 }

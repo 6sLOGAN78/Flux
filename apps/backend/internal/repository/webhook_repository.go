@@ -224,7 +224,25 @@ func (r *WebhookRepository) UpdateDeliveryState(ctx context.Context, id uuid.UUI
 	return sqlerr.HandleError(err)
 }
 
+// ListDeliveries returns the most recent deliveries for a specific webhook.
+func (r *WebhookRepository) ListDeliveries(ctx context.Context, webhookID uuid.UUID, limit int) ([]WebhookDelivery, error) {
+	stmt := `
+		SELECT id, webhook_id, event_id, status, response_status, attempt_count, last_error, payload, next_attempt_at, created_at, updated_at
+		FROM webhook_deliveries
+		WHERE webhook_id = @webhook_id
+		ORDER BY created_at DESC
+		LIMIT @limit
+	`
+	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{"webhook_id": webhookID, "limit": limit})
+	if err != nil {
+		return nil, sqlerr.HandleError(err)
+	}
+	defer rows.Close()
+	return pgx.CollectRows(rows, pgx.RowToStructByName[WebhookDelivery])
+}
+
 // GetWebhookByID internally fetches a webhook ignoring workspace checks (used by retry worker).
+
 func (r *WebhookRepository) GetWebhookByID(ctx context.Context, id uuid.UUID) (*webhook.Webhook, error) {
 	stmt := `
 		SELECT id, workspace_id, endpoint_url, secret, active, events, created_at, updated_at

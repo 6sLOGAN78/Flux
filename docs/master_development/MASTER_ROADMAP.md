@@ -716,7 +716,7 @@ When transitioning subtask states:
 ## PHASE 15 — Webhooks / Integrations
 **Depends On:** Phase 05, 08  
 **Blocks:** None
-**Status:** `[~] IN PROGRESS (75%)`
+**Status:** `[x] COMPLETE`
 
 ### 15A — Outbound Event Delivery
 * `[x]` **15A-01:** PostgreSQL `webhooks` table and secret token generation.

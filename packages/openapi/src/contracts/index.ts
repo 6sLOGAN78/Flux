@@ -32,6 +32,7 @@ import {
   ZAPIKey,
   ZOAuthTokenResponse,
   ZWebhook,
+  ZWebhookDelivery,
   ZNotification,
 } from "@flux/zod";
 import { z } from "zod";
@@ -381,12 +382,54 @@ export const apiContract = c.router({
   },
 
   // --- Webhooks ---
+  getWebhooks: {
+    method: "GET",
+    path: "/api/v1/webhooks",
+    responses: {
+      200: z.array(ZWebhook),
+    },
+    summary: "List outbound webhooks",
+  },
+  updateWebhook: {
+    method: "PATCH",
+    path: "/api/v1/webhooks/:id",
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: z.object({
+      endpoint_url: z.string().url().optional(),
+      events: z.array(z.string()).optional(),
+      active: z.boolean().optional(),
+    }),
+    responses: {
+      200: ZWebhook,
+    },
+    summary: "Update webhook configuration",
+  },
+  deleteWebhook: {
+    method: "DELETE",
+    path: "/api/v1/webhooks/:id",
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: z.object({}),
+    responses: {
+      204: z.undefined(),
+    },
+    summary: "Delete a webhook",
+  },
+  getWebhookDeliveries: {
+    method: "GET",
+    path: "/api/v1/webhooks/:id/deliveries",
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: z.array(ZWebhookDelivery),
+    },
+    summary: "List webhook deliveries",
+  },
+
   createWebhook: {
     method: "POST",
     path: "/api/v1/webhooks",
     body: z.object({
-      url: z.string().url().openapi({ example: "https://api.acme.com/webhook" }),
-      events: z.array(z.string()).openapi({ example: ["link.created", "click.recorded"] }),
+      endpoint_url: z.string().url().openapi({ example: "https://api.acme.com/webhook" }),
+      events: z.array(z.string()).openapi({ example: ["link.redirect", "conversion"] }),
     }),
     responses: {
       201: ZWebhook,

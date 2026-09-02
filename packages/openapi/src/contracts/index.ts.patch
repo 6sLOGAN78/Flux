@@ -1,0 +1,66 @@
+--- packages/openapi/src/contracts/index.ts
++++ packages/openapi/src/contracts/index.ts
+@@ -34,6 +34,7 @@
+   ZAPIKey,
+   ZOAuthTokenResponse,
+   ZWebhook,
++  ZWebhookDelivery,
+   ZNotification,
+ } from "@flux/zod";
+ import { z } from "zod";
+@@ -398,6 +399,56 @@
+       openApiSecurity: [{ bearerAuth: [] }],
+     },
+   },
++  getWebhooks: {
++    method: "GET",
++    path: "/api/v1/webhooks",
++    responses: {
++      200: z.array(ZWebhook),
++    },
++    summary: "List outbound webhooks",
++    metadata: {
++      openApiTags: ["Webhooks"],
++      openApiSecurity: [{ bearerAuth: [] }],
++    },
++  },
++  updateWebhook: {
++    method: "PATCH",
++    path: "/api/v1/webhooks/:id",
++    pathParams: z.object({ id: z.string().uuid() }),
++    body: z.object({
++      endpoint_url: z.string().url().optional(),
++      events: z.array(z.string()).optional(),
++      active: z.boolean().optional(),
++    }),
++    responses: {
++      200: ZWebhook,
++    },
++    summary: "Update webhook configuration",
++    metadata: {
++      openApiTags: ["Webhooks"],
++      openApiSecurity: [{ bearerAuth: [] }],
++    },
++  },
++  deleteWebhook: {
++    method: "DELETE",
++    path: "/api/v1/webhooks/:id",
++    pathParams: z.object({ id: z.string().uuid() }),
++    body: z.object({}),
++    responses: {
++      204: z.undefined(),
++    },
++    summary: "Delete a webhook",
++  },
++  getWebhookDeliveries: {
++    method: "GET",
++    path: "/api/v1/webhooks/:id/deliveries",
++    pathParams: z.object({ id: z.string().uuid() }),
++    responses: {
++      200: z.array(ZWebhookDelivery),
++    },
++    summary: "List webhook deliveries",
++  },
+ 
+   // --- Notifications ---
+   getNotifications: {
