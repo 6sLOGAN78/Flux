@@ -1,205 +1,184 @@
-// Package config handles environment configuration loader for Flux backend using koanf/v2.
 package config
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/joho/godotenv"
+	"github.com/go-playground/validator/v10"
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
 )
 
-// Config holds the application configuration parameters.
-type Config struct {
-	PrimaryEnv         string `koanf:"primary_env"`
-	ServerPort         string `koanf:"server_port"`
-	DatabaseURL        string `koanf:"database_url"`
-	RedisURL           string `koanf:"redis_url"`
-	AnalyticsRedisStream string `koanf:"analytics_redis_stream"`
-	ClickHouseURL      string `koanf:"clickhouse_url"`
-	JWTSecret          string `koanf:"jwt_secret"`
-	ClerkSecretKey     string `koanf:"clerk_secret_key"`
-	ResendAPIKey       string `koanf:"resend_api_key"`
-	NewRelicLicenseKey string `koanf:"new_relic_license_key"`
-	AWSRegion          string `koanf:"aws_region"`
-	AWSAccessKeyID     string `koanf:"aws_access_key_id"`
-	AWSSecretAccessKey string `koanf:"aws_secret_access_key"`
-	AWSUploadBucket    string `koanf:"aws_upload_bucket"`
+type ServerConfig struct {
+	Port               string `koanf:"port" validate:"required"`
+	FrontendURL        string `koanf:"frontend_url"`
 	PlatformDomain     string `koanf:"platform_domain"`
-	InternalAPIKey     string `koanf:"internal_api_key"`
+	ReadTimeout        string `koanf:"read_timeout"`
+	WriteTimeout       string `koanf:"write_timeout"`
+	IdleTimeout        string `koanf:"idle_timeout"`
+	CorsAllowedOrigins string `koanf:"cors_allowed_origins"`
 }
 
-// LoadConfig initializes application configuration from environment variables with defaults using koanf/v2.
-func LoadConfig() (*Config, error) {
-	_ = godotenv.Load()
+type DatabaseConfig struct {
+	Host            string `koanf:"host" validate:"required"`
+	Port            string `koanf:"port" validate:"required"`
+	User            string `koanf:"user" validate:"required"`
+	Password        string `koanf:"password" validate:"required"`
+	Name            string `koanf:"name" validate:"required"`
+	SSLMode         string `koanf:"ssl_mode"`
+	MaxOpenConns    string `koanf:"max_open_conns"`
+	MaxIdleConns    string `koanf:"max_idle_conns"`
+	ConnMaxLifetime string `koanf:"conn_max_lifetime"`
+	ConnMaxIdleTime string `koanf:"conn_max_idle_time"`
+}
 
+type RedisConfig struct {
+	Address         string `koanf:"address" validate:"required"`
+	AnalyticsStream string `koanf:"analytics_stream"`
+}
+
+type ClickHouseConfig struct {
+	Host string `koanf:"host"`
+	Port string `koanf:"port"`
+}
+
+type ClerkConfig struct {
+	SecretKey      string `koanf:"secret_key" validate:"required"`
+	PublishableKey string `koanf:"publishable_key"`
+}
+
+type InternalAuthConfig struct {
+	JWTSecret      string `koanf:"jwt_secret"`
+	InternalAPIKey string `koanf:"internal_api_key"`
+}
+
+type StripeConfig struct {
+	SecretKey     string `koanf:"secret_key"`
+	WebhookSecret string `koanf:"webhook_secret"`
+}
+
+type IntegrationConfig struct {
+	ResendAPIKey string `koanf:"resend_api_key"`
+}
+
+type AWSConfig struct {
+	Region          string `koanf:"region"`
+	AccessKeyID     string `koanf:"access_key_id"`
+	SecretAccessKey string `koanf:"secret_access_key"`
+	UploadBucket    string `koanf:"upload_bucket"`
+	EndpointURL     string `koanf:"endpoint_url"`
+}
+
+type PrimaryConfig struct {
+	Env string `koanf:"env" validate:"required"`
+}
+
+type Config struct {
+	Primary       PrimaryConfig       `koanf:"primary" validate:"required"`
+	Server        ServerConfig        `koanf:"server" validate:"required"`
+	Database      DatabaseConfig      `koanf:"database" validate:"required"`
+	Redis         RedisConfig         `koanf:"redis" validate:"required"`
+	ClickHouse    ClickHouseConfig    `koanf:"clickhouse"`
+	Clerk         ClerkConfig         `koanf:"auth" validate:"required"`
+	Stripe        StripeConfig        `koanf:"stripe"`
+	Auth          InternalAuthConfig  `koanf:"auth_internal"`
+	Integration   IntegrationConfig   `koanf:"integration"`
+	Observability ObservabilityConfig `koanf:"observability"`
+	AWS           AWSConfig           `koanf:"aws"`
+}
+
+// LoadConfig initializes application configuration from environment variables.
+func LoadConfig() (*Config, error) {
 	k := koanf.New(".")
 
-	// Load environment variables with uppercase key transformation
-	err := k.Load(env.Provider("", ".", func(s string) string {
-		return strings.ToLower(s)
-	}), nil)
+	err := k.Load(
+		env.ProviderWithValue(
+			"FLUX_",
+			".",
+			func(key, value string) (string, any) {
+				return strings.ToLower(
+					strings.TrimPrefix(key, "FLUX_"),
+				), value
+			},
+		),
+		nil,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	primaryEnv := k.String("flux_primary.env")
-	if primaryEnv == "" {
-		primaryEnv = os.Getenv("FLUX_PRIMARY_ENV")
-	}
-	if primaryEnv == "" {
-		primaryEnv = "local"
+	cfg := &Config{}
+	if err := k.Unmarshal("", cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
 	}
 
-	// 1. Server Port
-	port := k.String("flux_server.port")
-	if port == "" {
-		port = k.String("server_port")
-	}
-	if port == "" {
-		port = os.Getenv("PORT")
-	}
-	if port == "" {
-		port = "8080"
-	}
-
-	// 2. Database URL
-	dbURL := k.String("database_url")
-	if dbURL == "" {
-		dbHost := k.String("flux_database.host")
-		dbPort := k.String("flux_database.port")
-		dbUser := k.String("flux_database.user")
-		dbPass := k.String("flux_database.password")
-		dbName := k.String("flux_database.name")
-		dbSSL := k.String("flux_database.ssl_mode")
-
-		if dbHost != "" && dbUser != "" && dbName != "" {
-			if dbPort == "" {
-				dbPort = "5432"
-			}
-			if dbSSL == "" {
-				dbSSL = "disable"
-			}
-			dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPort, dbName, dbSSL)
+	// Apply fail-closed security logic for production
+	if strings.ToLower(cfg.Primary.Env) == "production" || strings.ToLower(cfg.Primary.Env) == "prod" {
+		if cfg.Stripe.WebhookSecret == "" || cfg.Stripe.WebhookSecret == "whsec_test_secret" {
+			return nil, fmt.Errorf("stripe webhook secret cannot be empty or test in production")
+		}
+		if cfg.Stripe.SecretKey == "" || cfg.Stripe.SecretKey == "sk_test_secret" {
+			return nil, fmt.Errorf("stripe secret key cannot be empty or test in production")
 		}
 	}
-	if dbURL == "" {
-		dbURL = "postgres://postgres:postgrespassword@localhost:5432/flux?sslmode=disable"
+
+	// Apply defaults where missing
+	if cfg.Server.Port == "" {
+		cfg.Server.Port = "8080"
+	}
+	if cfg.Server.FrontendURL == "" {
+		cfg.Server.FrontendURL = "http://localhost:3000"
+	}
+	if cfg.Server.PlatformDomain == "" {
+		cfg.Server.PlatformDomain = "flux.ly"
+	}
+	if cfg.Redis.AnalyticsStream == "" {
+		cfg.Redis.AnalyticsStream = "analytics:events"
+	}
+	if cfg.ClickHouse.Host == "" {
+		cfg.ClickHouse.Host = "localhost"
+	}
+	if cfg.ClickHouse.Port == "" {
+		cfg.ClickHouse.Port = "9000"
+	}
+	if cfg.Database.SSLMode == "" {
+		cfg.Database.SSLMode = "disable"
+	}
+	if cfg.Auth.JWTSecret == "" {
+		cfg.Auth.JWTSecret = "super-secret-default-flux-key-change-in-prod"
+	}
+	if cfg.Stripe.WebhookSecret == "" {
+		cfg.Stripe.WebhookSecret = "whsec_test_secret"
+	}
+	if cfg.Stripe.SecretKey == "" {
+		cfg.Stripe.SecretKey = "sk_test_secret"
 	}
 
-	// 3. Redis Address / URL
-	redisURL := k.String("flux_redis.address")
-	if redisURL == "" {
-		redisURL = k.String("redis_url")
-	}
-	if redisURL == "" {
-		redisURL = "localhost:6379"
-	}
-
-	analyticsRedisStream := k.String("analytics_redis_stream")
-	if analyticsRedisStream == "" {
-		analyticsRedisStream = "analytics:events"
-	}
-	
-	clickHouseURL := k.String("clickhouse_url")
-	if clickHouseURL == "" {
-		clickHouseURL = "localhost:9000"
-	}
-
-	// 4. Auth & Clerk Secret Key
-	clerkSecretKey := k.String("flux_auth.secret_key")
-	if clerkSecretKey == "" {
-		clerkSecretKey = k.String("clerk_secret_key")
-	}
-	if clerkSecretKey == "" {
-		clerkSecretKey = os.Getenv("CLERK_SECRET_KEY")
-	}
-
-	jwtSecret := k.String("flux_auth.secret_key")
-	if jwtSecret == "" {
-		jwtSecret = k.String("jwt_secret")
-	}
-	if jwtSecret == "" {
-		jwtSecret = "super-secret-default-flux-key-change-in-prod"
-	}
-
-	// 5. Integration Keys
-	resendKey := k.String("flux_integration.resend_api_key")
-	if resendKey == "" {
-		resendKey = os.Getenv("RESEND_API_KEY")
-	}
-
-	// 6. New Relic APM License Key
-	nrLicenseKey := k.String("flux_observability.new_relic.license_key")
-	if nrLicenseKey == "" {
-		nrLicenseKey = k.String("new_relic_license_key")
-	}
-
-	// 7. AWS S3 Settings
-	awsRegion := k.String("flux_aws.region")
-	awsAccessKey := k.String("flux_aws.access_key_id")
-	awsSecretKey := k.String("flux_aws.secret_access_key")
-	awsBucket := k.String("flux_aws.upload_bucket")
-
-	platformDomain := k.String("flux_platform.domain")
-	if platformDomain == "" {
-		platformDomain = os.Getenv("PLATFORM_DOMAIN")
-	}
-	if platformDomain == "" {
-		platformDomain = "flux.ly"
-	}
-
-	internalAPIKey := k.String("flux_internal.api_key")
-	if internalAPIKey == "" {
-		internalAPIKey = k.String("internal_api_key")
-	}
-	if internalAPIKey == "" {
-		internalAPIKey = os.Getenv("INTERNAL_API_KEY")
-	}
-
-	cfg := &Config{
-		PrimaryEnv:         primaryEnv,
-		ServerPort:         port,
-		DatabaseURL:        dbURL,
-		RedisURL:           redisURL,
-		AnalyticsRedisStream: analyticsRedisStream,
-		ClickHouseURL:      clickHouseURL,
-		JWTSecret:          jwtSecret,
-		ClerkSecretKey:     clerkSecretKey,
-		ResendAPIKey:       resendKey,
-		NewRelicLicenseKey: nrLicenseKey,
-		AWSRegion:          awsRegion,
-		AWSAccessKeyID:     awsAccessKey,
-		AWSSecretAccessKey: awsSecretKey,
-		AWSUploadBucket:    awsBucket,
-		PlatformDomain:     platformDomain,
-		InternalAPIKey:     internalAPIKey,
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
+	validate := validator.New()
+	if err := validate.Struct(cfg); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return cfg, nil
 }
 
-// Validate checks that all required configuration fields are non-empty and valid.
-func (c *Config) Validate() error {
-	if c.ServerPort == "" {
-		return errors.New("server port cannot be empty")
-	}
-	if c.DatabaseURL == "" {
-		return errors.New("database URL cannot be empty")
-	}
-	if c.RedisURL == "" {
-		return errors.New("redis URL cannot be empty")
-	}
-	if c.ClerkSecretKey == "" {
-		return errors.New("clerk secret key cannot be empty (fail-closed security constraint)")
-	}
-	return nil
+// GetDatabaseURL computes the DSN
+func (c *Config) GetDatabaseURL() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", c.Database.User, c.Database.Password, c.Database.Host, c.Database.Port, c.Database.Name, c.Database.SSLMode)
 }
 
+// GetRedisURL computes the Redis connection string
+func (c *Config) GetRedisURL() string {
+	return c.Redis.Address
+}
+
+// GetClickHouseURL computes the ClickHouse connection string
+func (c *Config) GetClickHouseURL() string {
+	return fmt.Sprintf("%s:%s", c.ClickHouse.Host, c.ClickHouse.Port)
+}
+
+// GetClerkSecretKey returns the Clerk secret
+func (c *Config) GetClerkSecretKey() string {
+	return c.Clerk.SecretKey
+}

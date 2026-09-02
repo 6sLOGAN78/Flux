@@ -64,7 +64,7 @@ func TestCampaignAPI_MultiTenantIsolation(t *testing.T) {
 	campHandler := handler.NewCampaignHandler(campSvc)
 
 	
-	linkSvc := service.NewLinkService(linkRepo, nil, campRepo)
+	linkSvc := service.NewLinkService(linkRepo, nil, campRepo, nil)
 	linkHandler := handler.NewLinksHandler(linkSvc)
 
 	e := echo.New()

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -28,38 +29,29 @@ func (r *LinkRepository) CreateLink(
 	tenantID *uuid.UUID,
 	payload *link.CreateLinkPayload,
 	shortCode string,
+	maxLinks *int64,
 ) (*link.Link, error) {
 	stmt := `
 		INSERT INTO links (
-			short_code,
-			destination_url,
-			tenant_id,
-			category_id,
-			campaign_id,
-			title,
-			description,
-			utm_source,
-			utm_medium,
-			utm_campaign,
-			utm_term,
-			utm_content
+			short_code, destination_url, tenant_id, category_id, campaign_id, title, description, utm_source, utm_medium, utm_campaign, utm_term, utm_content
 		)
 		VALUES (
-			@short_code,
-			@destination_url,
-			@tenant_id,
-			@category_id,
-			@campaign_id,
-			@title,
-			@description,
-			@utm_source,
-			@utm_medium,
-			@utm_campaign,
-			@utm_term,
-			@utm_content
+			@short_code, @destination_url, @tenant_id, @category_id, @campaign_id, @title, @description, @utm_source, @utm_medium, @utm_campaign, @utm_term, @utm_content
 		)
 		RETURNING *
 	`
+
+	if maxLinks != nil && tenantID != nil {
+		stmt = `
+			INSERT INTO links (
+				short_code, destination_url, tenant_id, category_id, campaign_id, title, description, utm_source, utm_medium, utm_campaign, utm_term, utm_content
+			)
+			SELECT 
+				@short_code, @destination_url, @tenant_id, @category_id, @campaign_id, @title, @description, @utm_source, @utm_medium, @utm_campaign, @utm_term, @utm_content
+			WHERE (SELECT COUNT(*) FROM links WHERE tenant_id = @tenant_id) < @max_links
+			RETURNING *
+		`
+	}
 
 	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{
 		"short_code":      shortCode,
@@ -74,13 +66,21 @@ func (r *LinkRepository) CreateLink(
 		"utm_campaign":   payload.UTMCampaign,
 		"utm_term":       payload.UTMTerm,
 		"utm_content":    payload.UTMContent,
+		"max_links":      maxLinks,
 	})
 	if err != nil {
 		return nil, sqlerr.HandleError(fmt.Errorf("failed to execute create link query: %w", err))
 	}
+	defer rows.Close()
 
 	item, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[link.Link])
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if maxLinks != nil && tenantID != nil {
+				return nil, errs.NewAppError("QUOTA_EXCEEDED", "Link limit reached for your subscription plan. Please upgrade.", errs.ErrQuotaExceeded)
+			}
+			return nil, fmt.Errorf("failed to create link (unexpected empty result)")
+		}
 		return nil, sqlerr.HandleError(fmt.Errorf("failed to collect row from links: %w", err))
 	}
 

@@ -1,12 +1,12 @@
-# Architecture (Reality vs Claim)
+# System Architecture
 
-## Claimed Architecture
-- **API**: Echo v4
+## Core Stack
+- **API**: Echo v4 (Go)
 - **DB**: Postgres (Transactional), Redis (Cache/RateLimit), ClickHouse (Analytics)
-- **Frontend**: React SPA
+- **Frontend**: React SPA (Vite, TS)
 - **Modules**: Decoupled domain-driven design
 
-## Actual Architecture
+## Current Architecture Flow
 ```mermaid
 graph TD
     User([User]) --> Frontend[React SPA]
@@ -19,10 +19,8 @@ graph TD
     LinkSvc --> Postgres[(PostgreSQL)]
     RedirSvc --> Postgres
     
-    RedirSvc -.-> Redis[(Redis - Disconnected)]
-    ClickHouse[(ClickHouse - Disconnected)]
-    
-    Modules[internal/modules/*] -.-> Nowhere[Unused / Vaporware]
+    RedirSvc -.-> Redis[(Redis - Caching/Buffering)]
+    ClickHouse[(ClickHouse - Analytics Engine)]
 ```
 
 ### Components
@@ -39,9 +37,9 @@ graph TD
 - `internal/modules` contains complex Go code (Stripe, Webhooks, Domains, AI) that is completely disconnected from the router and the database.
 
 **Databases**
-- **Postgres**: Only has 3 tables (`links`, `link_categories`, `link_attachments`).
-- **Redis**: Setup in docker-compose, but not wired in `server.go`.
-- **ClickHouse**: Schema exists, but no Go code writes to it.
+- **Postgres**: Contains `users`, `workspaces`, `links`, `link_categories`, `campaigns`, `custom_domains`, and `subscriptions`.
+- **Redis**: Setup and wired for Redirect caching (`LinkRedirectTarget`) and Analytics buffering.
+- **ClickHouse**: Connected and actively consuming `analytics_events` and `conversions` via queue buffering.
 
 ## Click-Time Attribution
 
@@ -51,3 +49,9 @@ The `LinkRedirectTarget` holds the cached resolution of UTM parameters to ensure
 **UTM Precedence Rule:**
 When resolving UTMs for analytics tracking, link-specific UTM values natively override campaign-default UTM values.
 `Resolved UTM = Link override (if present) OR Campaign default (if present) OR NULL`.
+
+## Billing Architecture
+Stripe webhooks securely update Postgres (`subscriptions`). Tenant limits (e.g., max links, retention days) are loaded by `BillingRepository` on-demand and validated centrally across the backend to enforce quotas before Postgres persistence. The frontend solely relies on this backend-authoritative DB state.
+
+## Configuration Architecture
+Robust strongly-typed configuration structure powered by `koanf` and `validator`. All configuration uses `FLUX_` prefix for OS variables (e.g. `FLUX_DATABASE.PORT`). Strictly enforces security properties in production (Fail-Closed mechanisms) protecting Stripe keys, Clerk keys, and webhook secrets.

@@ -40,7 +40,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	logger.InitLogger("debug", "console")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	dbPool, dbErr := database.InitDBPool(ctx, cfg.DatabaseURL)
+	dbPool, dbErr := database.InitDBPool(ctx, cfg.GetDatabaseURL())
 	cancel()
 
 	if dbErr != nil {
@@ -48,14 +48,14 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	} else {
 		log.Info().Msg("successfully connected and pinged postgresql database via pgx/v5")
 		migCtx, migCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if migErr := database.MigrateDSN(migCtx, &log.Logger, cfg.DatabaseURL); migErr != nil {
+		if migErr := database.MigrateDSN(migCtx, &log.Logger, cfg.GetDatabaseURL()); migErr != nil {
 			log.Warn().Err(migErr).Msg("database migration warning")
 		}
 		migCancel()
 	}
 
-	if cfg.ClerkSecretKey != "" {
-		clerk.SetKey(cfg.ClerkSecretKey)
+	if cfg.Clerk.SecretKey != "" {
+		clerk.SetKey(cfg.Clerk.SecretKey)
 	} else {
 		log.Warn().Msg("CLERK_SECRET_KEY is empty, authentication may fail")
 	}
@@ -68,26 +68,26 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	var analyticsProvider repository.AnalyticsProvider
 	var redirectCache repository.RedirectCache
 
-	if cfg.RedisURL != "" {
-		redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	if cfg.GetRedisURL() != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: cfg.GetRedisURL()})
 		
 		// Initialize the Redirect Cache
 		redirectCache = repository.NewRedisRedirectCache(redisClient)
 
-		pub = service.NewRedisAnalyticsPublisher(redisClient, cfg.AnalyticsRedisStream, 5000)
+		pub = service.NewRedisAnalyticsPublisher(redisClient, cfg.Redis.AnalyticsStream, 5000)
 		pub.Start()
 		pubInterface = pub
 		
 		// Conversion publisher
 		convPubInterface = service.NewRedisConversionPublisher(redisClient, "analytics:conversions")
 
-		if cfg.ClickHouseURL != "" {
-			chConn, err := db.InitClickHouse(cfg.ClickHouseURL)
+		if cfg.GetClickHouseURL() != "" {
+			chConn, err := db.InitClickHouse(cfg.GetClickHouseURL())
 			if err == nil {
 				_ = db.MigrateClickHouseSchema(context.Background(), chConn)
 				analyticsProvider = repository.NewClickHouseAnalyticsRepository(chConn)
 				
-				chConsumer = service.NewRedisAnalyticsConsumer(redisClient, chConn, cfg.AnalyticsRedisStream)
+				chConsumer = service.NewRedisAnalyticsConsumer(redisClient, chConn, cfg.Redis.AnalyticsStream)
 				chConsumer.Start()
 
 				convConsumer = service.NewRedisConversionConsumer(redisClient, chConn, "analytics:conversions")
@@ -102,21 +102,21 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	redirectRepo := repository.NewPostgresRedirectRepository(dbPool)
 	redirectSvc := service.NewRedirectService(redirectRepo, redirectCache)
+	billingRepo := repository.NewBillingRepository(dbPool)
 
 	redirectHandler := handler.NewRedirectHandler(redirectSvc, pubInterface)
-	analyticsHandler := handler.NewAnalyticsHandler(analyticsProvider)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsProvider, billingRepo)
 
 	linkRepo := repository.NewLinkRepository(dbPool)
 	campaignRepo := repository.NewCampaignRepository(dbPool)
 	domainRepo := repository.NewDomainRepository(dbPool)
 	
-	linkSvc := service.NewLinkService(linkRepo, redirectCache, campaignRepo)
-	linksHandler := handler.NewLinksHandler(linkSvc)
+	linksHandler := handler.NewLinksHandler(service.NewLinkService(linkRepo, redirectCache, campaignRepo, billingRepo))
 	
 	campaignSvc := service.NewCampaignService(campaignRepo, linkRepo, redirectCache)
 	campaignHandler := handler.NewCampaignHandler(campaignSvc)
 
-	domainSvc := service.NewDomainService(domainRepo, redirectCache, cfg.PlatformDomain)
+	domainSvc := service.NewDomainService(domainRepo, redirectCache, cfg.Server.PlatformDomain)
 	domainHandler := handler.NewDomainHandler(domainSvc)
 
 	domainWorker := service.NewDomainVerificationWorker(domainRepo, redirectCache, nil, 0)
@@ -124,7 +124,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		domainWorker.Start()
 	}
 
-	tlsAuthHandler := handler.NewTLSAuthHandler(domainRepo, cfg.InternalAPIKey)
+	tlsAuthHandler := handler.NewTLSAuthHandler(domainRepo, cfg.Auth.InternalAPIKey)
 
 	userRepo := repository.NewUserRepository(dbPool)
 	
@@ -134,8 +134,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		trackingHandler = handler.NewTrackingHandler(userRepo, convPubInterface)
 	}
 
-	if cfg.RedisURL != "" {
-		redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	if cfg.GetRedisURL() != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: cfg.GetRedisURL()})
 		limiterStore = customMiddleware.NewRedisSlidingWindowLimiter(redisClient)
 	}
 
@@ -143,9 +143,13 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	e.IPExtractor = echo.ExtractIPFromRealIPHeader()
 	e.HTTPErrorHandler = errs.CustomHTTPErrorHandler
 	customMiddleware.RegisterGlobalMiddlewares(e)
-	e.Use(customMiddleware.TracingMiddleware(cfg.NewRelicLicenseKey, "flux-backend"))
+	e.Use(customMiddleware.TracingMiddleware(cfg.Observability.NewRelic.LicenseKey, "flux-backend"))
 
-	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler, trackingHandler, limiterStore)
+	stripeWebhookHandler := handler.NewStripeWebhookHandler(dbPool, billingRepo, cfg)
+
+	billingHandler := handler.NewBillingHandler(billingRepo, cfg)
+	router.InitRouter(e, dbPool, userRepo, redirectHandler, analyticsHandler, linksHandler, campaignHandler, domainHandler, tlsAuthHandler, trackingHandler, limiterStore, billingHandler)
+	router.RegisterWebhookRoutes(e, stripeWebhookHandler)
 
 	return &Server{
 		Echo:               e,
@@ -160,8 +164,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 // Start launches the Echo HTTP listener.
 func (s *Server) Start() error {
-	log.Info().Msgf("starting flux Echo v4 api server on port %s...", s.Config.ServerPort)
-	if err := s.Echo.Start(":" + s.Config.ServerPort); err != nil && err != http.ErrServerClosed {
+	log.Info().Msgf("starting flux Echo v4 api server on port %s...", s.Config.Server.Port)
+	if err := s.Echo.Start(":" + s.Config.Server.Port); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil

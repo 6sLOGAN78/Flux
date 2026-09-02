@@ -13,6 +13,6 @@ func main() {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	log.Printf("starting flux background job worker processing tasks on redis %s...", cfg.RedisURL)
+	log.Printf("starting flux background job worker processing tasks on redis %s...", cfg.GetRedisURL())
 	// Asynq worker listening logic initialized here
 }

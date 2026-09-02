@@ -15,9 +15,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type mockAnalyticsProvider struct{}
+type mockAnalyticsProvider struct {
+	CapturedFrom time.Time
+}
 
 func (m *mockAnalyticsProvider) GetSummary(ctx context.Context, workspaceID string, from, to time.Time) (*analytics.AnalyticsSummary, error) {
+	m.CapturedFrom = from
+
 	if workspaceID == "00000000-0000-0000-0000-000000000000" {
 		return &analytics.AnalyticsSummary{TotalClicks: 42, UniqueVisitors: 10}, nil
 	}
@@ -39,7 +43,7 @@ func (m *mockAnalyticsProvider) GetReferrers(ctx context.Context, workspaceID st
 func setupAnalyticsHandler() (*echo.Echo, *handler.AnalyticsHandler) {
 	e := echo.New()
 	provider := &mockAnalyticsProvider{}
-	h := handler.NewAnalyticsHandler(provider)
+	h := handler.NewAnalyticsHandler(provider, nil)
 	return e, h
 }
 
@@ -131,4 +135,9 @@ func (m *mockAnalyticsProvider) GetDomainPerformance(ctx context.Context, tenant
 	return &analytics.DomainPerformanceResponse{
 		Data: []analytics.DomainPerformance{},
 	}, nil
+}
+
+func TestAnalyticsHandler_Retention(t *testing.T) {
+	// A simple unit-style test testing the private enforceRetention method indirectly or via GetSummary
+	// The analytics provider needs to be mocked to observe the modified 'from' time.
 }

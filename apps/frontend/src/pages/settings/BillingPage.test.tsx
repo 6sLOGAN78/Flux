@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { mock } from 'bun:test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BillingPage } from './BillingPage';
 import { CurrentPlanCard, SubscriptionPlan } from '@/components/billing/CurrentPlanCard';
@@ -11,6 +12,22 @@ import {
 } from '@/components/billing/UsageQuotaProgressBar';
 import { InvoicesList, InvoiceItem } from '@/components/billing/InvoicesList';
 
+
+mock.module('@/hooks/useBillingQuery', () => ({
+  useGetSubscription: () => ({
+    data: {
+      plan: 'pro',
+      status: 'active',
+      currentPeriodEnd: '2026-09-15T00:00:00Z',
+    },
+    isLoading: false,
+    isError: false,
+  }),
+  useCreateCustomerPortal: () => ({
+    mutateAsync: async () => ({ url: 'https://billing.stripe.com/p/session/test' }),
+    isPending: false,
+  }),
+}));
 describe('Billing & Subscriptions Management Page', () => {
   const testQueryClient = new QueryClient({
     defaultOptions: {
@@ -49,7 +66,7 @@ describe('Billing & Subscriptions Management Page', () => {
     expect(html).toContain('Pro Tier');
     expect(html).toContain('$49');
     expect(html).toContain('Manage in Stripe Portal');
-    expect(html).toContain('Upgrade Plan');
+    expect(html).toContain('Manage Billing');
   });
 
   it('renders UsageQuotaProgressBar with percentage calculations and warning colors', () => {

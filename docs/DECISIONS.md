@@ -60,3 +60,13 @@
   - **Singleflight**: Implemented via `golang.org/x/sync/singleflight` to prevent cache stampedes on concurrent misses for the same slug.
   - **Negative Caching**: Explicitly rejected. Missing slugs are caught by `singleflight` for concurrency bursts and by Postgres indexes sequentially. No complex negative invalidation logic is needed.
 * **Consequences**: Redis outage gracefully falls back to Postgres. Link resolution performance scales horizontally.
+
+## Billing / Tenancy Mapping (Phase 14A-01)
+**Decision**: Store `stripe_customer_id` natively on the `workspaces` PostgreSQL table rather than utilizing a distinct junction table (`workspace_stripe_customers`).
+**Why**: Ensures 1:1 uniqueness mappings directly via PostgreSQL constraints, definitively preventing an architecture state where one Stripe customer exists across multiple Workspaces or a Workspace controls multiple Stripe Customers simultaneously, matching modern B2B SaaS tenets implicitly.
+
+## DEC-008: Environment Configuration Standardization
+* **Date**: 2026-09-02
+* **Context**: The `config.go` loader was unstructured, mixed with `os.Getenv()`, hardcoded fallbacks, and required manually maintained validation routines. 
+* **Decision**: Adopted a unified nested structure managed by `koanf`, populated by `godotenv`, validated via `go-playground/validator`, enforcing the `FLUX_` prefix boundary. Production requires explicit configuration parameters (Fail-Closed) for Stripe/Clerk credentials.
+* **Impact**: Decouples application consumers from raw string paths (e.g. they use `cfg.Stripe.SecretKey`). Standardizes `.env.example` mapping. Prevents production drift by halting compilation / boot sequences instantly if security configurations are unset.

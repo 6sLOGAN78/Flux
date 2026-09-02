@@ -48,6 +48,8 @@ func ToHTTPError(err error) *echo.HTTPError {
 			return echo.NewHTTPError(http.StatusGone, appErr.Message)
 		case errors.Is(appErr.Err, ErrRateLimitExceeded):
 			return echo.NewHTTPError(http.StatusTooManyRequests, appErr.Message)
+		case errors.Is(appErr.Err, ErrQuotaExceeded):
+			return echo.NewHTTPError(http.StatusPaymentRequired, appErr.Message)
 		}
 	}
 
@@ -62,6 +64,8 @@ func ToHTTPError(err error) *echo.HTTPError {
 		return echo.NewHTTPError(http.StatusGone, "resource has expired")
 	case errors.Is(err, ErrRateLimitExceeded):
 		return echo.NewHTTPError(http.StatusTooManyRequests, "rate limit exceeded")
+	case errors.Is(err, ErrQuotaExceeded):
+		return echo.NewHTTPError(http.StatusPaymentRequired, "resource quota exceeded")
 	default:
 		return echo.NewHTTPError(http.StatusInternalServerError, "internal server error")
 	}

@@ -12,5 +12,5 @@ func TestRegisterV1Routes(t *testing.T) {
 	e := echo.New()
 	
 	// Ensure it initializes without panicking
-	v1.RegisterV1Routes(e, nil, nil, nil, nil, nil)
+	v1.RegisterV1Routes(e, nil, nil, nil, nil, nil, nil)
 }

@@ -199,10 +199,17 @@ export const ZWorkspaceMember = z.object({
 export const ZSubscription = z.object({
   id: z.string().uuid().openapi({ description: "Subscription UUID" }),
   orgId: z.string().uuid().openapi({ description: "Organization UUID" }),
-  plan: z.enum(["free", "pro", "enterprise"]).openapi({ description: "Billing plan tier", example: "enterprise" }),
+  plan: z.enum(["free", "pro", "business", "enterprise"]).openapi({ description: "Billing plan tier", example: "enterprise" }),
   status: z.string().openapi({ description: "Stripe subscription status", example: "active" }),
   currentPeriodEnd: z.string().datetime().openapi({ description: "Billing cycle renewal timestamp" }),
+  maxLinks: z.number().openapi({ description: "Maximum active links allowed" }),
+  analyticsRetention: z.number().openapi({ description: "Days to retain analytics data" }),
+
 }).openapi({ description: "Stripe Subscription details" });
+
+export const ZCustomerPortalResponse = z.object({
+  url: z.string().url().openapi({ description: "Stripe Customer Portal URL", example: "https://billing.stripe.com/p/session/..." }),
+}).openapi({ description: "URL to redirect the user to the Stripe Customer Portal" });
 
 export const ZAPIKey = z.object({
   id: z.string().uuid().openapi({ description: "API Key UUID" }),
@@ -283,6 +290,7 @@ export type Organization = z.infer<typeof ZOrganization>;
 export type Workspace = z.infer<typeof ZWorkspace>;
 export type WorkspaceMember = z.infer<typeof ZWorkspaceMember>;
 export type Subscription = z.infer<typeof ZSubscription>;
+export type CustomerPortalResponse = z.infer<typeof ZCustomerPortalResponse>;
 export type APIKey = z.infer<typeof ZAPIKey>;
 export type OAuthTokenResponse = z.infer<typeof ZOAuthTokenResponse>;
 export type Webhook = z.infer<typeof ZWebhook>;

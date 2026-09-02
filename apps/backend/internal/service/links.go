@@ -10,6 +10,7 @@ import (
 	"flux/apps/backend/internal/errs"
 	"flux/apps/backend/internal/model"
 	"flux/apps/backend/internal/model/link"
+	"flux/apps/backend/internal/modules/billing"
 	"flux/apps/backend/internal/repository"
 	"flux/apps/backend/pkg/sqlerr"
 
@@ -17,13 +18,14 @@ import (
 )
 
 type LinkService struct {
-	repo      *repository.LinkRepository
-	cache     repository.RedirectCache
-	campRepo  *repository.CampaignRepository
+	repo        *repository.LinkRepository
+	cache       repository.RedirectCache
+	campRepo    *repository.CampaignRepository
+	billingRepo *repository.BillingRepository
 }
 
-func NewLinkService(repo *repository.LinkRepository, cache repository.RedirectCache, campRepo *repository.CampaignRepository) *LinkService {
-	return &LinkService{repo: repo, cache: cache, campRepo: campRepo}
+func NewLinkService(repo *repository.LinkRepository, cache repository.RedirectCache, campRepo *repository.CampaignRepository, billingRepo *repository.BillingRepository) *LinkService {
+	return &LinkService{repo: repo, cache: cache, campRepo: campRepo, billingRepo: billingRepo}
 }
 
 func (s *LinkService) CreateLink(ctx context.Context, tenantID *uuid.UUID, payload *link.CreateLinkPayload) (*link.Link, error) {
@@ -34,8 +36,29 @@ func (s *LinkService) CreateLink(ctx context.Context, tenantID *uuid.UUID, paylo
 		}
 	}
 
+	var maxLinks *int64
+	if tenantID != nil && s.billingRepo != nil {
+		sub, err := s.billingRepo.GetSubscriptionByWorkspace(ctx, *tenantID)
+		var planTier string
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) || err.Error() == "repository: resource not found" {
+				planTier = "free"
+			} else {
+				return nil, err
+			}
+		} else {
+			if sub.Status == "active" || sub.Status == "trialing" {
+				planTier = sub.PlanTier
+			} else {
+				planTier = "free"
+			}
+		}
+		limits := billing.GetTierLimits(planTier)
+		maxLinks = &limits.MaxLinks
+	}
+
 	if payload.CustomCode != nil && *payload.CustomCode != "" {
-		return s.repo.CreateLink(ctx, tenantID, payload, *payload.CustomCode)
+		return s.repo.CreateLink(ctx, tenantID, payload, *payload.CustomCode, maxLinks)
 	}
 
 	maxRetries := 5
@@ -45,7 +68,7 @@ func (s *LinkService) CreateLink(ctx context.Context, tenantID *uuid.UUID, paylo
 			return nil, err
 		}
 
-		result, err := s.repo.CreateLink(ctx, tenantID, payload, shortCode)
+		result, err := s.repo.CreateLink(ctx, tenantID, payload, shortCode, maxLinks)
 		if err == nil {
 			return result, nil
 		}

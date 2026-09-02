@@ -16,10 +16,10 @@ const DatabasePingTimeout = 10 * time.Second
 
 // NewPool initializes a PostgreSQL connection pool using pgx/v5 pgxpool and structured Config.
 func NewPool(ctx context.Context, cfg *config.Config, logger *zerolog.Logger) (*pgxpool.Pool, error) {
-	if cfg == nil || cfg.DatabaseURL == "" {
+	if cfg == nil || cfg.GetDatabaseURL() == "" {
 		return nil, fmt.Errorf("invalid config or empty DatabaseURL")
 	}
-	return InitDBPool(ctx, cfg.DatabaseURL)
+	return InitDBPool(ctx, cfg.GetDatabaseURL())
 }
 
 // InitDBPool initializes a PostgreSQL connection pool using pgx/v5 pgxpool.

@@ -8,10 +8,23 @@ import (
 // SetupTestServer initializes a server instance configured for unit and integration testing.
 func SetupTestServer() (*server.Server, error) {
 	cfg := &config.Config{
-		ServerPort:  "0", // Auto-assign free port
-		DatabaseURL: "postgres://postgres:postgrespassword@localhost:5432/flux?sslmode=disable",
-		RedisURL:    "localhost:6379",
-		JWTSecret:   "test-secret-key",
+		Server: config.ServerConfig{
+			Port: "0",
+		},
+		Database: config.DatabaseConfig{
+			Host: "localhost",
+			Port: "5432",
+			User: "postgres",
+			Password: "postgrespassword",
+			Name: "flux",
+			SSLMode: "disable",
+		},
+		Redis: config.RedisConfig{
+			Address: "localhost:6379",
+		},
+		Auth: config.InternalAuthConfig{
+			JWTSecret: "test-secret-key",
+		},
 	}
 
 	return server.NewServer(cfg)

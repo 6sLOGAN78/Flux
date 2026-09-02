@@ -21,6 +21,8 @@ func (h *AnalyticsHandler) GetAttribution(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	h.enforceRetention(c, workspaceID, &from)
+
 	modelParam := c.QueryParam("model")
 	if modelParam == "" {
 		modelParam = string(attribution.ModelLinear)

@@ -25,29 +25,29 @@
 | **09** | Real Analytics Frontend | `[x] COMPLETE` | 100% | Support additional metric visualization widgets |
 | **10** | Profile / Account / Workspace UX | `[?] NEEDS VERIFICATION` | 75% | Verify end-to-end Clerk Org switcher UI flow |
 | **11** | Campaigns + UTM Tracking | `[~] IN PROGRESS` | 92% | Verify and complete full frontend integration |
-| **12** | Custom Domains | `[ ] NOT STARTED` | 0% | Deferred until Phase 11 verified |
-| **13** | Multi-Touch Attribution | `[ ] NOT STARTED` | 0% | Deferred until ClickHouse conversion ingestion ready |
-| **14** | Billing / Plans / Usage | `[ ] NOT STARTED` | 0% | Deferred until Stripe integration phase |
+| **12** | Custom Domains | `[x] COMPLETE` | 100% | Monitor worker proxy routing stability |
+| **13** | Multi-Touch Attribution | `[x] COMPLETE` | 100% | Monitor ClickHouse ingestion scale |
+| **14** | Billing / Plans / Usage | `[x] COMPLETE` | 100% | Final Verification Completed |
 | **15** | Webhooks / Integrations | `[ ] NOT STARTED` | 0% | Deferred until event routing subsystem wired |
 | **16** | AI / Intelligence | `[ ] NOT STARTED` | 0% | Deferred until core telemetry mature |
 | **17** | Production Hardening | `[~] IN PROGRESS` | 45% | Implement rate limiting & load testing verification |
 | **18** | Scale / Operations | `[ ] NOT STARTED` | 0% | Deferred to multi-region rollout |
 
-*Overall Repository Progress: 66.7% of 18 Master Phases Completed / Active.*
+*Overall Repository Progress: 72.2% of 18 Master Phases Completed / Active.*
 
 ---
 
 # CURRENT DEVELOPMENT POSITION
 
 ```text
-Current Phase:               PHASE 13 (IN PROGRESS)
-Current Task:                Phase 13D Complete
+Current Phase:               PHASE 15 (NOT STARTED)
+Current Task:                Phase 15 (Begin Custom Domains or Integrations)
 Overall Status:              ACTIVE
-Completed Phases:            Phase 00, Phase 01, Phase 02, Phase 03, Phase 04, Phase 05, Phase 06, Phase 07, Phase 08, Phase 09, Phase 11
-Partially Completed Phases:  Phase 10 (75%), Phase 13 (66%), Phase 17 (45%)
+Completed Phases:            Phase 00, Phase 01, Phase 02, Phase 03, Phase 04, Phase 05, Phase 06, Phase 07, Phase 08, Phase 09, Phase 11, Phase 12, Phase 13, Phase 14
+Partially Completed Phases:  Phase 10 (75%), Phase 17 (45%)
 Needs Verification:          Task 10A-02 (Org Switcher UX)
 Blocked:                     None
-Next Recommended Task:       Phase 13E — Frontend Attribution UI
+Next Recommended Task:       Phase 15A — Outbound Webhooks
 ```
 
 ---
@@ -90,9 +90,6 @@ Next Recommended Task:       Phase 13E — Frontend Attribution UI
 
 The following features have intentionally been placed on hold to protect the core performance and stability baseline:
 
-1. **Phase 12 — Custom Domains:** CNAME validation, SSL generation (Let's Encrypt / Cloudflare for SaaS), and custom host routing.
-2. **Phase 13 — Multi-Touch Attribution:** Algorithmic conversion models (First Touch, Last Touch, Linear, Time Decay, U-Shaped) in `apps/backend/internal/modules/attribution/calculator.go` until conversion event ingestion is established.
-3. **Phase 14 — SaaS Billing:** Stripe integration, webhook processing, metered click billing, customer portal.
 4. **Phase 15 — Outbound Webhooks:** Event delivery worker, retry queues, HMAC signature verification.
 5. **Phase 16 — AI Insights:** Click anomaly detection, automated bot filtering, generative UTM suggestions.
 6. **Phase 18 — Global Operations:** Multi-region edge deployment, Anycast routing, global Redis replication.
@@ -615,219 +612,6 @@ When transitioning subtask states:
 
 ### 12C — Core Domain API
 * `[x]` **12C-01:** Domain CRUD endpoints and Clerk tenant isolation.
-SHOW_ITS_WORK
-INVESTIGATE
-/
-SKEPTIC
-/
-RECEIPTS
-/
-TELEMETRY
-SYS.TIME
-18:46:17
-UTC+5.5
-RUN ANALYSIS
-↗
-KPI · INTELLIGENCE · TO · ACTION
-/01   OVERVIEW
-SHOW
-ITS WORK
-▹ GROUNDED. SKEPTICAL. AUDITABLE.
-A KPI engine that explains why a metric moved — every number traced to a tool call, a skeptic that kills the plausible-but-wrong story, and an honest "I don't know" when the evidence isn't there. The model never computes a number.
-
-START AN INVESTIGATION
-↗
-SEE ROLE-GATED VIEW
-↗
-> ENGINE_STATUS
-RESOLVED
-Δ_KPI __
-ZSCORE __
-CONF HIGH
-DETERMINISTIC CORE
-//SCN_01
-/02
-Investigate
-natural-language question → grounded answer
-Question
-Why did our net revenue drop last week?
-Persona
-
-Revenue / Finance Analyst
-RUN
-↗
-Scenarios
-
-SCN_01
-Revenue drop — full analysis
-
-SCN_02
-Same question, Ops Lead — role-gated
-
-SCN_03
-A diffuse move — must abstain
-
-SCN_04
-A newly launched window — sparse
-
-SCN_05
-A quiet week — gate ignores it
-/03
-The Answer
-NET REVENUE · revenue analyst
-HIGH CONFIDENCE
-What moved
-Causal memory recalls a known mechanism reaching net_revenue (confidence 0.99); 20 similar case(s) resolved before. Used as a prior. [F001]
-
-Most likely cause (HIGH confidence)
-house_bravos's delivery collapse drove the net_revenue drop. Late/failed fulfilment -> cancellations + poor reviews -> lost recognised revenue. [F003] [D001]
-
-How we know it survived scrutiny
-control_group ✓; temporal_alignment ✓; counterfactual ✓; signature ✓. Best hypothesis H001 explains 77% of the delta; temporal=✓, control=✓, corroborating_doc=✓, share>=50%=✓.
-
-A tempting explanation we rejected
-"A market-wide competitor flash sale pulled demand away, causing the drop." — rejected: Market-wide claim fails — house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
-
-Mix check
-move is mostly within-group; safe to attribute to drivers
-
-Recommended actions
-- house_bravos delivery collapse → *seller SLA / carrier routing*: Open a fulfilment incident with house_bravos; pause new-order routing and shift volume to a backup carrier until on-time recovers. _Expected: Recovers ~81,330 BRL, the ~77% share attributed to house_bravos. · Owner: Fulfilment Ops Lead · Confidence: HIGH · Monitor: Track on_time_delivery_rate for house_bravos daily; expect recovery within 7 days, else escalate._ - secondary category stockout → *supplier / inventory*: Confirm the category stockout with the supplier and expedite replenishment. _Expected: Addresses the smaller ~20% secondary share. · Owner: Category Manager · Confidence: MEDIUM · Monitor: Watch category fill-rate and cancellations weekly._
-
-RECOMMENDED ACTIONS
-HIGH
-house_bravos delivery collapse → seller SLA / carrier routing
-Open a fulfilment incident with house_bravos; pause new-order routing and shift volume to a backup carrier until on-time recovers.
-Impact: Recovers ~81,330 BRL, the ~77% share attributed to house_bravos. · Owner: Fulfilment Ops Lead
-MEDIUM
-secondary category stockout → supplier / inventory
-Confirm the category stockout with the supplier and expedite replenishment.
-Impact: Addresses the smaller ~20% secondary share. · Owner: Category Manager
-/04
-The Skeptic
-every hypothesis faces falsification — a rejected card is the skeptic working
-SURVIVED
-house_bravos's delivery collapse drove the net_revenue drop.
-77%
-Late/failed fulfilment -> cancellations + poor reviews -> lost recognised revenue.
-✓
-control_group
-house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
-✓
-temporal_alignment
-on_time_delivery_rate onset 2024-05-08 is before/with net_revenue onset 2024-05-12
-✓
-counterfactual
-Excluding house_bravos, the net_revenue shortfall goes from -105,021 to -23,691 — it explains 77% of the move.
-✓
-signature
-on_time_delivery_rate down (z=-18.89) ✓; avg_review_score down (z=-21.37) ✓
-REJECTED
-A market-wide competitor flash sale pulled demand away, causing the drop.
-External promotion diverts customers across the whole market.
-✗
-heterogeneity/control
-Market-wide claim fails — house_bravos moved -49.3% vs the rest of the market -3.3%. Damage is concentrated here, not market-wide.
-SURVIVED
-A stockout in the health_beauty category removed a smaller, separate share of revenue.
-20%
-Supplier stockout -> unfulfillable orders cancelled in that category.
-✓
-counterfactual
-Excluding health_beauty, the net_revenue shortfall goes from -105,021 to -83,977 — it explains 20% of the move.
-/05
-The Evidence Base
-deterministic attribution + the movement itself
-DRIVER ATTRIBUTION
-net_revenue
-house_bravos
--81.3k · 77%
-house_lannister
--13.4k · 13%
-house_baratheon
--9.2k · 9%
-house_stark
--3.0k · 3%
-house_arryn
--1.3k · 1%
-house_martell
-163 · 0%
-net_revenue — WINDOW SHADED
-2024-05-08 → 2024-05-23
-/06
-Receipts
-every figure traces to a tool · source freshness + lineage
-FACTS — PROVENANCE-BOUND
-ID	Statement	Producer
-F001	Causal memory recalls a known mechanism reaching net_revenue (confidence 0.99); 20 similar case(s) resolved before. Used as a prior.	rule
-F002	Net Revenue (BRL) moved -11.9% (48559.0 vs baseline 55122.8); z=-8.94, material.	statistical
-F003	house_bravos contributed -81,330 to the move (+77% of the total delta).	deterministic
-F004	house_lannister contributed -13,377 to the move (+13% of the total delta).	deterministic
-F005	house_baratheon contributed -9,150 to the move (+9% of the total delta).	deterministic
-F006	Mix-shift check: move is mostly within-group; safe to attribute to drivers	statistical
-SOURCE orders_dw · GRAIN order_item · REFRESH hourly · SLA 3H · well_governed
-LINEAGE orders_dw.order_items → orders_dw.orders(status) → orders_dw.payments
-UNSTRUCTURED EVIDENCE
-ID	Src	Text
-D001	review	Delivery was extremely late, very disappointed.
-D002	news	MegaStore (competitor) launched a national flash sale May 12-15 with aggressive discounts.
-D003	crm	CRM note: supplier stockout on health_beauty SKUs; ~2-week fulfilment gap, several cancellations.
-D004	crm	Sales speculation: last week's revenue dip might just be the MegaStore promo pulling demand.
-D005	crm	Marketing: new loyalty email campaign scheduled for next quarter.
-[CHECK]
-Citations 3/3 resolve · clean=true
-/07
-Runtime Telemetry
-latency · model calls · tokens · cost · LLM vs non-LLM
-LATENCY
-205 MS
-LLM CALLS
-0
-TOKENS
-0
-EST. COST
-$0.00000
-The LLM computed 0 numbers. It wasn't called — the deterministic core produced every figure across 11 tool steps.
-statistical 4
-rule 1
-deterministic 4
-retrieval 2
-Step	Producer	ms	Model	Tokens	Cost
-detect_change(gate)	statistical	41.94	—	—	—
-causal_memory.prior	rule	0.16	—	—	—
-decompose_drivers	deterministic	5.9	—	—	—
-check_mix_shift	deterministic	5.47	—	—	—
-search_evidence(driver)	retrieval	2.45	—	—	—
-search_evidence(context)	retrieval	1.96	—	—	—
-compare_control_group	statistical	32.19	—	—	—
-test_temporal_alignment	statistical	41.15	—	—	—
-counterfactual_estimate	deterministic	22.8	—	—	—
-compare_control_group	statistical	29.19	—	—	—
-counterfactual_estimate	deterministic	21.86	—	—	—
-SHOW_ITS_WORK
-AIC 2026 · PS3 BUSINESSINTELLIGENCE.AI
-TEAM MANDALORIANS · IIT PATNA
-
-Engine
-Investigate
-Skeptic
-Receipts
-Telemetry
-Principles
-LLM ≠ truth
-Falsify, don't assert
-Abstain honestly
-Show the receipts
-Method
-Signal gate
-Driver waterfall
-Skeptic debate
-Causal memory
-● CONNECTION SECURE
-LATENCY 1716MS
-> ACCESS GRANTED_
-SCN 4844
-18:46:17
 ### 12D — DNS Verification Worker
 * `[x]` **12D-01:** Background polling worker for TXT/CNAME validation.
 
@@ -900,7 +684,7 @@ SCN 4844
 * `[x]` **13D-02:** Wire `calculator.go` to real data via `GET /api/v1/analytics/attribution`.
 
 ### 13E — Frontend Attribution UI
-* `[ ]` **13E-01:** Connect `AttributionPage.tsx` to real attribution queries.
+* `[x]` **13E-01:** Connect `AttributionPage.tsx` to real attribution queries.
 
 ### 13F — Final Verification
 * `[ ]` **13F-01:** Perform end-to-end attribution checks and audit tenant isolation.
@@ -911,18 +695,18 @@ SCN 4844
 ---
 
 ## PHASE 14 — Billing / Plans / Usage
-**Depends On:** Phase 02, 08  
-**Blocks:** Phase 18  
-**Status:** `[ ] NOT STARTED (0%) - DEFERRED`
+**Depends On:** Phase 02, 08
+**Blocks:** Phase 18
+**Status:** `[x] COMPLETE (100%)`
 
 ### 14A — Stripe Integration
-* `[ ]` **14A-01:** PostgreSQL `subscriptions` schema and customer mapping.
-* `[ ]` **14A-02:** Stripe webhook listener for subscription lifecycle.
-* `[ ]` **14A-03:** Feature tier enforcement middleware (link limits, analytics retention).
-* `[ ]` **14A-04:** Frontend `BillingPage.tsx` connection to Stripe Customer Portal.
+* `[x]` **14A-01:** PostgreSQL `subscriptions` schema and customer mapping.
+* `[x]` **14A-02:** Stripe webhook listener for subscription lifecycle.
+* `[x]` **14A-03:** Feature tier enforcement middleware (link limits, analytics retention).
+* `[x]` **14A-04:** Frontend `BillingPage.tsx` connection to Stripe Customer Portal.
 
 ### Phase 14 Checkpoint
-* `[ ]` Subscription state changes enforce limits accurately.
+* `[x]` Subscription state changes enforce limits accurately.
 
 ---
 

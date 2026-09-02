@@ -9,7 +9,7 @@
 
 ## Current State
 * **What works**: Link CRUD is fully functional and isolated by tenant. Real-time Analytics ingestion (Redis Streams -> ClickHouse) is deployed and powering the frontend dashboard. Authentication uses Clerk exclusively with secure tenant mapping. Campaigns and UTM tracking are fully functional end-to-end with immutable attribution.
-* **What partially works**: Custom Domains, Webhooks, Billing, and AI are currently just mock UI shells pending backend implementation.
+* **What partially works**: Custom Domains, Webhooks, and AI are currently just mock UI shells pending backend implementation.
 * **What is broken**: Nothing in the critical path. Previous production blockers (auth spoofing, graceful shutdown, short-code PRNG collisions) have been remediated.
 * **What is missing**: Advanced feature modules (Custom Domains, Billing, Webhooks, AI).
 * **What is deprecated**: N/A
@@ -20,13 +20,13 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 13 - Multi-Touch Attribution (Task 13D Complete)
+* **Phase**: PHASE 14 - Billing (100% Complete - Ready for Verification)
 * **Status**: IN PROGRESS
-* **Why**: The Phase 13 backend infrastructure is fully operational. Conversion events are tracked, buffered through Redis, ingested into ClickHouse, and successfully mapped to historical touchpoints via `GET /api/v1/analytics/attribution`. Next is 13E (Frontend Attribution UI).
+* **Why**: Task 14A-04 is completed. The Billing UI is connected to the Stripe Customer Portal and backend APIs. Phase 14 requires final verification.
 
 ## Current Priorities
-1. Expand features: Campaigns, UTM, Custom Domains.
-2. Expand features: Campaigns, UTM, Custom Domains.
+1. Phase 14 Final Verification (14F).
+2. Phase 15 - Custom Domains.
 
 ## Blockers
 * None.

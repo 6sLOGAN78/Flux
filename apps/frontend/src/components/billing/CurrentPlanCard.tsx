@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 
 export interface SubscriptionPlan {
-  tier: 'free' | 'pro' | 'enterprise';
+  tier: 'free' | 'pro' | 'business' | 'enterprise';
   name: string;
   priceMonthly: number;
   status: 'active' | 'past_due' | 'canceled';
@@ -56,21 +56,25 @@ export function CurrentPlanCard({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenStripePortal}
-            rightIcon={<ExternalLink className="h-3.5 w-3.5" />}
-          >
-            Manage in Stripe Portal
-          </Button>
+          {plan.stripePortalUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenStripePortal}
+              rightIcon={<ExternalLink className="h-3.5 w-3.5" />}
+              disabled={isLoading}
+            >
+              Manage in Stripe Portal
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"
             onClick={onUpgrade}
+            disabled={isLoading}
             leftIcon={<Sparkles className="h-3.5 w-3.5" />}
           >
-            Upgrade Plan
+            Manage Billing
           </Button>
         </div>
       </div>

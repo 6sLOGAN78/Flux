@@ -1,5 +1,38 @@
 # Changelog
 
+
+## 2026-09-02 (Part 5)
+**Type:** REFACTOR
+**Task:** Backend Configuration Standardization
+**Change:** Rebuilt `config.go` with `koanf` and `validator`, introducing `FLUX_` nested variable hierarchies, fail-closed production checks, and updated `.env.example`.
+**Reason:** To mature the infrastructure configuration layer removing manual string parsing and hardcoded security bypasses.
+
+## 2026-09-02 (Part 4)
+**Type:** FEATURE
+**Task:** 14A-04 (Billing Frontend & Customer Portal)
+**Change:** Connected `BillingPage.tsx` to `GET /api/v1/billing/subscription` via React Query and added `POST /api/v1/billing/portal` mapping users into their active Stripe session securely via tenant identity.
+**Reason:** Allow workspaces to view usage and actively manage their payment instruments on Stripe without relying on static mock UI.
+
+
+## 2026-09-02 (Part 3)
+**Type:** FEATURE
+**Task:** 14A-03 (Feature Tier Enforcement)
+**Change:** Enforced maximum link quotas and analytics retention directly via `LinkRepository` and `AnalyticsHandler`, respectively, pulling entitlements securely from `subscriptions`.
+**Reason:** To ensure feature boundaries match billing status without creating frontend-bypassable middleware vulnerabilities.
+
+## 2026-09-02 (Part 2)
+**Type:** FEATURE
+**Task:** 14A-02 (Stripe Webhook Listener)
+**Change:** Added Stripe Go SDK and implemented `POST /api/v1/webhooks/stripe` inside `handler/stripe_webhook.go` handling `customer.subscription.*` events with strict db-level idempotency via `FOR UPDATE SKIP LOCKED`.
+**Reason:** Keeps the system's PostgreSQL subscriptions state completely in sync with the real billing state in Stripe.
+
+## 2026-09-02
+**Type:** FEATURE
+**Task:** 14A-01 (Billing Database Foundation)
+**Change:** Implemented PostgreSQL schema tracking Stripe customers (`workspaces.stripe_customer_id`) and subscriptions (`subscriptions` table), wired with an isolated cross-tenant `BillingRepository`.
+**Reason:** Lays down the underlying relational mapping required to power self-serve subscription plans.
+
+
 ## 2026-09-01 (Part 2)
 **Type:** FEATURE
 **Task:** 13B (URL Decoration & Tracking)
@@ -126,3 +159,24 @@
 - **Implemented** array join algorithms natively mapping `click_ids` safely per tenant without performance regression.
 - **Added** `GET /api/v1/analytics/attribution` endpoint to securely execute analytical computations dynamically leveraging `calculator.go`.
 - **Integrated** OpenAPI schemas bounding the multi-touch models endpoint logically to Zod payload boundaries.
+
+### Phase 13E: Attribution Frontend UI
+- **Added** `AttributionPage.tsx` supporting date-bound rendering of multi-touch algorithms.
+- **Implemented** `useAttributionQuery.ts` dynamically bound to Clerk tenant scopes validating cross-tenant cache eviction.
+- **Updated** OpenAPI TypeScript models safely exporting properties natively into the frontend DOM avoiding manual casts.
+
+### Phase 13F: Final Phase 13 Verification
+- **Verified** End-To-End Cross-Tenant CID logic isolates conversions properly via ClickHouse joins.
+- **Verified** duplicate conversions are securely deduplicated mathematically bounding the engine.
+- **Verified** UUID generated natively inside `flux_cid` preserves anchor fragments without dropping UTM.
+- **Verified** Frontend caching invalidates securely via `orgId` preventing data leakage across organizational scopes.
+
+### Phase 14A-01: Billing Database Foundation
+- **Added** `stripe_customer_id` dynamically scaling workspaces directly against isolated customers.
+- **Created** `subscriptions` PostgreSQL table strictly indexing lifecycle metadata and tiers.
+- **Engineered** `BillingRepository` implementing mathematically safe upsert patterns structurally rejecting malicious cross-tenant Stripe updates via strict `WHERE` filtering against `EXCLUDED.workspace_id`.
+
+### Phase 14A-02: Stripe Webhook Listener
+- **Added** Stripe official webhook verification and routing natively parsing incoming payloads safely.
+- **Implemented** PostgreSQL-backed Idempotency constraints against `stripe_events` locking parallel retries natively mapping to database schemas.
+- **Implemented** strict tenant isolation checking verifying `sub.Customer.ID` against `workspace.stripe_customer_id` via Database limits rejecting JSON payload spoofing completely.

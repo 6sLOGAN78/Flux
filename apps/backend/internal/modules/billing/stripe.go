@@ -9,25 +9,28 @@ import (
 	"github.com/google/uuid"
 )
 
-// Subscription represents an organization's SaaS subscription state.
+// Subscription represents a workspace's SaaS subscription state.
 type Subscription struct {
 	ID                   uuid.UUID `json:"id,omitempty" db:"id"`
-	OrganizationID       uuid.UUID `json:"organization_id" db:"organization_id"`
+	WorkspaceID          uuid.UUID `json:"workspace_id" db:"workspace_id"`
 	StripeCustomerID     string    `json:"stripe_customer_id" db:"stripe_customer_id"`
 	StripeSubscriptionID string    `json:"stripe_subscription_id,omitempty" db:"stripe_subscription_id"`
 	PlanTier             string    `json:"plan_tier" db:"plan_tier"` // "free", "pro", "business"
 	Status               string    `json:"status" db:"status"`       // "active", "past_due", "canceled", "trialing"
 	CurrentPeriodStart   time.Time `json:"current_period_start,omitempty" db:"current_period_start"`
 	CurrentPeriodEnd     time.Time `json:"current_period_end,omitempty" db:"current_period_end"`
-	CancelAtPeriodEnd    bool      `json:"cancel_at_period_end" db:"cancel_at_period_end"`
-	CreatedAt            time.Time `json:"created_at,omitempty" db:"created_at"`
+	CancelAtPeriodEnd    bool       `json:"cancel_at_period_end" db:"cancel_at_period_end"`
+	CanceledAt           *time.Time `json:"canceled_at,omitempty" db:"canceled_at"`
+	CreatedAt            time.Time  `json:"created_at,omitempty" db:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at,omitempty" db:"updated_at"`
 }
 
 // PlanTierLimits defines resource usage quotas for a subscription plan tier.
 type PlanTierLimits struct {
-	MaxLinks      int64 `json:"max_links"`
-	MaxClicks     int64 `json:"max_clicks"`
-	MaxWorkspaces int   `json:"max_workspaces"`
+	MaxLinks               int64 `json:"max_links"`
+	MaxClicks              int64 `json:"max_clicks"`
+	MaxWorkspaces          int   `json:"max_workspaces"`
+	AnalyticsRetentionDays int   `json:"analytics_retention_days"`
 }
 
 // StripeWebhookEvent represents a parsed Stripe webhook payload event.
@@ -42,11 +45,11 @@ type StripeWebhookEvent struct {
 func GetTierLimits(planTier string) PlanTierLimits {
 	switch strings.ToLower(strings.TrimSpace(planTier)) {
 	case "pro":
-		return PlanTierLimits{MaxLinks: 50000, MaxClicks: 500000, MaxWorkspaces: 5}
+		return PlanTierLimits{MaxLinks: 50000, MaxClicks: 500000, MaxWorkspaces: 5, AnalyticsRetentionDays: 30}
 	case "business":
-		return PlanTierLimits{MaxLinks: 500000, MaxClicks: 5000000, MaxWorkspaces: 100}
+		return PlanTierLimits{MaxLinks: 500000, MaxClicks: 5000000, MaxWorkspaces: 100, AnalyticsRetentionDays: 365}
 	default: // "free"
-		return PlanTierLimits{MaxLinks: 1000, MaxClicks: 10000, MaxWorkspaces: 1}
+		return PlanTierLimits{MaxLinks: 1000, MaxClicks: 10000, MaxWorkspaces: 1, AnalyticsRetentionDays: 7}
 	}
 }
 

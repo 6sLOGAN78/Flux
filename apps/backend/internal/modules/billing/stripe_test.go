@@ -44,9 +44,9 @@ func TestCheckUsageLimit(t *testing.T) {
 }
 
 func TestProcessStripeWebhook(t *testing.T) {
-	orgID := uuid.New()
+	wsID := uuid.New()
 	sub := billing.Subscription{
-		OrganizationID:     orgID,
+		WorkspaceID:        wsID,
 		StripeCustomerID:   "cus_test123",
 		PlanTier:           "free",
 		Status:             "active",

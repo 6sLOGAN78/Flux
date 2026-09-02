@@ -69,7 +69,7 @@ func TestAnalyticsHandler_GetAttribution(t *testing.T) {
 	mockProvider := &mockAttributionProvider{
 		conversions: conversions,
 	}
-	h := handler.NewAnalyticsHandler(mockProvider)
+	h := handler.NewAnalyticsHandler(mockProvider, nil)
 
 	e := echo.New()
 

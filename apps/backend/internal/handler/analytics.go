@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"flux/apps/backend/internal/modules/billing"
 	"flux/apps/backend/internal/repository"
 
 	"github.com/google/uuid"
@@ -12,11 +13,12 @@ import (
 )
 
 type AnalyticsHandler struct {
-	provider repository.AnalyticsProvider
+	provider    repository.AnalyticsProvider
+	billingRepo *repository.BillingRepository
 }
 
-func NewAnalyticsHandler(provider repository.AnalyticsProvider) *AnalyticsHandler {
-	return &AnalyticsHandler{provider: provider}
+func NewAnalyticsHandler(provider repository.AnalyticsProvider, billingRepo *repository.BillingRepository) *AnalyticsHandler {
+	return &AnalyticsHandler{provider: provider, billingRepo: billingRepo}
 }
 
 func (h *AnalyticsHandler) getTenantID(c echo.Context) (string, error) {
@@ -72,6 +74,8 @@ func (h *AnalyticsHandler) GetSummary(c echo.Context) error {
 		return err
 	}
 
+	h.enforceRetention(c, tenantID, &from)
+
 	if h.provider == nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "analytics provider not initialized")
 	}
@@ -94,6 +98,8 @@ func (h *AnalyticsHandler) GetTimeseries(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+
+	h.enforceRetention(c, tenantID, &from)
 
 	interval := c.QueryParam("interval")
 	if interval != "hour" && interval != "day" {
@@ -123,6 +129,8 @@ func (h *AnalyticsHandler) GetTopLinks(c echo.Context) error {
 		return err
 	}
 
+	h.enforceRetention(c, tenantID, &from)
+
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if limit <= 0 || limit > 100 {
 		limit = 10
@@ -150,6 +158,8 @@ func (h *AnalyticsHandler) GetReferrers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+
+	h.enforceRetention(c, tenantID, &from)
 
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if limit <= 0 || limit > 100 {
@@ -184,6 +194,8 @@ func (h *AnalyticsHandler) GetCampaignPerformance(c echo.Context) error {
 		return err
 	}
 
+	h.enforceRetention(c, tenantID, &from)
+
 	limit := 50
 	if limitStr := c.QueryParam("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil {
@@ -209,6 +221,8 @@ func (h *AnalyticsHandler) GetUTMPerformance(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+
+	h.enforceRetention(c, tenantID, &from)
 
 	limit := 50
 	if limitStr := c.QueryParam("limit"); limitStr != "" {
@@ -254,6 +268,8 @@ func (h *AnalyticsHandler) GetDomainPerformance(c echo.Context) error {
 		return err
 	}
 
+	h.enforceRetention(c, tenantID, &from)
+
 	limitStr := c.QueryParam("limit")
 	limit := 10
 	if limitStr != "" {
@@ -269,4 +285,34 @@ func (h *AnalyticsHandler) GetDomainPerformance(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+// enforceRetention modifies the 'from' time boundary to ensure the requested data 
+// does not exceed the allowed retention limit for the workspace's billing plan.
+func (h *AnalyticsHandler) enforceRetention(c echo.Context, tenantID string, from *time.Time) {
+	if h.billingRepo == nil {
+		return
+	}
+	
+	uid, err := uuid.Parse(tenantID)
+	if err != nil {
+		return
+	}
+	
+	ctx := c.Request().Context()
+	sub, err := h.billingRepo.GetSubscriptionByWorkspace(ctx, uid)
+	
+	planTier := "free"
+	if err == nil {
+		if sub.Status == "active" || sub.Status == "trialing" {
+			planTier = sub.PlanTier
+		}
+	}
+	
+	limits := billing.GetTierLimits(planTier)
+	
+	minDate := time.Now().UTC().AddDate(0, 0, -limits.AnalyticsRetentionDays)
+	if from.Before(minDate) {
+		*from = minDate
+	}
 }

@@ -125,3 +125,29 @@
 
 ### Phase 13D: Attribution API / Engine
 - Verify multi-touch linear conversion calculates revenue precisely evenly on click pipelines across `GET /api/v1/analytics/attribution`.
+
+### Phase 13E: Attribution Frontend UI
+- Verify cached identities immediately invalidate safely out of React Query when toggling between active Clerk workspaces natively dropping cross-tenant metrics from the DOM.
+
+### Phase 13F: Final Verification
+- Run `go test -race ./...` ensuring concurrent map writes or panic states do not fire under `Analytics` / `Redirect` processing natively.
+- Run `npx tsc -b` inside `apps/frontend` ensuring no explicit any bounds crash the build pipeline.
+
+### Phase 14A-01: Billing Database Foundation
+- Verify `TestBillingRepository_Integration` successfully binds `stripe_customer_id` dynamically upon UPSERT and actively blocks matching `stripe_subscription_id` updates spanning foreign workspace domains.
+
+### Phase 14A-02: Stripe Webhook Listener
+- Verify missing or malformed Stripe signatures are rejected successfully returning HTTP 400.
+- Verify `StripeWebhookHandler` successfully isolates cross-tenant overlaps yielding HTTP 409 when valid Stripe updates attempt to alter mismatched workspaces.
+- Verify PostgreSQL-backed `stripe_events` ensures event duplicate streams are caught returning HTTP 200 without duplicate execution.
+
+## V-007: Phase 14 Billing Configuration & E2E Foundation
+* **Date:** 2026-09-02
+* **Tested By:** Agent
+* **Status:** Passed
+
+### Verified:
+- **Billing API & Portal**: `GET /api/v1/billing/subscription` successfully masks missing subscriptions as Free tier. `POST /api/v1/billing/portal` correctly creates a Stripe session binding strictly to the tenant's `stripe_customer_id`.
+- **Database Limits**: Quotas structurally reject operations with HTTP 402 if `max_links` is exceeded via dynamic atomic query mapping.
+- **Webhook**: Stripe payloads are correctly validated using SDK signatures. Ownership mismatch checks proactively block attempts to map a Subscription payload to an untrusted DB tenant.
+- **Configuration (FLUX_)**: Strongly typed environment configurations fail-close production environments to prevent missing webhook secrets. Entire integration test suite passes post-refactoring.

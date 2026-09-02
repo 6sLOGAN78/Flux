@@ -14,6 +14,7 @@ var (
 	ErrExpired           = errors.New("resource has expired")
 	ErrConflict          = errors.New("resource conflict")
 	ErrRateLimitExceeded = errors.New("rate limit quota exceeded")
+	ErrQuotaExceeded     = errors.New("resource quota exceeded")
 	ErrInternal          = errors.New("internal server error")
 )
 

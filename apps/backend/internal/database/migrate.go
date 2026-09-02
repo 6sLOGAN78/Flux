@@ -18,10 +18,10 @@ var migrations embed.FS
 
 // Migrate executes pending database migrations embedded in the binary via Tern using Config.
 func Migrate(ctx context.Context, logger *zerolog.Logger, cfg *config.Config) error {
-	if cfg == nil || cfg.DatabaseURL == "" {
+	if cfg == nil || cfg.GetDatabaseURL() == "" {
 		return fmt.Errorf("invalid config or empty DatabaseURL")
 	}
-	return MigrateDSN(ctx, logger, cfg.DatabaseURL)
+	return MigrateDSN(ctx, logger, cfg.GetDatabaseURL())
 }
 
 // MigrateDSN executes pending database migrations using a DSN string.

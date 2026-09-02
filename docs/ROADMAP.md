@@ -1,12 +1,12 @@
 # Roadmap & Phases
 
-**Current Phase:** Phase 1 — Core Architecture Wiring
+**Current Phase:** Phase 14 — Billing
 
 ## Phase 0 — Repository Stabilization
 **Status**: COMPLETE
 **Objective**: Audit the repository, document the actual state versus the theoretical state, and set up tracking.
 
-## Phase 1 — Core Architecture Wiring (CURRENT)
+## Phase 1 — Core Architecture Wiring
 - TASK-005: Implement Authentication (FEAT-015, BUG-005)
 **Status**: IN_PROGRESS
 **Objective**: Connect the existing but decoupled backend components (Redis, ClickHouse, Base62).

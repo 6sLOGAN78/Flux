@@ -28,6 +28,7 @@ import {
   ZWorkspace,
   ZWorkspaceMember,
   ZSubscription,
+  ZCustomerPortalResponse,
   ZAPIKey,
   ZOAuthTokenResponse,
   ZWebhook,
@@ -342,6 +343,19 @@ export const apiContract = c.router({
       200: ZSubscription,
     },
     summary: "Get active SaaS plan subscription status",
+    metadata: {
+      openApiTags: ["Billing"],
+      openApiSecurity: [{ bearerAuth: [] }],
+    },
+  },
+  createCustomerPortal: {
+    method: "POST",
+    path: "/api/v1/billing/portal",
+    body: z.object({}),
+    responses: {
+      200: ZCustomerPortalResponse,
+    },
+    summary: "Create a Stripe Customer Portal session",
     metadata: {
       openApiTags: ["Billing"],
       openApiSecurity: [{ bearerAuth: [] }],

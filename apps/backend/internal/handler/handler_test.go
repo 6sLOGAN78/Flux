@@ -53,7 +53,7 @@ func TestAnalyticsHandler_MissingProvider(t *testing.T) {
 	c := e.NewContext(req, rec)
 	c.Set("tenant_id", uuid.MustParse("00000000-0000-0000-0000-000000000000"))
 
-	analyticsH := handler.NewAnalyticsHandler(nil)
+	analyticsH := handler.NewAnalyticsHandler(nil, nil)
 	err := analyticsH.GetSummary(c)
 	if err == nil {
 		t.Fatal("expected HTTP error for uninitialized analytics provider")
