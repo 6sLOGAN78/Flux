@@ -95,6 +95,15 @@ func (w *WebhookRetryWorker) schedulerLoop() {
 		}
 
 		// Pull batch equal to concurrency to avoid pulling more than we can process.
+
+		// Recover stuck deliveries
+		recovered, err := w.repo.RecoverStuckDeliveries(w.ctx, 5*time.Minute)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to recover stuck deliveries")
+		} else if recovered > 0 {
+			log.Warn().Int64("count", recovered).Msg("recovered stuck webhook deliveries")
+		}
+
 		deliveries, err := w.repo.ClaimDueRetries(w.ctx, w.config.RetryConcurrency)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to claim due webhook retries")

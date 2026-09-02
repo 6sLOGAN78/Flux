@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Security
+- **Phase 15F-01:** Concluded Phase 15 with a full E2E, reliability, and security audit. Patched a concurrency shutdown panic in `WebhookWorker` and implemented `RecoverStuckDeliveries` inside `WebhookRetryWorker` to ensure zero orchestrated deliveries get locked into eternal processing states. Phase 15 is 100% complete and fully verified.
 ### Added
 - **Phase 15A-04:** Fully completed the outbound webhooks system. Built `WebhooksPage.tsx` along with API routes for registering endpoints, toggling status, and viewing the detailed delivery log with retry state/payload inspection. Integrated heavily typed React Query implementations. Phase 15 is officially 100% complete.
 ### Added

@@ -1,0 +1,25 @@
+--- apps/backend/internal/repository/webhook_repository.go
++++ apps/backend/internal/repository/webhook_repository.go
+@@ -213,6 +213,23 @@
+ 	return pgx.CollectRows(rows, pgx.RowToStructByName[WebhookDelivery])
+ }
+ 
++// RecoverStuckDeliveries finds deliveries stuck in 'processing' state for longer than timeout 
++// and resets them to 'retrying' so they can be picked up again.
++func (r *WebhookRepository) RecoverStuckDeliveries(ctx context.Context, timeout time.Duration) (int64, error) {
++	stmt := `
++		UPDATE webhook_deliveries
++		SET status = 'retrying', updated_at = NOW()
++		WHERE status = 'processing' AND updated_at < NOW() - $1::interval
++	`
++	intervalStr := fmt.Sprintf("%d seconds", int(timeout.Seconds()))
++	tag, err := r.pool.Exec(ctx, stmt, intervalStr)
++	if err != nil {
++		return 0, sqlerr.HandleError(err)
++	}
++	return tag.RowsAffected(), nil
++}
++
+ // UpdateDeliveryState transitions the state of a delivery (e.g., processing -> success/dead_letter/retrying).
+ func (r *WebhookRepository) UpdateDeliveryState(ctx context.Context, id uuid.UUID, status string, responseStatus *int, attemptCount int, lastError *string, nextAttemptAt *time.Time) error {
+ 	stmt := `

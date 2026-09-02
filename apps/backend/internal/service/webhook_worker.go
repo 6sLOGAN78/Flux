@@ -38,10 +38,10 @@ type WebhookWorker struct {
 	consumerName  string
 	jobChan       chan WebhookJob
 	wg            sync.WaitGroup
+	producerWg    sync.WaitGroup
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
-
 func NewWebhookWorker(redisClient *redis.Client, repo *repository.WebhookRepository, streamName string, cfg *config.WebhookConfig) *WebhookWorker {
 	if streamName == "" {
 		streamName = "analytics:events"
@@ -81,7 +81,11 @@ func (w *WebhookWorker) Start() {
 		go w.deliveryLoop()
 	}
 
-	w.wg.Add(2)
+	w.producerWg.Add(2)
+	go func() {
+		w.producerWg.Wait()
+		close(w.jobChan)
+	}()
 	go w.readLoop()
 	go w.recoveryLoop()
 }
@@ -104,8 +108,8 @@ func (w *WebhookWorker) Stop(timeout time.Duration) {
 }
 
 func (w *WebhookWorker) readLoop() {
-	defer w.wg.Done()
-	defer close(w.jobChan)
+	defer w.producerWg.Done()
+	
 
 	for {
 		select {
@@ -139,7 +143,8 @@ func (w *WebhookWorker) readLoop() {
 }
 
 func (w *WebhookWorker) recoveryLoop() {
-	defer w.wg.Done()
+	defer w.producerWg.Done()
+	
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -252,6 +257,7 @@ func (w *WebhookWorker) dispatchToWebhooks(event analytics.AnalyticsEvent) {
 
 func (w *WebhookWorker) deliveryLoop() {
 	defer w.wg.Done()
+	
 
 	for job := range w.jobChan {
 		w.deliver(job)

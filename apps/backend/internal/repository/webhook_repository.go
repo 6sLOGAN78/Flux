@@ -105,7 +105,7 @@ func (r *WebhookRepository) UpdateWebhook(ctx context.Context, workspaceID, id u
 		WHERE id = @id AND workspace_id = @workspace_id
 		RETURNING id, workspace_id, endpoint_url, secret, active, events, created_at, updated_at
 	`
-	
+
 	args := pgx.NamedArgs{
 		"id":           id,
 		"workspace_id": workspaceID,
@@ -214,6 +214,23 @@ func (r *WebhookRepository) ClaimDueRetries(ctx context.Context, limit int) ([]W
 }
 
 // UpdateDeliveryState updates an existing delivery (e.g. after a retry attempt).
+
+// RecoverStuckDeliveries finds deliveries stuck in 'processing' state for longer than timeout
+// and resets them to 'retrying' so they can be picked up again.
+func (r *WebhookRepository) RecoverStuckDeliveries(ctx context.Context, timeout time.Duration) (int64, error) {
+	stmt := `
+		UPDATE webhook_deliveries
+		SET status = 'retrying', updated_at = NOW()
+		WHERE status = 'processing' AND updated_at < NOW() - $1::interval
+	`
+	intervalStr := fmt.Sprintf("%d seconds", int(timeout.Seconds()))
+	tag, err := r.pool.Exec(ctx, stmt, intervalStr)
+	if err != nil {
+		return 0, sqlerr.HandleError(err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (r *WebhookRepository) UpdateDeliveryState(ctx context.Context, id uuid.UUID, status string, responseStatus *int, attemptCount int, lastError *string, nextAttemptAt *time.Time) error {
 	stmt := `
 		UPDATE webhook_deliveries
