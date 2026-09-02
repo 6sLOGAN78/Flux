@@ -716,11 +716,11 @@ When transitioning subtask states:
 ## PHASE 15 — Webhooks / Integrations
 **Depends On:** Phase 05, 08  
 **Blocks:** None
-**Status:** `[~] IN PROGRESS (25%)`
+**Status:** `[~] IN PROGRESS (50%)`
 
 ### 15A — Outbound Event Delivery
 * `[x]` **15A-01:** PostgreSQL `webhooks` table and secret token generation.
-* `[ ]` **15A-02:** Async webhook delivery worker with HMAC-SHA256 signing.
+* `[x]` **15A-02:** Async webhook delivery worker with HMAC-SHA256 signing.
 * `[ ]` **15A-03:** Retry queue with exponential backoff and dead-letter queue.
 * `[ ]` **15A-04:** Frontend `WebhooksPage.tsx` and delivery logs.
 

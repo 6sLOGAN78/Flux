@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 ### Added
+- **Phase 15A-02:** Developed `WebhookWorker` to consume `analytics:events` via Redis consumer groups and dispatch outgoing HTTP calls asynchronously. Introduced `X-Flux-Signature` HMAC-SHA256 payload signing. Built custom HTTP dialer to block SSRF vulnerabilities. Established `webhook_deliveries` PostgreSQL table to anchor future retry attempts.
+### Added
 - **Phase 15A-01:** Established the PostgreSQL data model for Outbound Webhooks (`webhooks` table) heavily enforcing workspace isolation. Created symmetric cryptographic token generation for future payload signing (`utils.GenerateWebhookSecret`). Introduced `WebhookRepository` enforcing strict tenant partitioning to prevent data leakage.
 
 

@@ -1,0 +1,13 @@
+--- apps/backend/internal/service/webhook_worker.go
++++ apps/backend/internal/service/webhook_worker.go
+@@ -40,6 +40,11 @@
+ 	}
+ }
+ 
++// SetHTTPClient allows overriding the default SSRF-safe client for tests.
++func (w *WebhookWorker) SetHTTPClient(client *http.Client) {
++	w.httpClient = client
++}
++
+ func (w *WebhookWorker) Start() {
+ 	err := w.redisClient.XGroupCreateMkStream(context.Background(), w.streamName, w.groupName, "0").Err()

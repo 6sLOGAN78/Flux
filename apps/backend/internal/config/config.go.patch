@@ -1,0 +1,35 @@
+--- apps/backend/internal/config/config.go
++++ apps/backend/internal/config/config.go
+@@ -47,6 +47,11 @@
+ 	EndpointURL     string `koanf:"endpoint_url"`
+ }
+ 
++type WebhookConfig struct {
++	WorkerConcurrency int    `koanf:"worker_concurrency"`
++	DeliveryTimeout   string `koanf:"delivery_timeout"`
++}
++
+ type PrimaryConfig struct {
+ 	Env string `koanf:"env" validate:"required"`
+ }
+@@ -62,6 +67,7 @@
+ 	Integration   IntegrationConfig   `koanf:"integration"`
+ 	Observability ObservabilityConfig `koanf:"observability"`
+ 	AWS           AWSConfig           `koanf:"aws"`
++	Webhook       WebhookConfig       `koanf:"webhook"`
+ }
+ 
+ // LoadConfig initializes application configuration from environment variables.
+@@ -128,6 +134,12 @@
+ 	if cfg.Stripe.SecretKey == "" {
+ 		cfg.Stripe.SecretKey = "sk_test_secret"
+ 	}
++	if cfg.Webhook.WorkerConcurrency <= 0 {
++		cfg.Webhook.WorkerConcurrency = 10
++	}
++	if cfg.Webhook.DeliveryTimeout == "" {
++		cfg.Webhook.DeliveryTimeout = "10s"
++	}
+ 
+ 	validate := validator.New()
+ 	if err := validate.Struct(cfg); err != nil {

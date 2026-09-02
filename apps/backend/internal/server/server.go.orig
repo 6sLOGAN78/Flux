@@ -33,7 +33,6 @@ type Server struct {
 	ClickHouseConsumer *service.RedisAnalyticsConsumer
 	ConversionConsumer *service.RedisConversionConsumer
 	DomainWorker       *service.DomainVerificationWorker
-	WebhookWorker      *service.WebhookWorker
 }
 
 // NewServer initializes and wires all dependencies for the server.
@@ -68,7 +67,6 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	var convConsumer *service.RedisConversionConsumer
 	var analyticsProvider repository.AnalyticsProvider
 	var redirectCache repository.RedirectCache
-	var webhookWorker *service.WebhookWorker
 
 	if cfg.GetRedisURL() != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: cfg.GetRedisURL()})
@@ -97,14 +95,6 @@ func NewServer(cfg *config.Config) (*Server, error) {
 			} else {
 				log.Warn().Err(err).Msg("failed to connect to ClickHouse, consumer will not start")
 			}
-			
-			// Webhook Delivery Worker
-			deliveryTimeout, _ := time.ParseDuration(cfg.Webhook.DeliveryTimeout)
-			if deliveryTimeout == 0 {
-				deliveryTimeout = 10 * time.Second
-			}
-			webhookWorker = service.NewWebhookWorker(redisClient, repository.NewWebhookRepository(dbPool), cfg.Redis.AnalyticsStream, cfg.Webhook.WorkerConcurrency, deliveryTimeout)
-			webhookWorker.Start()
 		}
 	} else {
 		pubInterface = service.NewLogAnalyticsPublisher()
@@ -169,7 +159,6 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		ClickHouseConsumer: chConsumer,
 		ConversionConsumer: convConsumer,
 		DomainWorker:       domainWorker,
-		WebhookWorker:      webhookWorker,
 	}, nil
 }
 
@@ -192,11 +181,6 @@ func (s *Server) Stop(ctx context.Context) error {
 		workerCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		s.DomainWorker.Stop(workerCtx)
 		cancel()
-	}
-	
-	if s.WebhookWorker != nil {
-		log.Info().Msg("stopping webhook worker gracefully...")
-		s.WebhookWorker.Stop(5 * time.Second)
 	}
 
 	if s.AnalyticsPublisher != nil {
