@@ -24,3 +24,13 @@ func IsValidURL(rawURL string) bool {
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
 }
+
+// GenerateWebhookSecret securely generates a random signing secret for webhooks.
+func GenerateWebhookSecret() (string, error) {
+	// Generate 32 bytes of secure random entropy (64 hex characters)
+	hexStr, err := GenerateRandomHex(32)
+	if err != nil {
+		return "", err
+	}
+	return "whsec_" + hexStr, nil
+}

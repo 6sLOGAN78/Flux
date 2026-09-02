@@ -20,7 +20,7 @@
 * **Database**: PostgreSQL (pgx/v5) for relational state. ClickHouse for analytics. Redis for async stream buffering and redirect caching.
 
 ## Current Phase
-* **Phase**: PHASE 14 - Billing (100% Complete - Ready for Verification)
+* **Phase**: PHASE 14 - Billing (25% Complete - Outbound Webhook Database)
 * **Status**: IN PROGRESS
 * **Why**: Task 14A-04 is completed. The Billing UI is connected to the Stripe Customer Portal and backend APIs. Phase 14 requires final verification.
 

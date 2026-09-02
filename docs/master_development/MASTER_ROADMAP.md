@@ -40,7 +40,7 @@
 # CURRENT DEVELOPMENT POSITION
 
 ```text
-Current Phase:               PHASE 15 (NOT STARTED)
+Current Phase:               PHASE 15 (IN PROGRESS)
 Current Task:                Phase 15 (Begin Custom Domains or Integrations)
 Overall Status:              ACTIVE
 Completed Phases:            Phase 00, Phase 01, Phase 02, Phase 03, Phase 04, Phase 05, Phase 06, Phase 07, Phase 08, Phase 09, Phase 11, Phase 12, Phase 13, Phase 14
@@ -715,8 +715,11 @@ When transitioning subtask states:
 
 ## PHASE 15 — Webhooks / Integrations
 **Depends On:** Phase 05, 08  
-tbound Event Delivery
-* `[ ]` **15A-01:** PostgreSQL `webhooks` table and secret token generation.
+**Blocks:** None
+**Status:** `[~] IN PROGRESS (25%)`
+
+### 15A — Outbound Event Delivery
+* `[x]` **15A-01:** PostgreSQL `webhooks` table and secret token generation.
 * `[ ]` **15A-02:** Async webhook delivery worker with HMAC-SHA256 signing.
 * `[ ]` **15A-03:** Retry queue with exponential backoff and dead-letter queue.
 * `[ ]` **15A-04:** Frontend `WebhooksPage.tsx` and delivery logs.

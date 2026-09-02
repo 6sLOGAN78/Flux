@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+### Added
+- **Phase 15A-01:** Established the PostgreSQL data model for Outbound Webhooks (`webhooks` table) heavily enforcing workspace isolation. Created symmetric cryptographic token generation for future payload signing (`utils.GenerateWebhookSecret`). Introduced `WebhookRepository` enforcing strict tenant partitioning to prevent data leakage.
+
 
 ## 2026-09-02 (Part 5)
 **Type:** REFACTOR
