@@ -702,7 +702,10 @@ When transitioning subtask states:
 ### 14A — Stripe Integration
 * `[x]` **14A-01:** PostgreSQL `subscriptions` schema and customer mapping.
 * `[x]` **14A-02:** Stripe webhook listener for subscription lifecycle.
-* `[x]` **14A-03:** Feature tier enforcement middleware (link limits, analytics retention).
+**Blocks:** None  
+**Status:** `[ ] NOT STARTED (0%) - DEFERRED`
+
+### 15A — Ou* `[x]` **14A-03:** Feature tier enforcement middleware (link limits, analytics retention).
 * `[x]` **14A-04:** Frontend `BillingPage.tsx` connection to Stripe Customer Portal.
 
 ### Phase 14 Checkpoint
@@ -712,10 +715,7 @@ When transitioning subtask states:
 
 ## PHASE 15 — Webhooks / Integrations
 **Depends On:** Phase 05, 08  
-**Blocks:** None  
-**Status:** `[ ] NOT STARTED (0%) - DEFERRED`
-
-### 15A — Outbound Event Delivery
+tbound Event Delivery
 * `[ ]` **15A-01:** PostgreSQL `webhooks` table and secret token generation.
 * `[ ]` **15A-02:** Async webhook delivery worker with HMAC-SHA256 signing.
 * `[ ]` **15A-03:** Retry queue with exponential backoff and dead-letter queue.

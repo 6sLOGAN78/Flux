@@ -39,11 +39,11 @@ The root configuration structure is heavily modularized:
 
 ## Development vs Production Behavior
 
-- **Development**: The application automatically loads `.env` located in the root via `godotenv`. Missing configurations or unsafe defaults (like `whsec_test_secret`) are acceptable for testing purposes.
+- **Development**: The application automatically loads `.env` located in `apps/backend` via `godotenv`. Missing configurations or unsafe defaults (like `whsec_test_secret`) are acceptable for testing purposes.
 - **Production**:
   - The process environment defines the variables (no physical `.env` required).
   - Production logic employs a strict **Fail-Closed Strategy**. If `FLUX_PRIMARY.ENV=production` is detected, security-sensitive configurations (like `FLUX_STRIPE.WEBHOOK_SECRET`) MUST be correctly populated. A generic test key will forcibly crash the application during startup to prevent exposure or unauthenticated webhook ingestion.
 
 ## Example Configuration
 
-Check `.env.example` in the root repository for the full schema of available keys.
+Check `apps/backend/.env.example` for the full schema of available keys.
