@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"errors"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 
+	"flux/apps/backend/internal/config"
 	"flux/apps/backend/internal/model/analytics"
 	"flux/apps/backend/internal/model/webhook"
 	"flux/apps/backend/internal/repository"
@@ -32,33 +32,34 @@ type WebhookWorker struct {
 	redisClient   *redis.Client
 	repo          *repository.WebhookRepository
 	httpClient    *http.Client
+	cfg           *config.WebhookConfig
 	streamName    string
 	groupName     string
 	consumerName  string
 	jobChan       chan WebhookJob
-	concurrency   int
 	wg            sync.WaitGroup
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
 
-func NewWebhookWorker(redisClient *redis.Client, repo *repository.WebhookRepository, streamName string, concurrency int, timeout time.Duration) *WebhookWorker {
+func NewWebhookWorker(redisClient *redis.Client, repo *repository.WebhookRepository, streamName string, cfg *config.WebhookConfig) *WebhookWorker {
 	if streamName == "" {
 		streamName = "analytics:events"
 	}
-	if concurrency <= 0 {
-		concurrency = 10
+	timeout, _ := time.ParseDuration(cfg.DeliveryTimeout)
+	if timeout == 0 {
+		timeout = 10 * time.Second
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WebhookWorker{
 		redisClient:  redisClient,
 		repo:         repo,
 		httpClient:   utils.SafeHTTPClient(timeout),
+		cfg:          cfg,
 		streamName:   streamName,
 		groupName:    "analytics-webhooks",
 		consumerName: fmt.Sprintf("webhook-consumer-%s", uuid.New().String()),
-		jobChan:      make(chan WebhookJob, concurrency*2),
-		concurrency:  concurrency,
+		jobChan:      make(chan WebhookJob, cfg.WorkerConcurrency*2),
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -75,7 +76,7 @@ func (w *WebhookWorker) Start() {
 		log.Error().Err(err).Msg("failed to create redis consumer group for webhook delivery")
 	}
 
-	for i := 0; i < w.concurrency; i++ {
+	for i := 0; i < w.cfg.WorkerConcurrency; i++ {
 		w.wg.Add(1)
 		go w.deliveryLoop()
 	}
@@ -260,7 +261,7 @@ func (w *WebhookWorker) deliveryLoop() {
 func (w *WebhookWorker) deliver(job WebhookJob) {
 	req, err := http.NewRequestWithContext(w.ctx, "POST", job.Webhook.EndpointURL, bytes.NewReader(job.Payload))
 	if err != nil {
-		w.recordDelivery(job, "failed", nil, err)
+		w.handleOutcome(job, nil, err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -268,33 +269,55 @@ func (w *WebhookWorker) deliver(job WebhookJob) {
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		// Check if it's an SSRF block
-		status := "network_failure"
-		if errors.Is(err, utils.ErrSSRFBlocked) {
-			status = "security_rejection"
-		}
-		w.recordDelivery(job, status, nil, err)
+		w.handleOutcome(job, nil, err)
 		return
 	}
 	defer resp.Body.Close()
 	// Drain body
 	io.Copy(io.Discard, resp.Body)
 
-	statusStr := "success"
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		statusStr = "http_failure"
-	}
-
-	w.recordDelivery(job, statusStr, &resp.StatusCode, nil)
+	code := resp.StatusCode
+	w.handleOutcome(job, &code, nil)
 }
 
-func (w *WebhookWorker) recordDelivery(job WebhookJob, status string, statusCode *int, deliveryErr error) {
+func (w *WebhookWorker) handleOutcome(job WebhookJob, statusCode *int, err error) {
 	var errStr *string
-	if deliveryErr != nil {
-		msg := deliveryErr.Error()
+	if err != nil {
+		msg := err.Error()
 		errStr = &msg
 	}
 
+	isRetryable := true
+	if err != nil || (statusCode != nil && (*statusCode < 200 || *statusCode >= 300)) {
+		if statusCode != nil {
+			isRetryable = IsRetryableError(*statusCode, err)
+		} else {
+			isRetryable = IsRetryableError(0, err)
+		}
+	} else {
+		// Success
+		w.recordDelivery(job, "success", statusCode, errStr, nil)
+		return
+	}
+
+	// Initial attempt failed.
+	if !isRetryable || w.cfg.MaxRetries <= 1 {
+		w.recordDelivery(job, "dead_letter", statusCode, errStr, nil)
+		return
+	}
+
+	initialDelay, _ := time.ParseDuration(w.cfg.RetryInitialDelay)
+	maxDelay, _ := time.ParseDuration(w.cfg.RetryMaxDelay)
+	if initialDelay == 0 { initialDelay = 5 * time.Second }
+	if maxDelay == 0 { maxDelay = 1 * time.Hour }
+	
+	delay := CalculateRetryDelay(1, initialDelay, maxDelay)
+	nextAttemptAt := time.Now().Add(delay)
+
+	w.recordDelivery(job, "retrying", statusCode, errStr, &nextAttemptAt)
+}
+
+func (w *WebhookWorker) recordDelivery(job WebhookJob, status string, statusCode *int, errStr *string, nextAttemptAt *time.Time) {
 	delivery := &repository.WebhookDelivery{
 		WebhookID:      job.Webhook.ID,
 		EventID:        job.EventID,
@@ -302,6 +325,8 @@ func (w *WebhookWorker) recordDelivery(job WebhookJob, status string, statusCode
 		ResponseStatus: statusCode,
 		AttemptCount:   1, // 15A-03 will handle > 1
 		LastError:      errStr,
+		Payload:        job.Payload,
+		NextAttemptAt:  nextAttemptAt,
 	}
 
 	// Use background context for recording to avoid canceling record on shutdown
@@ -321,4 +346,3 @@ func contains(slice []string, val string) bool {
 	}
 	return false
 }
-// Add errors import if needed

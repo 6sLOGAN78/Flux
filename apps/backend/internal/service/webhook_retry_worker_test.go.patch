@@ -1,0 +1,26 @@
+--- apps/backend/internal/service/webhook_retry_worker_test.go
++++ apps/backend/internal/service/webhook_retry_worker.go
+@@ -148,15 +148,18 @@
+ 	worker.Start()
+ 
+ 	// Give it 3 seconds to poll, pick up the due retry, attempt (gets 503), schedule next attempt, 
+ 	// Wait! We set initial delay to 1s. So after 1s it should poll again and hit the 200!
+-	time.Sleep(3 * time.Second)
+-	worker.Stop(1 * time.Second)
+-
+ 	// Verify database state
+ 	var status string
+ 	var finalAttempts int
+-	err = dbPool.QueryRow(ctx, "SELECT status, attempt_count FROM webhook_deliveries WHERE id = $1", d1.ID).Scan(&status, &finalAttempts)
+-	require.NoError(t, err)
+-
+-	assert.Equal(t, "success", status)
+-	assert.Equal(t, 2, finalAttempts) // Initial + 1 retry = 2
++	assert.Eventually(t, func() bool {
++		err = dbPool.QueryRow(ctx, "SELECT status, attempt_count FROM webhook_deliveries WHERE id = $1", d1.ID).Scan(&status, &finalAttempts)
++		return err == nil && status == "success" && finalAttempts == 2
++	}, 10*time.Second, 500*time.Millisecond)
++	
++	worker.Stop(1 * time.Second)
+ 	
+ 	// Now let's test Dead-Letter

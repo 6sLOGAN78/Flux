@@ -34,6 +34,7 @@ type Server struct {
 	ConversionConsumer *service.RedisConversionConsumer
 	DomainWorker       *service.DomainVerificationWorker
 	WebhookWorker      *service.WebhookWorker
+	WebhookRetryWorker *service.WebhookRetryWorker
 }
 
 // NewServer initializes and wires all dependencies for the server.
@@ -69,6 +70,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	var analyticsProvider repository.AnalyticsProvider
 	var redirectCache repository.RedirectCache
 	var webhookWorker *service.WebhookWorker
+	var webhookRetryWorker *service.WebhookRetryWorker
 
 	if cfg.GetRedisURL() != "" {
 		redisClient := redis.NewClient(&redis.Options{Addr: cfg.GetRedisURL()})
@@ -103,8 +105,11 @@ func NewServer(cfg *config.Config) (*Server, error) {
 			if deliveryTimeout == 0 {
 				deliveryTimeout = 10 * time.Second
 			}
-			webhookWorker = service.NewWebhookWorker(redisClient, repository.NewWebhookRepository(dbPool), cfg.Redis.AnalyticsStream, cfg.Webhook.WorkerConcurrency, deliveryTimeout)
+			webhookRepo := repository.NewWebhookRepository(dbPool)
+			webhookWorker = service.NewWebhookWorker(redisClient, webhookRepo, cfg.Redis.AnalyticsStream, &cfg.Webhook)
 			webhookWorker.Start()
+			webhookRetryWorker = service.NewWebhookRetryWorker(webhookRepo, &cfg.Webhook)
+			webhookRetryWorker.Start()
 		}
 	} else {
 		pubInterface = service.NewLogAnalyticsPublisher()
@@ -170,6 +175,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		ConversionConsumer: convConsumer,
 		DomainWorker:       domainWorker,
 		WebhookWorker:      webhookWorker,
+		WebhookRetryWorker: webhookRetryWorker,
 	}, nil
 }
 
@@ -194,6 +200,11 @@ func (s *Server) Stop(ctx context.Context) error {
 		cancel()
 	}
 	
+	if s.WebhookRetryWorker != nil {
+		log.Info().Msg("stopping webhook retry worker gracefully...")
+		s.WebhookRetryWorker.Stop(5 * time.Second)
+	}
+
 	if s.WebhookWorker != nil {
 		log.Info().Msg("stopping webhook worker gracefully...")
 		s.WebhookWorker.Stop(5 * time.Second)

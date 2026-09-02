@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"flux/apps/backend/internal/database"
+	"flux/apps/backend/internal/config"
 	"flux/apps/backend/internal/model/analytics"
 	"flux/apps/backend/internal/model/webhook"
 	"flux/apps/backend/internal/repository"
@@ -141,7 +142,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	_, err = repo.CreateWebhook(ctx, whB)
 	require.NoError(t, err)
 
-	worker := service.NewWebhookWorker(redisClient, repo, "analytics:events", 5, 2*time.Second)
+	worker := service.NewWebhookWorker(redisClient, repo, "analytics:events", &config.WebhookConfig{WorkerConcurrency: 5, DeliveryTimeout: "2s", MaxRetries: 5})
 	worker.SetHTTPClient(ts.Client()) // bypass SSRF check for test server
 	worker.Start()
 	defer worker.Stop(1 * time.Second)

@@ -73,6 +73,11 @@ type AWSConfig struct {
 type WebhookConfig struct {
 	WorkerConcurrency int    `koanf:"worker_concurrency"`
 	DeliveryTimeout   string `koanf:"delivery_timeout"`
+	MaxRetries        int    `koanf:"max_retries"`
+	RetryInitialDelay string `koanf:"retry_initial_delay"`
+	RetryMaxDelay     string `koanf:"retry_max_delay"`
+	RetryPollInterval string `koanf:"retry_poll_interval"`
+	RetryConcurrency  int    `koanf:"retry_concurrency"`
 }
 
 type PrimaryConfig struct {
@@ -165,6 +170,21 @@ func LoadConfig() (*Config, error) {
 	}
 	if cfg.Webhook.DeliveryTimeout == "" {
 		cfg.Webhook.DeliveryTimeout = "10s"
+	}
+	if cfg.Webhook.MaxRetries <= 0 {
+		cfg.Webhook.MaxRetries = 5 // max total attempts = initial + 5 retries = 6
+	}
+	if cfg.Webhook.RetryInitialDelay == "" {
+		cfg.Webhook.RetryInitialDelay = "5s"
+	}
+	if cfg.Webhook.RetryMaxDelay == "" {
+		cfg.Webhook.RetryMaxDelay = "1h"
+	}
+	if cfg.Webhook.RetryPollInterval == "" {
+		cfg.Webhook.RetryPollInterval = "5s"
+	}
+	if cfg.Webhook.RetryConcurrency <= 0 {
+		cfg.Webhook.RetryConcurrency = 5
 	}
 
 	validate := validator.New()

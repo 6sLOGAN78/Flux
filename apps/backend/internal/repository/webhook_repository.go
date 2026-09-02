@@ -148,24 +148,26 @@ func (r *WebhookRepository) DeleteWebhook(ctx context.Context, workspaceID, id u
 
 // WebhookDelivery represents a minimal recording of a delivery outcome.
 type WebhookDelivery struct {
-	ID             uuid.UUID `json:"id" db:"id"`
-	WebhookID      uuid.UUID `json:"webhook_id" db:"webhook_id"`
-	EventID        string    `json:"event_id" db:"event_id"`
-	Status         string    `json:"status" db:"status"` // "success", "failed", "timeout", etc.
-	ResponseStatus *int      `json:"response_status" db:"response_status"` // HTTP status code
-	AttemptCount   int       `json:"attempt_count" db:"attempt_count"`
-	LastError      *string   `json:"last_error" db:"last_error"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	ID             uuid.UUID  `json:"id" db:"id"`
+	WebhookID      uuid.UUID  `json:"webhook_id" db:"webhook_id"`
+	EventID        string     `json:"event_id" db:"event_id"`
+	Status         string     `json:"status" db:"status"` // "success", "retrying", "dead_letter"
+	ResponseStatus *int       `json:"response_status" db:"response_status"`
+	AttemptCount   int        `json:"attempt_count" db:"attempt_count"`
+	LastError      *string    `json:"last_error" db:"last_error"`
+	Payload        []byte     `json:"payload" db:"payload"`
+	NextAttemptAt  *time.Time `json:"next_attempt_at" db:"next_attempt_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }
 
-// RecordDelivery minimally inserts a delivery attempt for future UI/Retry capabilities.
+// RecordDelivery inserts a delivery attempt, optionally setting it up for retry.
 func (r *WebhookRepository) RecordDelivery(ctx context.Context, d *WebhookDelivery) error {
 	stmt := `
 		INSERT INTO webhook_deliveries (
-			id, webhook_id, event_id, status, response_status, attempt_count, last_error, created_at, updated_at
+			id, webhook_id, event_id, status, response_status, attempt_count, last_error, payload, next_attempt_at, created_at, updated_at
 		) VALUES (
-			@id, @webhook_id, @event_id, @status, @response_status, @attempt_count, @last_error, NOW(), NOW()
+			@id, @webhook_id, @event_id, @status, @response_status, @attempt_count, @last_error, @payload, @next_attempt_at, NOW(), NOW()
 		)
 	`
 	if d.ID == uuid.Nil {
@@ -180,10 +182,70 @@ func (r *WebhookRepository) RecordDelivery(ctx context.Context, d *WebhookDelive
 		"response_status": d.ResponseStatus,
 		"attempt_count":   d.AttemptCount,
 		"last_error":      d.LastError,
+		"payload":         d.Payload,
+		"next_attempt_at": d.NextAttemptAt,
 	}
 
 	_, err := r.pool.Exec(ctx, stmt, args)
 	return sqlerr.HandleError(err)
+}
+
+// ClaimDueRetries atomically selects and locks a batch of due retries, advancing their status to 'processing'.
+func (r *WebhookRepository) ClaimDueRetries(ctx context.Context, limit int) ([]WebhookDelivery, error) {
+	stmt := `
+		UPDATE webhook_deliveries
+		SET status = 'processing', updated_at = NOW()
+		WHERE id IN (
+			SELECT id
+			FROM webhook_deliveries
+			WHERE status = 'retrying' AND next_attempt_at <= NOW()
+			ORDER BY next_attempt_at ASC
+			LIMIT @limit
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, webhook_id, event_id, status, response_status, attempt_count, last_error, payload, next_attempt_at, created_at, updated_at
+	`
+	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{"limit": limit})
+	if err != nil {
+		return nil, sqlerr.HandleError(err)
+	}
+	defer rows.Close()
+	return pgx.CollectRows(rows, pgx.RowToStructByName[WebhookDelivery])
+}
+
+// UpdateDeliveryState updates an existing delivery (e.g. after a retry attempt).
+func (r *WebhookRepository) UpdateDeliveryState(ctx context.Context, id uuid.UUID, status string, responseStatus *int, attemptCount int, lastError *string, nextAttemptAt *time.Time) error {
+	stmt := `
+		UPDATE webhook_deliveries
+		SET status = @status, response_status = @response_status, attempt_count = @attempt_count, last_error = @last_error, next_attempt_at = @next_attempt_at, updated_at = NOW()
+		WHERE id = @id
+	`
+	_, err := r.pool.Exec(ctx, stmt, pgx.NamedArgs{"id": id, "status": status, "response_status": responseStatus, "attempt_count": attemptCount, "last_error": lastError, "next_attempt_at": nextAttemptAt})
+	return sqlerr.HandleError(err)
+}
+
+// GetWebhookByID internally fetches a webhook ignoring workspace checks (used by retry worker).
+func (r *WebhookRepository) GetWebhookByID(ctx context.Context, id uuid.UUID) (*webhook.Webhook, error) {
+	stmt := `
+		SELECT id, workspace_id, endpoint_url, secret, active, events, created_at, updated_at
+		FROM webhooks
+		WHERE id = @id
+	`
+	rows, err := r.pool.Query(ctx, stmt, pgx.NamedArgs{"id": id})
+	if err != nil {
+		return nil, sqlerr.HandleError(err)
+	}
+	defer rows.Close()
+
+	wh, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[webhook.Webhook])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &wh, nil
 }
 
 // GetActiveWebhooksForWorkspace returns webhooks that are active and could potentially receive an event.

@@ -1,53 +1,53 @@
 --- apps/backend/internal/server/server.go
 +++ apps/backend/internal/server/server.go
-@@ -35,6 +35,7 @@
- 	ClickHouseConsumer *service.RedisAnalyticsConsumer
+@@ -36,6 +36,7 @@
  	ConversionConsumer *service.RedisConversionConsumer
  	DomainWorker       *service.DomainVerificationWorker
-+	WebhookWorker      *service.WebhookWorker
+ 	WebhookWorker      *service.WebhookWorker
++	WebhookRetryWorker *service.WebhookRetryWorker
  }
  
  // NewServer initializes and wires all dependencies for the server.
-@@ -63,6 +64,7 @@
- 	var convConsumer *service.RedisConversionConsumer
+@@ -65,6 +66,7 @@
  	var analyticsProvider repository.AnalyticsProvider
  	var redirectCache repository.RedirectCache
-+	var webhookWorker *service.WebhookWorker
+ 	var webhookWorker *service.WebhookWorker
++	var webhookRetryWorker *service.WebhookRetryWorker
  
  	if cfg.GetRedisURL() != "" {
  		redisClient := redis.NewClient(&redis.Options{Addr: cfg.GetRedisURL()})
-@@ -88,6 +90,14 @@
- 			} else {
- 				log.Warn().Err(err).Msg("failed to connect to ClickHouse, consumer will not start")
+@@ -95,9 +97,14 @@
+ 			if deliveryTimeout == 0 {
+ 				deliveryTimeout = 10 * time.Second
  			}
+-			webhookWorker = service.NewWebhookWorker(redisClient, repository.NewWebhookRepository(dbPool), cfg.Redis.AnalyticsStream, cfg.Webhook.WorkerConcurrency, deliveryTimeout)
++			webhookRepo := repository.NewWebhookRepository(dbPool)
++			webhookWorker = service.NewWebhookWorker(redisClient, webhookRepo, cfg.Redis.AnalyticsStream, &cfg.Webhook)
+ 			webhookWorker.Start()
 +			
-+			// Webhook Delivery Worker
-+			deliveryTimeout, _ := time.ParseDuration(cfg.Webhook.DeliveryTimeout)
-+			if deliveryTimeout == 0 {
-+				deliveryTimeout = 10 * time.Second
-+			}
-+			webhookWorker = service.NewWebhookWorker(redisClient, repository.NewWebhookRepository(dbPool), cfg.Redis.AnalyticsStream, cfg.Webhook.WorkerConcurrency, deliveryTimeout)
-+			webhookWorker.Start()
++			// Webhook Retry Worker
++			webhookRetryWorker = service.NewWebhookRetryWorker(webhookRepo, &cfg.Webhook)
++			webhookRetryWorker.Start()
  		}
  	} else {
  		pubInterface = service.NewLogAnalyticsPublisher()
-@@ -147,6 +157,7 @@
- 		ClickHouseConsumer: chConsumer,
+@@ -158,6 +165,7 @@
  		ConversionConsumer: convConsumer,
  		DomainWorker:       domainWorker,
-+		WebhookWorker:      webhookWorker,
+ 		WebhookWorker:      webhookWorker,
++		WebhookRetryWorker: webhookRetryWorker,
  	}, nil
  }
  
-@@ -170,6 +181,11 @@
- 		s.DomainWorker.Stop(workerCtx)
+@@ -181,6 +189,11 @@
  		cancel()
  	}
-+	
-+	if s.WebhookWorker != nil {
-+		log.Info().Msg("stopping webhook worker gracefully...")
-+		s.WebhookWorker.Stop(5 * time.Second)
+ 	
++	if s.WebhookRetryWorker != nil {
++		log.Info().Msg("stopping webhook retry worker gracefully...")
++		s.WebhookRetryWorker.Stop(5 * time.Second)
 +	}
- 
- 	if s.AnalyticsPublisher != nil {
- 		log.Info().Msg("draining redis analytics publisher queue...")
++	
+ 	if s.WebhookWorker != nil {
+ 		log.Info().Msg("stopping webhook worker gracefully...")
+ 		s.WebhookWorker.Stop(5 * time.Second)

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 ### Added
+- **Phase 15A-03:** Developed `WebhookRetryWorker` implementing a mathematically sound exponential backoff queue for failed webhook deliveries. Introduced `dead_letter` state exhaustion mechanics. Webhook payloads and next attempt targets are now durably stored within `webhook_deliveries` using `FOR UPDATE SKIP LOCKED` concurrency scaling.
+### Added
 - **Phase 15A-02:** Developed `WebhookWorker` to consume `analytics:events` via Redis consumer groups and dispatch outgoing HTTP calls asynchronously. Introduced `X-Flux-Signature` HMAC-SHA256 payload signing. Built custom HTTP dialer to block SSRF vulnerabilities. Established `webhook_deliveries` PostgreSQL table to anchor future retry attempts.
 ### Added
 - **Phase 15A-01:** Established the PostgreSQL data model for Outbound Webhooks (`webhooks` table) heavily enforcing workspace isolation. Created symmetric cryptographic token generation for future payload signing (`utils.GenerateWebhookSecret`). Introduced `WebhookRepository` enforcing strict tenant partitioning to prevent data leakage.
