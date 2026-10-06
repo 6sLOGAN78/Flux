@@ -6,5 +6,167 @@
     "goModSum": "h1:yae2TI9IYB5vxQ35gFrpXh9L5H1eJv4MAUK1jumGMTo=",
     "source": "https://github.com/oapi-codegen/oapi-codegen/releases/tag/v2.8.0",
     "verified": "2026-10-06"
+  },
+  "opentelemetry": {
+    "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0",
+    "moduleFamily": "https://github.com/open-telemetry/opentelemetry-go/blob/v1.47.0/versions.yaml",
+    "docs": "https://opentelemetry.io/docs/languages/go/exporters/",
+    "verified": "2026-10-06",
+    "verification": "go list -m -versions; go mod download -json; go mod verify; compiled API/exporter probe",
+    "modules": [
+      {
+        "module": "go.opentelemetry.io/otel",
+        "version": "v1.47.0",
+        "sum": "h1:j7ALJ/zgkS7Z6aeJW09p8VC9804bC+PpeTfCD4XPnOM=",
+        "goModSum": "h1:8wS9O2qfXrYrzp6hIF/HOYJJf/wIhFPhR2xLuP+iXQU=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/trace",
+        "version": "v1.47.0",
+        "sum": "h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrFNWSrM=",
+        "goModSum": "h1:jNaSLa2PZEYFG6fRjJABAu+bw4FS08uDmPg28lTghu0=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "trace",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/trace/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/metric",
+        "version": "v1.47.0",
+        "sum": "h1:4PptaldXx3Eat1XjMZ68pPJEs5wrhlemctZE9a3UdWY=",
+        "goModSum": "h1:ADGSXxRrXM6bjbvLo535EstVFlPpPYZm4LBKixjDHwU=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "metric",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/metric/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/log",
+        "version": "v1.47.0",
+        "sum": "h1:cOTS1CcLbSQeZKanGJ+0JpF/+t4PELi3O3bbl2lqCcI=",
+        "goModSum": "h1:9byitSQ5pLC6PpqwGXjqdMKya6ZTswHRZh2vvXT33nw=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "log",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/log/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/sdk",
+        "version": "v1.47.0",
+        "sum": "h1:zWXEr4j2lFefG87TU6Yg8a7ngfohIKFZHKp0Hf5hC6I=",
+        "goModSum": "h1:VUc24kiOeoGsxG8G9ULx3fWKvB7jMhnGE8Oi607lgR0=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "sdk",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/sdk/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/sdk/metric",
+        "version": "v1.47.0",
+        "sum": "h1:lfISg2j93VT6yqdk9OfUaZmw/GfcZqCCV3jdXtsPnKw=",
+        "goModSum": "h1:ypLp+mW1Nt2x+Szt3b5/i1syodyts49lMOwxpDI3VGw=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "sdk/metric",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/sdk/metric/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/sdk/log",
+        "version": "v1.47.0",
+        "sum": "h1:W4N/ZfgpkRRnmARnqYoQ6BrWA0mrj8IzVDNLlpmUJZY=",
+        "goModSum": "h1:Wu74Z2EmOKXi2FleSNAb0Hyau2G+r5kubSEMJw5aAMs=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "sdk/log",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/sdk/log/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+        "version": "v1.47.0",
+        "sum": "h1:aXZXsZ012wOgVkqaiQv+Z/d8V0xKjmg70F6m4CE94lc=",
+        "goModSum": "h1:ziu1gUIJhAaxM3EV1e3Ralk5AAyL1UOYz3lJJ4VSI38=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "exporters/otlp/otlptrace/otlptracehttp",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/exporters/otlp/otlptrace/otlptracehttp/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+        "version": "v1.47.0",
+        "sum": "h1:7kszRN4Ze5GeAkUnBjBSUIunVBMA+mZIG04auueqguM=",
+        "goModSum": "h1:CLzakYy8jOdkBfcveCWYkeKJxujcF4xPhh2Z7IfE98U=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "exporters/otlp/otlpmetric/otlpmetrichttp",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/exporters/otlp/otlpmetric/otlpmetrichttp/v1.47.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp",
+        "version": "v0.23.0",
+        "sum": "h1:5WVp40k2fJHuc5BtNTgKk+EugKFT8Eg3lywFfCPI/nE=",
+        "goModSum": "h1:59nH0RYCGHRlwt15WyioeSYINBbuObeBpTowPhEKWHY=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-go",
+          "Subdir": "exporters/otlp/otlplog/otlploghttp",
+          "Hash": "66cfc9520e205b7d450183532772401bc2b6674c",
+          "Ref": "refs/tags/exporters/otlp/otlplog/otlploghttp/v0.23.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.47.0"
+      },
+      {
+        "module": "go.opentelemetry.io/proto/otlp",
+        "version": "v1.11.0",
+        "sum": "h1:5rrYs0Ykyj50sdU/JU0x8etU+LubXWb+gED6TbEdMIk=",
+        "goModSum": "h1:SmVizdCOAm3XBtG1g1NnOdhW6jtddT72hLMhv8VwA8E=",
+        "origin": {
+          "VCS": "git",
+          "URL": "https://github.com/open-telemetry/opentelemetry-proto-go",
+          "Subdir": "otlp",
+          "Hash": "bc625d6e040020737ab65c675c87e03bc841fd60",
+          "Ref": "refs/tags/otlp/v1.11.0"
+        },
+        "source": "https://github.com/open-telemetry/opentelemetry-proto-go/releases/tag/v1.11.0"
+      }
+    ]
   }
 }
