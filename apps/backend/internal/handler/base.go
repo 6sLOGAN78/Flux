@@ -3,12 +3,12 @@ package handler
 import (
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/newrelic/go-agent/v3/integrations/nrpkgerrors"
-	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/6sLOGAN78/flux/internal/middleware"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/validation"
+	"github.com/labstack/echo/v4"
+	"github.com/newrelic/go-agent/v3/integrations/nrpkgerrors"
+	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 // Handler provides base functionality for all handlers
@@ -122,14 +122,14 @@ func handleRequest[Req validation.Validatable](
 		Str("method", method).
 		Str("path", path).
 		Str("route", route)
-	
+
 	// Add file-specific fields to logger if it's a file handler
 	if fileHandler, ok := responseHandler.(FileResponseHandler); ok {
 		loggerBuilder = loggerBuilder.
 			Str("filename", fileHandler.filename).
 			Str("content_type", fileHandler.contentType)
 	}
-	
+
 	logger := loggerBuilder.Logger()
 
 	// user.id is already set by tracing middleware
@@ -206,30 +206,32 @@ func handleRequest[Req validation.Validatable](
 	return responseHandler.Handle(c, result)
 }
 
-// Handle wraps a handler with validation, error handling, logging, metrics, and tracing
+// Handle wraps a handler with validation, error handling, logging, metrics, and tracing.
+// newRequest must return a fresh request value for every invocation.
 func Handle[Req validation.Validatable, Res any](
 	h Handler,
 	handler HandlerFunc[Req, Res],
 	status int,
-	req Req,
+	newRequest func() Req,
 ) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+		return handleRequest(c, newRequest(), func(c echo.Context, req Req) (interface{}, error) {
 			return handler(c, req)
 		}, JSONResponseHandler{status: status})
 	}
 }
 
+// HandleFile wraps a file handler; newRequest must return a fresh request per invocation.
 func HandleFile[Req validation.Validatable](
 	h Handler,
 	handler HandlerFunc[Req, []byte],
 	status int,
-	req Req,
+	newRequest func() Req,
 	filename string,
 	contentType string,
 ) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+		return handleRequest(c, newRequest(), func(c echo.Context, req Req) (interface{}, error) {
 			return handler(c, req)
 		}, FileResponseHandler{
 			status:      status,
@@ -240,14 +242,15 @@ func HandleFile[Req validation.Validatable](
 }
 
 // HandleNoContent wraps a handler with validation, error handling, logging, metrics, and tracing for endpoints that don't return content
+// newRequest must return a fresh request value for every invocation.
 func HandleNoContent[Req validation.Validatable](
 	h Handler,
 	handler HandlerFuncNoContent[Req],
 	status int,
-	req Req,
+	newRequest func() Req,
 ) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+		return handleRequest(c, newRequest(), func(c echo.Context, req Req) (interface{}, error) {
 			err := handler(c, req)
 			return nil, err
 		}, NoContentResponseHandler{status: status})

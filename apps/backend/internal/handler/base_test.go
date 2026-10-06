@@ -30,24 +30,24 @@ func (b *synchronizedBinder) Bind(v interface{}, c echo.Context) error {
 }
 
 func isolationWrapper(kind string, observe func(*isolatedRequest)) echo.HandlerFunc {
-	req := &isolatedRequest{}
+	newRequest := func() *isolatedRequest { return &isolatedRequest{} }
 	switch kind {
 	case "json":
 		return handler.Handle(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) (isolatedRequest, error) {
 			observe(req)
 			return *req, nil
-		}, http.StatusOK, req)
+		}, http.StatusOK, newRequest)
 	case "file":
 		return handler.HandleFile(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) ([]byte, error) {
 			observe(req)
 			return []byte(req.Marker), nil
-		}, http.StatusOK, req, "marker.txt", "text/plain")
+		}, http.StatusOK, newRequest, "marker.txt", "text/plain")
 	default:
 		return handler.HandleNoContent(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) error {
 			observe(req)
 			c.Response().Header().Set("X-Marker", req.Marker)
 			return nil
-		}, http.StatusNoContent, req)
+		}, http.StatusNoContent, newRequest)
 	}
 }
 

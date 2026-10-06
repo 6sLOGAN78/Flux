@@ -1,14 +1,15 @@
 package validation
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 
+	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
-	"github.com/6sLOGAN78/flux/internal/errs"
 )
 
 type Validatable interface {
@@ -27,16 +28,31 @@ func (c CustomValidationErrors) Error() string {
 }
 
 func BindAndValidate(c echo.Context, payload Validatable) error {
+	if isNil(payload) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
 	if err := c.Bind(payload); err != nil {
-		message := strings.Split(strings.Split(err.Error(), ",")[1], "message=")[1]
-		return errs.NewBadRequestError(message, false, nil, nil, nil)
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
 
-	if msg, fieldErrors := validateStruct(payload); fieldErrors != nil {
+	if msg, fieldErrors := validateStruct(payload); msg != "" {
 		return errs.NewBadRequestError(msg, true, nil, fieldErrors, nil)
 	}
 
 	return nil
+}
+
+func isNil(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 func validateStruct(v Validatable) (string, []errs.FieldError) {
@@ -48,9 +64,15 @@ func validateStruct(v Validatable) (string, []errs.FieldError) {
 
 func extractValidationErrors(err error) (string, []errs.FieldError) {
 	var fieldErrors []errs.FieldError
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if !ok {
-		customValidationErrors := err.(CustomValidationErrors)
+	var validationErrors validator.ValidationErrors
+	if !errors.As(err, &validationErrors) {
+		var customValidationErrors CustomValidationErrors
+		if !errors.As(err, &customValidationErrors) {
+			var customPointer *CustomValidationErrors
+			if errors.As(err, &customPointer) && customPointer != nil {
+				customValidationErrors = *customPointer
+			}
+		}
 		for _, err := range customValidationErrors {
 			fieldErrors = append(fieldErrors, errs.FieldError{
 				Field: err.Field,
@@ -60,6 +82,9 @@ func extractValidationErrors(err error) (string, []errs.FieldError) {
 	}
 
 	for _, err := range validationErrors {
+		if isNil(err) {
+			continue
+		}
 		field := strings.ToLower(err.Field())
 		var msg string
 

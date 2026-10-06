@@ -10,7 +10,8 @@ import (
 // TxFn represents a function that executes within a transaction
 type TxFn func(tx pgx.Tx) error
 
-// WithTransaction runs a function within a transaction and rolls it back afterward
+// WithTransaction runs a callback in a transaction and commits successful callbacks.
+// It rolls back when the callback fails or the transaction cannot be committed.
 func WithTransaction(ctx context.Context, db *TestDB, fn TxFn) error {
 	// Begin transaction
 	tx, err := db.Pool.Begin(ctx)
