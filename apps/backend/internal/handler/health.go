@@ -2,143 +2,146 @@ package handler
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/middleware"
 	"github.com/6sLOGAN78/flux/internal/server"
-
+	"github.com/6sLOGAN78/flux/internal/transport"
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog"
 )
 
+// ReadinessCheck declares a required, context-aware dependency of a role.
+// Names are fixed by composition, never derived from request input or errors.
+type ReadinessCheck struct {
+	Name  string
+	Check func(context.Context) error
+}
+
 type HealthHandler struct {
-	Handler
+	logger  *zerolog.Logger
+	timeout time.Duration
+	checks  []ReadinessCheck
 }
 
+// NewHealthHandler preserves registry construction without inferring dependencies
+// from the server container. Role composition injects its own required checks.
 func NewHealthHandler(s *server.Server) *HealthHandler {
-	return &HealthHandler{
-		Handler: NewHandler(s),
-	}
+	return NewReadinessHandler(s.Logger, s.Config.ForRole(s.Role).ReadinessTimeout, nil)
 }
 
-func (h *HealthHandler) CheckHealth(c echo.Context) error {
-	start := time.Now()
-	logger := middleware.GetLogger(c).With().
-		Str("operation", "health_check").
-		Logger()
-
-	response := map[string]interface{}{
-		"status":      "healthy",
-		"timestamp":   time.Now().UTC(),
-		"environment": h.server.Config.Primary.Env,
-		"checks":      make(map[string]interface{}),
+// NewReadinessHandler snapshots required checks; optional integrations are absent.
+func NewReadinessHandler(log *zerolog.Logger, timeout time.Duration, checks []ReadinessCheck) *HealthHandler {
+	if timeout <= 0 {
+		timeout = time.Second
 	}
+	return &HealthHandler{logger: log, timeout: timeout, checks: append([]ReadinessCheck(nil), checks...)}
+}
 
-	checks := response["checks"].(map[string]interface{})
-	isHealthy := true
+// Live reflects the running HTTP process and never contacts dependencies.
+func (h *HealthHandler) Live(c echo.Context) error {
+	return c.JSON(http.StatusOK, transport.HealthLiveResponse{Status: transport.Alive})
+}
 
-	// Check database connectivity
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+type healthComponent = struct {
+	Name  string                                            `json:"name"`
+	State transport.TransportHealthReadyResponseChecksState `json:"state"`
+}
+
+type readinessResult struct {
+	index    int
+	err      error
+	duration time.Duration
+}
+
+// Ready checks independent dependencies concurrently within one request deadline.
+// Only this goroutine writes the response or logs results. Late completions send
+// to the buffered channel without retaining the Echo request context.
+func (h *HealthHandler) Ready(c echo.Context) error {
+	ctx, cancel := context.WithTimeout(c.Request().Context(), h.timeout)
 	defer cancel()
-
-	dbStart := time.Now()
-	if err := h.server.DB.Pool.Ping(ctx); err != nil {
-		checks["database"] = map[string]interface{}{
-			"status":        "unhealthy",
-			"response_time": time.Since(dbStart).String(),
-			"error":         err.Error(),
-		}
-		isHealthy = false
-		logger.Error().Err(err).Dur("response_time", time.Since(dbStart)).Msg("database health check failed")
-		if h.server.LoggerService != nil && h.server.LoggerService.GetApplication() != nil {
-			h.server.LoggerService.GetApplication().RecordCustomEvent(
-				"HealthCheckError", map[string]interface{}{
-					"check_type":       "database",
-					"operation":        "health_check",
-					"error_type":       "database_unhealthy",
-					"response_time_ms": time.Since(dbStart).Milliseconds(),
-					"error_message":    err.Error(),
-				})
-		}
-	} else {
-		checks["database"] = map[string]interface{}{
-			"status":        "healthy",
-			"response_time": time.Since(dbStart).String(),
-		}
-		logger.Info().Dur("response_time", time.Since(dbStart)).Msg("database health check passed")
+	response := transport.HealthReadyResponse{Status: transport.TransportHealthReadyResponseStatusReady, Checks: make([]healthComponent, len(h.checks))}
+	results := make(chan readinessResult, len(h.checks))
+	for i, check := range h.checks {
+		response.Checks[i] = healthComponent{Name: check.Name, State: transport.TransportHealthReadyResponseChecksStateNotReady}
+		go func(index int, check ReadinessCheck) {
+			start := time.Now()
+			var err error
+			if check.Check == nil {
+				err = errors.New("required check is unconfigured")
+			} else if ctx.Err() != nil {
+				err = ctx.Err()
+			} else {
+				err = check.Check(ctx)
+			}
+			results <- readinessResult{index: index, err: err, duration: time.Since(start)}
+		}(i, check)
 	}
-
-	// Database connection metrics are automatically captured by New Relic nrpgx5 integration
-
-	// Check Redis connectivity
-	if h.server.Redis != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		redisStart := time.Now()
-		if err := h.server.Redis.Ping(ctx).Err(); err != nil {
-			checks["redis"] = map[string]interface{}{
-				"status":        "unhealthy",
-				"response_time": time.Since(redisStart).String(),
-				"error":         err.Error(),
+	pending := make([]bool, len(h.checks))
+	for i := range pending {
+		pending[i] = true
+	}
+	remaining := len(h.checks)
+	for remaining > 0 {
+		select {
+		case result := <-results:
+			pending[result.index] = false
+			remaining--
+			if result.err == nil {
+				response.Checks[result.index].State = transport.TransportHealthReadyResponseChecksStateReady
+			} else {
+				h.logFailure(c, h.checks[result.index].Name, result.err, result.duration)
 			}
-			logger.Error().Err(err).Dur("response_time", time.Since(redisStart)).Msg("redis health check failed")
-			if h.server.LoggerService != nil && h.server.LoggerService.GetApplication() != nil {
-				h.server.LoggerService.GetApplication().RecordCustomEvent(
-					"HealthCheckError", map[string]interface{}{
-						"check_type":       "redis",
-						"operation":        "health_check",
-						"error_type":       "redis_unhealthy",
-						"response_time_ms": time.Since(redisStart).Milliseconds(),
-						"error_message":    err.Error(),
-					})
+		case <-ctx.Done():
+			for i, waiting := range pending {
+				if waiting {
+					h.logFailure(c, h.checks[i].Name, ctx.Err(), h.timeout)
+				}
 			}
+			remaining = 0
+		}
+	}
+	status := http.StatusOK
+	for _, check := range response.Checks {
+		if check.State != transport.TransportHealthReadyResponseChecksStateReady {
+			response.Status = transport.TransportHealthReadyResponseStatusNotReady
+			status = http.StatusServiceUnavailable
+			break
+		}
+	}
+	if ctx.Err() != nil {
+		response.Status = transport.TransportHealthReadyResponseStatusNotReady
+		status = http.StatusServiceUnavailable
+	}
+	return c.JSON(status, response)
+}
+
+func (h *HealthHandler) logFailure(c echo.Context, name string, err error, duration time.Duration) {
+	log := h.logger
+	if contextual, ok := c.Get(middleware.LoggerKey).(*zerolog.Logger); ok {
+		log = contextual
+	}
+	if log == nil {
+		return
+	}
+	kind := "dependency_error"
+	var networkErr net.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		kind = "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		kind = "deadline_exceeded"
+	case errors.As(err, &networkErr):
+		if networkErr.Timeout() {
+			kind = "network_timeout"
 		} else {
-			checks["redis"] = map[string]interface{}{
-				"status":        "healthy",
-				"response_time": time.Since(redisStart).String(),
-			}
-			logger.Info().Dur("response_time", time.Since(redisStart)).Msg("redis health check passed")
+			kind = "network_error"
 		}
 	}
-
-	// Set overall status
-	if !isHealthy {
-		response["status"] = "unhealthy"
-		logger.Warn().
-			Dur("total_duration", time.Since(start)).
-			Msg("health check failed")
-		if h.server.LoggerService != nil && h.server.LoggerService.GetApplication() != nil {
-			h.server.LoggerService.GetApplication().RecordCustomEvent(
-				"HealthCheckError", map[string]interface{}{
-					"check_type":        "overall",
-					"operation":         "health_check",
-					"error_type":        "overall_unhealthy",
-					"total_duration_ms": time.Since(start).Milliseconds(),
-				})
-		}
-		return c.JSON(http.StatusServiceUnavailable, response)
-	}
-
-	logger.Info().
-		Dur("total_duration", time.Since(start)).
-		Msg("health check passed")
-
-	err := c.JSON(http.StatusOK, response)
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to write JSON response")
-		if h.server.LoggerService != nil && h.server.LoggerService.GetApplication() != nil {
-			h.server.LoggerService.GetApplication().RecordCustomEvent(
-				"HealthCheckError", map[string]interface{}{
-					"check_type":    "response",
-					"operation":     "health_check",
-					"error_type":    "json_response_error",
-					"error_message": err.Error(),
-				})
-		}
-		return fmt.Errorf("failed to write JSON response: %w", err)
-	}
-
-	return nil
+	// Driver/provider text may contain credentials or payloads. Emit safe
+	// classification, component and timing once without serializing Err.
+	log.Error().Str("operation", "readiness").Str("component", name).Str("failure_kind", kind).Dur("duration", duration).Msg("readiness check failed")
 }

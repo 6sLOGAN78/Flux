@@ -3,12 +3,12 @@ package router
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/6sLOGAN78/flux/internal/handler"
 	"github.com/6sLOGAN78/flux/internal/middleware"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/service"
+	"github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"golang.org/x/time/rate"
 )
 
@@ -22,6 +22,9 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	// global middlewares
 	router.Use(
 		echoMiddleware.RateLimiterWithConfig(echoMiddleware.RateLimiterConfig{
+			Skipper: func(c echo.Context) bool {
+				return c.Path() == "/live" || c.Path() == "/ready"
+			},
 			Store: echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(20)),
 			DenyHandler: func(c echo.Context, identifier string, err error) error {
 				// Record rate limit hit metrics

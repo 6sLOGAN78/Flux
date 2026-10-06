@@ -33,12 +33,13 @@ func (e *StartupError) Unwrap() error { return e.cause }
 // RoleRuntime owns a bounded resource graph and its HTTP transport.
 // The worker's HTTP transport is exclusively a management listener.
 type RoleRuntime struct {
-	Role     config.Role
-	Server   *server.Server
-	HTTP     *echo.Echo
-	cleanup  Cleanup
-	listener net.Listener
-	settings config.RoleConfig
+	Role      config.Role
+	Server    *server.Server
+	HTTP      *echo.Echo
+	cleanup   Cleanup
+	listener  net.Listener
+	settings  config.RoleConfig
+	readiness []handler.ReadinessCheck
 }
 
 type API struct{ *RoleRuntime }
@@ -143,12 +144,16 @@ func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config
 		return &StartupError{Role: r.Role, Stage: "server", cause: err}
 	}
 	r.Server.Role = r.Role
+	if r.Role == config.RoleRedirector {
+		r.readiness = redirectorReadinessChecks()
+	}
 	if r.Role == config.RoleAPI {
 		db, closeDB, err := f.database(ctx, r.Server)
 		if err := r.own("database", closeDB, err); err != nil {
 			return err
 		}
 		r.Server.DB = db
+		r.readiness = apiReadinessChecks(r.Server, r.settings.ProducerEnabled)
 	}
 	if r.Role == config.RoleWorker || (r.Role == config.RoleAPI && r.settings.ProducerEnabled) {
 		client, closeRedis, err := f.redis(ctx, r.Server)
@@ -186,6 +191,7 @@ func (r *RoleRuntime) constructHTTP(f roleFactories) error {
 		return &StartupError{Role: r.Role, Stage: "router", cause: err}
 	}
 	r.HTTP = httpRouter
+	router.RegisterHealthRoutes(httpRouter, handler.NewReadinessHandler(r.Server.Logger, r.settings.ReadinessTimeout, r.readiness))
 	r.Server.SetupHTTPServerAt(r.settings.ListenAddress, httpRouter)
 	listener, err := f.listen(r.settings.ListenAddress)
 	if err != nil {
@@ -210,7 +216,29 @@ func defaultRoleRouter(role config.Role, srv *server.Server) (*echo.Echo, error)
 	}
 	// No product route currently uses Clerk; do not initialize unused secrets.
 	services := &service.Services{Job: srv.Job}
-	return router.NewRouter(srv, handler.NewHandlers(srv, services), services), nil
+	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, services), nil
+}
+
+func apiReadinessChecks(srv *server.Server, producerEnabled bool) []handler.ReadinessCheck {
+	checks := []handler.ReadinessCheck{{Name: "database", Check: func(ctx context.Context) error {
+		if srv.DB == nil || srv.DB.Pool == nil {
+			return errors.New("database unconfigured")
+		}
+		return srv.DB.Pool.Ping(ctx)
+	}}}
+	if producerEnabled {
+		checks = append(checks, queueReadinessCheck(srv))
+	}
+	return checks
+}
+
+func queueReadinessCheck(srv *server.Server) handler.ReadinessCheck {
+	return handler.ReadinessCheck{Name: "redis", Check: func(ctx context.Context) error {
+		if srv.Redis == nil {
+			return errors.New("queue unconfigured")
+		}
+		return srv.Redis.Ping(ctx).Err()
+	}}
 }
 
 // Run serves the role transport until cancellation or a serving error.

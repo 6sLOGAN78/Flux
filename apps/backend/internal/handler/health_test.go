@@ -24,6 +24,7 @@ import (
 	backendTesting "github.com/6sLOGAN78/flux/internal/testing"
 	"github.com/6sLOGAN78/flux/internal/transport"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
@@ -234,15 +235,37 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 				fixture = `{"status":"ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"ready"}]}`
 			}
 			assertHealthContract(t, request("/ready"), "/ready", 200, fixture)
+			if role == "api-producer" {
+				activeQueue := runtime.Server.Redis
+				failedQueue := redis.NewClient(&redis.Options{Addr: queue.Config.Address})
+				if err := failedQueue.Close(); err != nil {
+					t.Fatal(err)
+				}
+				runtime.Server.Redis = failedQueue
+				t.Cleanup(func() { runtime.Server.Redis = activeQueue })
+				fixture = `{"status":"not_ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"not_ready"}]}`
+				assertHealthContract(t, request("/ready"), "/ready", 503, fixture)
+			}
+			if role == "worker" {
+				cfg.Integration.ResendAPIKey = ""
+				assertHealthContract(t, request("/ready"), "/ready", 503, `{"status":"not_ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"not_ready"}]}`)
+				cfg.Integration.ResendAPIKey = "provider-secret"
+			}
 			if role == "api" || role == "api-producer" {
 				runtime.Server.DB.Pool.Close()
 				fixture = strings.Replace(fixture, `"status":"ready"`, `"status":"not_ready"`, 1)
 				fixture = strings.Replace(fixture, `"name":"database","state":"ready"`, `"name":"database","state":"not_ready"`, 1)
 			}
 			if role == "worker" {
-				if err := runtime.Server.Redis.Close(); err != nil {
+				// Inject probe failure without closing the active consumer's shared
+				// broker before its ordered shutdown (an upstream Asynq invariant).
+				activeQueue := runtime.Server.Redis
+				failedQueue := redis.NewClient(&redis.Options{Addr: queue.Config.Address})
+				if err := failedQueue.Close(); err != nil {
 					t.Fatal(err)
 				}
+				runtime.Server.Redis = failedQueue
+				t.Cleanup(func() { runtime.Server.Redis = activeQueue })
 				fixture = `{"status":"not_ready","checks":[{"name":"redis","state":"not_ready"},{"name":"email","state":"ready"}]}`
 			}
 			if role != "redirector" {

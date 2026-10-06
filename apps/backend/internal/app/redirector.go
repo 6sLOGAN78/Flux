@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/handler"
 )
 
 type Redirector struct{ *RoleRuntime }
@@ -17,3 +18,6 @@ func NewRedirector(ctx context.Context, cfg *config.Config) (*Redirector, error)
 	}
 	return &Redirector{runtime}, nil
 }
+
+// Phase 1 redirector requires no external data-plane resources.
+func redirectorReadinessChecks() []handler.ReadinessCheck { return nil }

@@ -2,8 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/handler"
+	"github.com/6sLOGAN78/flux/internal/lib/email"
+	"github.com/6sLOGAN78/flux/internal/server"
 )
 
 type Worker struct{ *RoleRuntime }
@@ -28,5 +33,21 @@ func (r *RoleRuntime) constructWorker(f roleFactories) error {
 		return err
 	}
 	r.Server.Job = consumer
+	r.readiness = workerReadinessChecks(r.Server, adapter)
 	return nil
+}
+
+func workerReadinessChecks(srv *server.Server, adapter *email.Client) []handler.ReadinessCheck {
+	return []handler.ReadinessCheck{queueReadinessCheck(srv), {Name: "email", Check: func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if adapter == nil || strings.TrimSpace(srv.Config.Integration.ResendAPIKey) == "" {
+			return errors.New("email adapter unconfigured")
+		}
+		// Exercise required embedded assets locally; never send email or ping
+		// the provider during queue-consumer readiness.
+		_, err := adapter.Render(email.TemplateWelcome, map[string]string{"UserFirstName": "Health"})
+		return err
+	}}}
 }
