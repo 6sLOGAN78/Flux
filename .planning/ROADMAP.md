@@ -30,7 +30,7 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
   3. A developer can reproduce the pinned local/CI environment, and CI fails on formatting, linting, type checking, generated-contract drift, migration failure, tests, builds, dependency findings, or secret findings.
   4. A developer can change the versioned API contract and regenerate consistent Go, TypeScript, OpenAPI, and served documentation artifacts without working-directory-dependent runtime failures.
   5. An operator can correlate requests and asynchronous work through redacted structured logs, correlation IDs, traces, and bounded-cardinality metrics without exposing credentials, event secrets, or personal data.
-**Plans:** 8/22 plans executed
+**Plans:** 9/22 plans executed
 **UI hint:** no — this phase has operator endpoints and API documentation, but no user-facing product UI.
 
 ### Phase 2: Tenant-Safe Link Control Plane
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation Stability & System Boundaries | 8/22 | In Progress|  |
+| 1. Foundation Stability & System Boundaries | 9/22 | In Progress|  |
 | 2. Tenant-Safe Link Control Plane | 0/TBD | Not started | - |
 | 3. Fast Managed-Domain Redirects | 0/TBD | Not started | - |
 | 4. Durable Click Tracking & Privacy | 0/TBD | Not started | - |
