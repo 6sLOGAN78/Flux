@@ -1,12 +1,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +26,7 @@ import (
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
 	"github.com/6sLOGAN78/flux/internal/server"
 	backendTesting "github.com/6sLOGAN78/flux/internal/testing"
+	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -329,4 +338,269 @@ func TestRoleCloseAggregatesAndStartupReleasesListener(t *testing.T) {
 		t.Fatalf("consumer startup failure disappeared: %v", err)
 	}
 	assertRoleListenerReleased(t, address)
+}
+
+// TestRoleBinaryStartup launches the real commands from an unrelated directory
+// with only their owned configuration. Health and active drain are later gates.
+func TestRoleBinaryStartup(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaries := t.TempDir()
+	buildCtx, cancelBuild := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancelBuild()
+	build := exec.CommandContext(buildCtx, "go", "build", "-o", binaries+string(os.PathSeparator),
+		"./cmd/api", "./cmd/redirector", "./cmd/worker", "./cmd/migrator", "./cmd/flux")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build role binaries: %v: %s", err, output)
+	}
+	for _, name := range []string{"api", "redirector", "worker", "migrator", "flux"} {
+		t.Run(name+"/invalid_config", func(t *testing.T) {
+			address := binaryTestAddress(t)
+			role := name
+			if role == "flux" {
+				role = "api"
+			}
+			env := binaryTestEnv()
+			env = append(env, "FLUX_DATABASE.PASSWORD=SECRET-MARKER-password", "FLUX_INTEGRATION.RESEND_API_KEY=SECRET-MARKER-email")
+			if role == "migrator" {
+				env = append(env, "FLUX_DATABASE.PORT=SECRET-MARKER-invalid")
+			} else {
+				env = append(env, "FLUX_"+strings.ToUpper(role)+".LISTEN_ADDRESS="+address,
+					"FLUX_"+strings.ToUpper(role)+".DRAIN_TIMEOUT=SECRET-MARKER-invalid")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, filepath.Join(binaries, name))
+			cmd.Dir, cmd.Env = t.TempDir(), env
+			output, err := cmd.CombinedOutput()
+			if err == nil || ctx.Err() != nil || !bytes.Contains(output, []byte("configuration")) || bytes.Contains(output, []byte("SECRET-MARKER")) {
+				t.Fatalf("invalid configuration exit/redaction: %v: %s", err, output)
+			}
+			assertRoleListenerReleased(t, address)
+		})
+	}
+	t.Run("redirector", func(t *testing.T) {
+		address := binaryTestAddress(t)
+		process := startRoleBinary(t, filepath.Join(binaries, "redirector"), address,
+			append(binaryTestEnv(), "FLUX_REDIRECTOR.LISTEN_ADDRESS="+address, "FLUX_REDIRECTOR.DRAIN_TIMEOUT=1s"))
+		assertBinaryRoutes(t, address, false)
+		process.stop(t)
+	})
+	t.Run("api_and_compatibility", func(t *testing.T) {
+		pg, closePG := backendTesting.SetupTestPostgres(t)
+		defer closePG()
+		for _, name := range []string{"api", "flux"} {
+			t.Run(name, func(t *testing.T) {
+				address := binaryTestAddress(t)
+				env := append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
+				env = append(env, "FLUX_API.LISTEN_ADDRESS="+address, "FLUX_API.DRAIN_TIMEOUT=1s")
+				process := startRoleBinary(t, filepath.Join(binaries, name), address, env)
+				assertBinaryRoutes(t, address, true)
+				var ledger *string
+				if err := pg.Pool.QueryRow(context.Background(), "SELECT to_regclass('public.schema_version')::text").Scan(&ledger); err != nil || ledger != nil {
+					t.Fatalf("%s implicitly migrated empty PostgreSQL: ledger %v, %v", name, ledger, err)
+				}
+				process.stop(t)
+				var connections int
+				if err := pg.Pool.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid()").Scan(&connections); err != nil || connections != 0 {
+					t.Fatalf("%s PostgreSQL teardown: connections %d, %v", name, connections, err)
+				}
+			})
+		}
+	})
+	t.Run("worker", func(t *testing.T) {
+		queue, closeQueue := backendTesting.SetupTestRedis(t)
+		defer closeQueue()
+		delivered := make(chan bool, 1)
+		transport := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload struct {
+				To   []string `json:"to"`
+				HTML string   `json:"html"`
+			}
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			valid := err == nil && r.Method == "POST" && r.URL.Path == "/emails" &&
+				r.Header.Get("Authorization") == "Bearer local-test-key" &&
+				len(payload.To) == 1 && payload.To[0] == "binary-test@example.com" && strings.Contains(payload.HTML, "BinaryTest")
+			select {
+			case delivered <- valid:
+			default:
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"local-email"}`)
+		}))
+		defer transport.Close()
+		address := binaryTestAddress(t)
+		env := append(binaryTestEnv(), "FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT=1s",
+			"FLUX_REDIS.ADDRESS="+queue.Config.Address, "FLUX_INTEGRATION.RESEND_API_KEY=local-test-key", "RESEND_BASE_URL="+transport.URL+"/")
+		process := startRoleBinary(t, filepath.Join(binaries, "worker"), address, env)
+		assertBinaryRoutes(t, address, false)
+		producer := asynq.NewClientFromRedisClient(queue.Client)
+		task, err := job.NewWelcomeEmailTask("binary-test@example.com", "BinaryTest")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := producer.Enqueue(task); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case valid := <-delivered:
+			if !valid {
+				t.Fatal("worker delivered an invalid local email request")
+			}
+		case <-time.After(6 * time.Second):
+			t.Fatal("worker did not process the task through the local email transport")
+		}
+		process.stop(t)
+		inspector := asynq.NewInspectorFromRedisClient(queue.Client)
+		servers, err := inspector.Servers()
+		if err != nil || len(servers) != 0 {
+			t.Fatalf("worker teardown left registered consumers: count %d, %v", len(servers), err)
+		}
+	})
+	t.Run("migrator", func(t *testing.T) {
+		pg, closePG := backendTesting.SetupTestPostgres(t)
+		defer closePG()
+		for _, startVersion := range []int{0, 1} {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cmd := exec.CommandContext(ctx, filepath.Join(binaries, "migrator"))
+			cmd.Dir, cmd.Env = t.TempDir(), append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
+			output, err := cmd.CombinedOutput()
+			cancel()
+			if err != nil || !bytes.Contains(output, []byte(fmt.Sprintf(`"start_version":%d`, startVersion))) || !bytes.Contains(output, []byte(`"end_version":1`)) {
+				t.Fatalf("migrator did not exit once with exact versions: %v: %s", err, output)
+			}
+		}
+		var version int
+		if err := pg.Pool.QueryRow(context.Background(), "SELECT version FROM schema_version").Scan(&version); err != nil || version != 1 {
+			t.Fatalf("migrator schema ledger: version %d, %v", version, err)
+		}
+	})
+	t.Run("task_targets", func(t *testing.T) {
+		for _, role := range []string{"api", "redirector", "worker", "migrator"} {
+			for _, action := range []string{"run", "build"} {
+				cmd := exec.Command("task", "--dir", root, "--dry", action+":"+role)
+				output, err := cmd.CombinedOutput()
+				if err != nil || !bytes.Contains(output, []byte("./cmd/"+role)) {
+					t.Fatalf("task target %s:%s missing role command: %v: %s", action, role, err, output)
+				}
+			}
+		}
+	})
+}
+
+func binaryTestEnv() []string {
+	var env []string
+	for _, item := range os.Environ() {
+		if !strings.HasPrefix(item, "FLUX_") && !strings.HasPrefix(item, "PG") && !strings.HasPrefix(item, "RESEND_") {
+			env = append(env, item)
+		}
+	}
+	return append(env, "FLUX_PRIMARY.ENV=test")
+}
+
+func binaryDatabaseEnv(cfg config.DatabaseConfig) []string {
+	return []string{"FLUX_DATABASE.HOST=" + cfg.Host, "FLUX_DATABASE.PORT=" + strconv.Itoa(cfg.Port),
+		"FLUX_DATABASE.USER=" + cfg.User, "FLUX_DATABASE.PASSWORD=" + cfg.Password, "FLUX_DATABASE.NAME=" + cfg.Name,
+		"FLUX_DATABASE.SSL_MODE=" + cfg.SSLMode, "FLUX_DATABASE.MAX_OPEN_CONNS=2", "FLUX_DATABASE.MAX_IDLE_CONNS=1",
+		"FLUX_DATABASE.CONN_MAX_LIFETIME=60", "FLUX_DATABASE.CONN_MAX_IDLE_TIME=30"}
+}
+
+func binaryTestAddress(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return address
+}
+
+type roleBinaryProcess struct {
+	cmd     *exec.Cmd
+	done    chan error
+	output  *bytes.Buffer
+	address string
+	cancel  context.CancelFunc
+	stopped bool
+}
+
+func startRoleBinary(t *testing.T, binary, address string, env []string) *roleBinaryProcess {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	process := &roleBinaryProcess{done: make(chan error, 1), output: &bytes.Buffer{}, address: address, cancel: cancel}
+	process.cmd = exec.CommandContext(ctx, binary)
+	process.cmd.Dir, process.cmd.Env = t.TempDir(), env
+	process.cmd.Stdout, process.cmd.Stderr = process.output, process.output
+	if err := process.cmd.Start(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	go func() { process.done <- process.cmd.Wait() }()
+	t.Cleanup(func() { process.stop(t) })
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		connection, err := net.DialTimeout("tcp", address, 50*time.Millisecond)
+		if err == nil {
+			_ = connection.Close()
+			return process
+		}
+		select {
+		case err := <-process.done:
+			process.stopped = true
+			cancel()
+			t.Fatalf("binary exited before binding role address: %v: %s", err, process.output)
+		default:
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("binary did not bind its configured role address")
+	return nil
+}
+
+func (p *roleBinaryProcess) stop(t *testing.T) {
+	t.Helper()
+	if p.stopped {
+		return
+	}
+	p.stopped = true
+	defer p.cancel()
+	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Errorf("signal binary teardown: %v", err)
+	}
+	select {
+	case err := <-p.done:
+		if err != nil {
+			t.Errorf("binary teardown exit: %v: %s", err, p.output)
+		}
+	case <-time.After(4 * time.Second):
+		p.cancel()
+		err := <-p.done
+		t.Errorf("binary teardown deadline; forced termination: %v: %s", err, p.output)
+	}
+	assertRoleListenerReleased(t, p.address)
+}
+
+func assertBinaryRoutes(t *testing.T, address string, api bool) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	for _, path := range []string{"/docs", "/static/openapi.json", "/api/v1/links"} {
+		response, err := client.Get("http://" + address + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		want := http.StatusNotFound
+		if api && path != "/api/v1/links" {
+			want = http.StatusOK
+		}
+		if response.StatusCode != want {
+			t.Fatalf("role route %s returned %d, want %d", path, response.StatusCode, want)
+		}
+	}
 }
