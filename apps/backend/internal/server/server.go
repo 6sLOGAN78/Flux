@@ -3,85 +3,67 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
+	"net"
 	"net/http"
 	"time"
 
-	"github.com/newrelic/go-agent/v3/integrations/nrredis-v9"
-	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog"
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 )
 
+// Server receives role-owned resources and adapts them for existing packages.
+// It never allocates infrastructure or starts background consumers.
 type Server struct {
+	Role          config.Role
 	Config        *config.Config
 	Logger        *zerolog.Logger
 	LoggerService *loggerPkg.LoggerService
 	DB            *database.Database
 	Redis         *redis.Client
-	httpServer    *http.Server
 	Job           *job.JobService
+	httpServer    *http.Server
 }
 
-func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerPkg.LoggerService) (*Server, error) {
-	db, err := database.New(cfg, logger, loggerService)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize database: %w", err)
+// Dependencies are allocated and closed by the composing app role.
+type Dependencies struct {
+	DB    *database.Database
+	Redis *redis.Client
+	Job   *job.JobService
+}
+
+// New retains the legacy call signature while accepting explicit dependencies.
+func New(cfg *config.Config, log *zerolog.Logger, service *loggerPkg.LoggerService, owned ...Dependencies) (*Server, error) {
+	if cfg == nil || log == nil {
+		return nil, errors.New("server configuration and logger required")
 	}
-
-	// Redis client with New Relic integration
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: cfg.Redis.Address,
-	})
-
-	// Add New Relic Redis hooks if available
-	if loggerService != nil && loggerService.GetApplication() != nil {
-		redisClient.AddHook(nrredis.NewHook(redisClient.Options()))
+	srv := &Server{Config: cfg, Logger: log, LoggerService: service}
+	if len(owned) > 1 {
+		return nil, errors.New("one explicit dependency graph required")
 	}
-
-	// Test Redis connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		logger.Error().Err(err).Msg("Failed to connect to Redis, continuing without Redis")
-		// Don't fail startup if Redis is unavailable
+	if len(owned) == 1 {
+		srv.DB = owned[0].DB
+		srv.Redis = owned[0].Redis
+		srv.Job = owned[0].Job
 	}
-
-	// job service
-	jobService := job.NewJobService(logger, cfg)
-	jobService.InitHandlers(cfg, logger)
-
-	// Start job server
-	if err := jobService.Start(); err != nil {
-		return nil, err
-	}
-
-	server := &Server{
-		Config:        cfg,
-		Logger:        logger,
-		LoggerService: loggerService,
-		DB:            db,
-		Redis:         redisClient,
-		Job:           jobService,
-	}
-
-	// Start metrics collection
-	// Runtime metrics are automatically collected by New Relic Go agent
-
-	return server, nil
+	return srv, nil
 }
 
 func (s *Server) SetupHTTPServer(handler http.Handler) {
+	s.SetupHTTPServerAt(":"+s.Config.Server.Port, handler)
+}
+
+// SetupHTTPServerAt uses the selected role address with legacy HTTP timeouts.
+func (s *Server) SetupHTTPServerAt(address string, handler http.Handler) {
 	s.httpServer = &http.Server{
-		Addr:         ":" + s.Config.Server.Port,
-		Handler:      handler,
-		ReadTimeout:  time.Duration(s.Config.Server.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(s.Config.Server.WriteTimeout) * time.Second,
-		IdleTimeout:  time.Duration(s.Config.Server.IdleTimeout) * time.Second,
+		Addr: address, Handler: handler,
+		ReadTimeout:       time.Duration(s.Config.Server.ReadTimeout) * time.Second,
+		ReadHeaderTimeout: time.Duration(s.Config.Server.ReadTimeout) * time.Second,
+		WriteTimeout:      time.Duration(s.Config.Server.WriteTimeout) * time.Second,
+		IdleTimeout:       time.Duration(s.Config.Server.IdleTimeout) * time.Second,
 	}
 }
 
@@ -89,27 +71,25 @@ func (s *Server) Start() error {
 	if s.httpServer == nil {
 		return errors.New("HTTP server not initialized")
 	}
-
-	s.Logger.Info().
-		Str("port", s.Config.Server.Port).
-		Str("env", s.Config.Primary.Env).
-		Msg("starting server")
-
 	return s.httpServer.ListenAndServe()
 }
 
+// Serve starts HTTP on a listener already registered by the owning role.
+func (s *Server) Serve(listener net.Listener) error {
+	if s.httpServer == nil {
+		return errors.New("HTTP server not initialized")
+	}
+	return s.httpServer.Serve(listener)
+}
+
+// Shutdown drains HTTP only; the role closes shared resources afterwards.
 func (s *Server) Shutdown(ctx context.Context) error {
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		return fmt.Errorf("failed to shutdown HTTP server: %w", err)
+	if s.httpServer == nil {
+		return nil
 	}
-
-	if err := s.DB.Close(); err != nil {
-		return fmt.Errorf("failed to close database connection: %w", err)
+	err := s.httpServer.Shutdown(ctx)
+	if err != nil {
+		err = errors.Join(err, s.httpServer.Close())
 	}
-
-	if s.Job != nil {
-		s.Job.Stop()
-	}
-
-	return nil
+	return err
 }

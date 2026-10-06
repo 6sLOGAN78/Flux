@@ -1,0 +1,238 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"net"
+	"net/http"
+
+	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/database"
+	"github.com/6sLOGAN78/flux/internal/handler"
+	"github.com/6sLOGAN78/flux/internal/lib/email"
+	"github.com/6sLOGAN78/flux/internal/lib/job"
+	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/router"
+	"github.com/6sLOGAN78/flux/internal/server"
+	"github.com/6sLOGAN78/flux/internal/service"
+	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
+)
+
+// StartupError exposes the failed role stage without provider diagnostics.
+type StartupError struct {
+	Role  config.Role
+	Stage string
+	cause error
+}
+
+func (e *StartupError) Error() string { return string(e.Role) + " startup " + e.Stage + " failed" }
+func (e *StartupError) Unwrap() error { return e.cause }
+
+// RoleRuntime owns a bounded resource graph and its HTTP transport.
+// The worker's HTTP transport is exclusively a management listener.
+type RoleRuntime struct {
+	Role     config.Role
+	Server   *server.Server
+	HTTP     *echo.Echo
+	cleanup  Cleanup
+	listener net.Listener
+	settings config.RoleConfig
+}
+
+type API struct{ *RoleRuntime }
+
+// NewAPI constructs PostgreSQL and explicitly enabled producers only.
+// It never migrates a database or allocates/starts job consumers.
+func NewAPI(ctx context.Context, cfg *config.Config) (*API, error) {
+	runtime, err := newRole(ctx, config.RoleAPI, cfg, defaultRoleFactories())
+	if err != nil {
+		return nil, err
+	}
+	return &API{runtime}, nil
+}
+
+type roleFactories struct {
+	logger        func(*config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error)
+	database      func(context.Context, *server.Server) (*database.Database, func(context.Context) error, error)
+	redis         func(context.Context, *server.Server) (*redis.Client, func(context.Context) error, error)
+	producer      func(*server.Server) (*job.JobService, func(context.Context) error, error)
+	email         func(*server.Server) (*email.Client, error)
+	consumer      func(*server.Server, *email.Client) (*job.JobService, func(context.Context) error, error)
+	startConsumer func(*job.JobService) error
+	router        func(config.Role, *server.Server) (*echo.Echo, error)
+	listen        func(string) (net.Listener, error)
+}
+
+func defaultRoleFactories() roleFactories {
+	return roleFactories{
+		logger: func(cfg *config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error) {
+			// Optional monitoring exporters are not required infrastructure.
+			log := loggerPkg.NewLoggerWithService(cfg.Observability, nil)
+			return &log, nil, nil, nil
+		},
+		database: func(_ context.Context, srv *server.Server) (*database.Database, func(context.Context) error, error) {
+			db, err := database.New(srv.Config, srv.Logger, srv.LoggerService)
+			if err != nil {
+				return nil, nil, err
+			}
+			return db, func(context.Context) error { return db.Close() }, nil
+		},
+		redis: func(ctx context.Context, srv *server.Server) (*redis.Client, func(context.Context) error, error) {
+			client := redis.NewClient(&redis.Options{Addr: srv.Config.Redis.Address})
+			probeCtx, cancel := context.WithTimeout(ctx, srv.Config.ForRole(srv.Role).ReadinessTimeout)
+			defer cancel()
+			if err := client.Ping(probeCtx).Err(); err != nil {
+				return nil, nil, errors.Join(err, client.Close())
+			}
+			return client, func(context.Context) error { return client.Close() }, nil
+		},
+		producer: func(srv *server.Server) (*job.JobService, func(context.Context) error, error) {
+			producer := job.NewProducer(srv.Logger, srv.Redis)
+			return producer, func(context.Context) error { return producer.Stop() }, nil
+		},
+		email: func(srv *server.Server) (*email.Client, error) { return email.NewClient(srv.Config, srv.Logger), nil },
+		consumer: func(srv *server.Server, adapter *email.Client) (*job.JobService, func(context.Context) error, error) {
+			consumer := job.NewConsumer(srv.Logger, srv.Config, srv.Redis, adapter)
+			return consumer, func(context.Context) error { return consumer.Stop() }, nil
+		},
+		startConsumer: func(consumer *job.JobService) error { return consumer.Start() },
+		router:        defaultRoleRouter,
+		listen:        func(address string) (net.Listener, error) { return net.Listen("tcp", address) },
+	}
+}
+
+func newRole(ctx context.Context, role config.Role, cfg *config.Config, factories roleFactories) (runtime *RoleRuntime, err error) {
+	if cfg == nil || cfg.Observability == nil {
+		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("configuration required")}
+	}
+	runtime = &RoleRuntime{Role: role, settings: cfg.ForRole(role)}
+	if runtime.settings.DrainTimeout <= 0 || runtime.settings.ReadinessTimeout <= 0 || runtime.settings.ListenAddress == "" {
+		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("normalized role configuration required")}
+	}
+	defer func() {
+		if err != nil {
+			closeCtx, cancel := context.WithTimeout(context.Background(), runtime.settings.DrainTimeout)
+			defer cancel()
+			err = errors.Join(err, runtime.Close(closeCtx))
+			runtime = nil
+		}
+	}()
+	if err = runtime.constructResources(ctx, cfg, factories); err != nil {
+		return runtime, err
+	}
+	if err = runtime.constructHTTP(factories); err != nil {
+		return runtime, err
+	}
+	if role == config.RoleWorker {
+		if cause := factories.startConsumer(runtime.Server.Job); cause != nil {
+			return runtime, &StartupError{Role: role, Stage: "start consumer", cause: cause}
+		}
+	}
+	return runtime, nil
+}
+
+func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config, f roleFactories) error {
+	log, loggerService, closeLogger, err := f.logger(cfg)
+	if err := r.own("logger", closeLogger, err); err != nil {
+		return err
+	}
+	r.Server, err = server.New(cfg, log, loggerService)
+	if err != nil {
+		return &StartupError{Role: r.Role, Stage: "server", cause: err}
+	}
+	r.Server.Role = r.Role
+	if r.Role == config.RoleAPI {
+		db, closeDB, err := f.database(ctx, r.Server)
+		if err := r.own("database", closeDB, err); err != nil {
+			return err
+		}
+		r.Server.DB = db
+	}
+	if r.Role == config.RoleWorker || (r.Role == config.RoleAPI && r.settings.ProducerEnabled) {
+		client, closeRedis, err := f.redis(ctx, r.Server)
+		if err := r.own("redis", closeRedis, err); err != nil {
+			return err
+		}
+		r.Server.Redis = client
+	}
+	if r.Role == config.RoleAPI && r.settings.ProducerEnabled {
+		producer, closeProducer, err := f.producer(r.Server)
+		if err := r.own("producer", closeProducer, err); err != nil {
+			return err
+		}
+		r.Server.Job = producer
+	}
+	if r.Role == config.RoleWorker {
+		return r.constructWorker(f)
+	}
+	return nil
+}
+
+func (r *RoleRuntime) own(stage string, close func(context.Context) error, cause error) error {
+	if cause != nil {
+		return &StartupError{Role: r.Role, Stage: stage, cause: cause}
+	}
+	if close == nil {
+		return nil
+	}
+	return r.cleanup.Push(stage, close)
+}
+
+func (r *RoleRuntime) constructHTTP(f roleFactories) error {
+	httpRouter, err := f.router(r.Role, r.Server)
+	if err != nil {
+		return &StartupError{Role: r.Role, Stage: "router", cause: err}
+	}
+	r.HTTP = httpRouter
+	r.Server.SetupHTTPServerAt(r.settings.ListenAddress, httpRouter)
+	listener, err := f.listen(r.settings.ListenAddress)
+	if err != nil {
+		return &StartupError{Role: r.Role, Stage: "listener", cause: err}
+	}
+	r.listener = listener
+	if err := r.cleanup.Push("listener", func(context.Context) error {
+		err := listener.Close()
+		if errors.Is(err, net.ErrClosed) {
+			return nil
+		}
+		return err
+	}); err != nil {
+		return err
+	}
+	return r.cleanup.Push("http", r.Server.Shutdown)
+}
+
+func defaultRoleRouter(role config.Role, srv *server.Server) (*echo.Echo, error) {
+	if role != config.RoleAPI {
+		return echo.New(), nil
+	}
+	// No product route currently uses Clerk; do not initialize unused secrets.
+	services := &service.Services{Job: srv.Job}
+	return router.NewRouter(srv, handler.NewHandlers(srv, services), services), nil
+}
+
+// Run serves the role transport until cancellation or a serving error.
+func (r *RoleRuntime) Run(ctx context.Context) error {
+	result := make(chan error, 1)
+	go func() { result <- r.Server.Serve(r.listener) }()
+	var serveErr error
+	select {
+	case serveErr = <-result:
+	case <-ctx.Done():
+	}
+	closeCtx, cancel := context.WithTimeout(context.Background(), r.settings.DrainTimeout)
+	defer cancel()
+	closeErr := r.Close(closeCtx)
+	if errors.Is(serveErr, http.ErrServerClosed) || errors.Is(serveErr, net.ErrClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, closeErr)
+}
+
+// Close drains HTTP, then closes dependents and shared resources exactly once.
+func (r *RoleRuntime) Close(ctx context.Context) error { return r.cleanup.Close(ctx) }
+
+// Address exposes the bound address, including automatically assigned test ports.
+func (r *RoleRuntime) Address() string { return r.listener.Addr().String() }

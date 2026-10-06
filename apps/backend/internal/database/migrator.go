@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/lifecycle"
 	"github.com/jackc/pgx/v5"
 	tern "github.com/jackc/tern/v2/migrate"
 	"github.com/rs/zerolog"
@@ -56,7 +56,7 @@ func MigrateWithResult(ctx context.Context, cfg *config.Config) (result Migratio
 	if err != nil {
 		return result, &MigrationError{Operation: "connect", cause: err}
 	}
-	var cleanup app.Cleanup
+	var cleanup lifecycle.Cleanup
 	if err := cleanup.Push("migration_connection", conn.Close); err != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -72,7 +72,7 @@ func MigrateWithResult(ctx context.Context, cfg *config.Config) (result Migratio
 	return applyMigrations(ctx, m)
 }
 
-func closeMigration(cleanup *app.Cleanup) error {
+func closeMigration(cleanup *lifecycle.Cleanup) error {
 	// A canceled migration still needs an independent bounded close attempt.
 	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

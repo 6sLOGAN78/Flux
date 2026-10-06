@@ -2,12 +2,14 @@ package job
 
 import (
 	"context"
+	"errors"
 	"sync"
 
-	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/lib/email"
+	"github.com/6sLOGAN78/flux/internal/lifecycle"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
@@ -20,6 +22,23 @@ type JobService struct {
 	closeClient func() error
 	stopOnce    sync.Once
 	stopErr     error
+}
+
+// NewProducer allocates only an enqueue client; it never constructs a consumer
+// or email transport. Its shared Redis connection is owned by the role.
+func NewProducer(logger *zerolog.Logger, client *redis.Client) *JobService {
+	return &JobService{Client: asynq.NewClientFromRedisClient(client), logger: logger}
+}
+
+// NewConsumer owns only worker processing over the role's shared Redis client.
+// Sharing the connection lets partial startup close it even before Start runs.
+func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Client, emailClient *email.Client) *JobService {
+	server := asynq.NewServerFromRedisClient(client, asynq.Config{
+		Concurrency:     10,
+		Queues:          map[string]int{"critical": 6, "default": 3, "low": 1},
+		ShutdownTimeout: cfg.Worker.DrainTimeout,
+	})
+	return &JobService{server: server, logger: logger, emailClient: emailClient, shutdown: func() error { server.Shutdown(); return nil }}
 }
 
 func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
@@ -57,6 +76,9 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 }
 
 func (j *JobService) Start() error {
+	if j.server == nil {
+		return errors.New("job consumer not configured")
+	}
 	// Register task handlers
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TaskWelcome, j.handleWelcomeEmailTask)
@@ -72,10 +94,14 @@ func (j *JobService) Start() error {
 func (j *JobService) Stop() error {
 	j.stopOnce.Do(func() {
 		j.logger.Info().Msg("Stopping background job server")
-		var cleanup app.Cleanup
+		var cleanup lifecycle.Cleanup
 		// Producer is allocated first and outlives its dependent consumer.
-		_ = cleanup.Push("job producer", func(context.Context) error { return j.closeClient() })
-		_ = cleanup.Push("job consumer", func(context.Context) error { return j.shutdown() })
+		if j.closeClient != nil {
+			_ = cleanup.Push("job producer", func(context.Context) error { return j.closeClient() })
+		}
+		if j.shutdown != nil {
+			_ = cleanup.Push("job consumer", func(context.Context) error { return j.shutdown() })
+		}
 		j.stopErr = cleanup.Close(context.Background())
 	})
 	return j.stopErr

@@ -40,7 +40,7 @@ func TestConfigStages(t *testing.T) {
 			case "unmarshal":
 				p.values["database"].(map[string]any)["port"] = "SECRET-MARKER"
 			case "validate":
-				delete(p.values, "auth")
+				delete(p.values, "database")
 			case "observability":
 				p.values["observability"] = map[string]any{"logging": map[string]any{"level": "SECRET-MARKER"}}
 			}
@@ -115,7 +115,7 @@ func TestConfigMigratorRole(t *testing.T) {
 	if cfg.Server.Port != "" || cfg.Auth.SecretKey != "" || cfg.Redis.Address != "" {
 		t.Fatal("unused services were configured")
 	}
-	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker, Role("unknown")} {
+	for _, role := range []Role{RoleWorker, Role("unknown")} {
 		if _, err := loadConfigForRole(configProvider{values: values}, role); err == nil {
 			t.Fatalf("incomplete/unknown role %q accepted", role)
 		}
@@ -218,5 +218,45 @@ func TestRoleConfigOverridesAndValidation(t *testing.T) {
 	delete(values, "api")
 	if _, err := loadConfigForRole(configProvider{values: values}, RoleWorker); err == nil {
 		t.Fatal("worker accepted without Redis/email")
+	}
+}
+
+func TestRoleEnvironmentSettings(t *testing.T) {
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "FLUX_") {
+			t.Setenv(key, "")
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Setenv("FLUX_PRIMARY.ENV", "test")
+	t.Setenv("FLUX_SERVER.PORT", "8181")
+	t.Setenv("FLUX_SERVER.READ_TIMEOUT", "7")
+	t.Setenv("FLUX_REDIRECTOR.LISTEN_ADDRESS", "127.0.0.1:9191")
+	t.Setenv("FLUX_REDIRECTOR.DRAIN_TIMEOUT", "2s")
+	t.Setenv("FLUX_REDIRECTOR.READINESS_TIMEOUT", "250ms")
+	cfg, err := LoadConfigForRole(RoleRedirector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Redirector.ListenAddress != "127.0.0.1:9191" || cfg.Redirector.DrainTimeout.String() != "2s" || cfg.Redirector.ReadinessTimeout.String() != "250ms" || cfg.Server.ReadTimeout != 7 {
+		t.Fatalf("environment overrides changed: %+v", cfg.Redirector)
+	}
+	values := map[string]any{"primary": map[string]any{"env": "test"}, "redis": map[string]any{"address": "localhost:6379"}, "integration": map[string]any{"resend_api_key": "test-key"}}
+	worker, err := loadConfigForRole(configProvider{values: values}, RoleWorker)
+	if err != nil || worker.Worker.ListenAddress != "127.0.0.1:8082" {
+		t.Fatalf("worker management default changed: %v", err)
+	}
+}
+
+func TestRoleUnusedSettingsCannotBlockStartup(t *testing.T) {
+	values := configValues()
+	values["database"].(map[string]any)["port"] = "SECRET-MARKER"
+	values["api"] = map[string]any{"drain_timeout": "SECRET-MARKER"}
+	values["worker"] = map[string]any{"readiness_timeout": "SECRET-MARKER"}
+	if _, err := loadConfigForRole(configProvider{values: values}, RoleRedirector); err != nil {
+		t.Fatalf("unused configuration blocked redirector: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
 	"github.com/6sLOGAN78/flux/internal/server"
+	backendTesting "github.com/6sLOGAN78/flux/internal/testing"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -194,4 +196,137 @@ func TestRoleServerReceivesOnlyExplicitResources(t *testing.T) {
 	if err != nil || srv.DB != nil || srv.Redis != nil || srv.Job != nil {
 		t.Fatalf("server allocated undeclared dependencies: %v", err)
 	}
+}
+
+func TestRoleRealDependenciesRemainIndependent(t *testing.T) {
+	ctx := context.Background()
+	pg, closePG := backendTesting.SetupTestPostgres(t)
+	defer closePG()
+	queue, closeQueue := backendTesting.SetupTestRedis(t)
+	defer closeQueue()
+	cfg := roleTestConfig()
+	cfg.Database = pg.Config.Database
+	cfg.Server = pg.Config.Server
+	api, err := NewAPI(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := api.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	if api.Server.Redis != nil || api.Server.Job != nil {
+		t.Fatal("default API owns queue infrastructure")
+	}
+	var ledger *string
+	if err := api.Server.DB.Pool.QueryRow(ctx, "SELECT to_regclass('schema_version')::text").Scan(&ledger); err != nil || ledger != nil {
+		t.Fatalf("API migrated empty PostgreSQL: %v, %v", ledger, err)
+	}
+
+	cfg = roleTestConfig()
+	cfg.Server = pg.Config.Server
+	cfg.Redis = queue.Config
+	cfg.Integration.ResendAPIKey = "test-key"
+	worker, err := NewWorker(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if worker.Server.DB != nil || worker.Server.Job.Client != nil {
+		t.Fatal("worker owns PostgreSQL or producer")
+	}
+	if err := worker.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.Server.Redis.Ping(ctx).Err(); err == nil {
+		t.Fatal("worker leaked shared Redis client")
+	}
+	assertRoleListenerReleased(t, worker.Address())
+
+	cfg = roleTestConfig()
+	cfg.Server = pg.Config.Server
+	redirector, err := NewRedirector(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redirector.Server.DB != nil || redirector.Server.Redis != nil || redirector.Server.Job != nil {
+		t.Fatal("redirector owns data-plane resources")
+	}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- redirector.Run(cancelCtx) }()
+	requestCtx, cancelRequest := context.WithTimeout(ctx, time.Second)
+	defer cancelRequest()
+	req, err := http.NewRequestWithContext(requestCtx, "GET", "http://"+redirector.Address()+"/docs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		cancel()
+		t.Fatal("redirector exposed docs")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("role cancellation did not finish")
+	}
+	assertRoleListenerReleased(t, redirector.Address())
+}
+
+func assertRoleListenerReleased(t *testing.T, address string) {
+	t.Helper()
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatalf("listener leaked after cleanup: %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRoleCloseAggregatesAndStartupReleasesListener(t *testing.T) {
+	cause := errors.New("SECRET-MARKER cleanup")
+	var opened, closed []string
+	factories := roleSpies("", &opened, &closed, cause)
+	runtime, err := newRole(context.Background(), config.RoleWorker, roleTestConfig(), factories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := runtime.Address()
+	err = runtime.Close(context.Background())
+	if !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") {
+		t.Fatalf("close failure lost or leaked: %v", err)
+	}
+	for _, name := range []string{"consumer", "redis", "logger"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Fatalf("close skipped %s: %v", name, err)
+		}
+	}
+	assertRoleListenerReleased(t, address)
+
+	opened, closed = nil, nil
+	factories = roleSpies("start consumer", &opened, &closed, cause)
+	listen := factories.listen
+	factories.listen = func(value string) (net.Listener, error) {
+		listener, err := listen(value)
+		if err == nil {
+			address = listener.Addr().String()
+		}
+		return listener, err
+	}
+	runtime, err = newRole(context.Background(), config.RoleWorker, roleTestConfig(), factories)
+	if runtime != nil || !errors.Is(err, cause) {
+		t.Fatalf("consumer startup failure disappeared: %v", err)
+	}
+	assertRoleListenerReleased(t, address)
 }

@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/lifecycle"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	containerconfig "github.com/moby/moby/api/types/container"
@@ -73,7 +73,7 @@ func TestMigrationFailuresPreserveSafeCauses(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "SECRET-MARKER") {
 		t.Fatalf("connect cause/redaction failed: %v", err)
 	}
-	var cleanup app.Cleanup
+	var cleanup lifecycle.Cleanup
 	cause := errors.New("SECRET-MARKER cleanup failure")
 	if err := cleanup.Push("migration_connection", func(closeCtx context.Context) error {
 		if closeCtx.Err() != nil {

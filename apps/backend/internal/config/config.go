@@ -2,7 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	_ "github.com/joho/godotenv/autoload"
@@ -28,6 +31,32 @@ type Config struct {
 	Redis         RedisConfig          `koanf:"redis" validate:"required"`
 	Integration   IntegrationConfig    `koanf:"integration" validate:"required"`
 	Observability *ObservabilityConfig `koanf:"observability"`
+	API           RoleConfig           `koanf:"api"`
+	Redirector    RoleConfig           `koanf:"redirector"`
+	Worker        RoleConfig           `koanf:"worker"`
+}
+
+// RoleConfig controls an independently owned listener and operation deadlines.
+// Durations use Go duration strings in FLUX_<ROLE>.* environment variables.
+type RoleConfig struct {
+	ListenAddress    string        `koanf:"listen_address"`
+	DrainTimeout     time.Duration `koanf:"drain_timeout"`
+	ReadinessTimeout time.Duration `koanf:"readiness_timeout"`
+	ProducerEnabled  bool          `koanf:"producer_enabled"`
+}
+
+// ForRole returns the selected role's normalized settings.
+func (c *Config) ForRole(role Role) RoleConfig {
+	switch role {
+	case RoleAPI:
+		return c.API
+	case RoleRedirector:
+		return c.Redirector
+	case RoleWorker:
+		return c.Worker
+	default:
+		return RoleConfig{}
+	}
 }
 
 type Primary struct {
@@ -101,6 +130,19 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if err := k.Load(provider, nil); err != nil {
 		return nil, &ConfigError{Stage: "load", cause: err}
 	}
+	// Do not decode numeric/duration settings owned by another process. An
+	// invalid database port or worker deadline cannot block a redirector.
+	for _, other := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
+		if other != role {
+			k.Delete(string(other))
+		}
+	}
+	if role == RoleRedirector || role == RoleWorker {
+		k.Delete("database")
+	}
+	if role == RoleMigrator {
+		k.Delete("server")
+	}
 
 	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
 	if role == RoleMigrator {
@@ -110,23 +152,33 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if err := k.Unmarshal("", mainConfig); err != nil {
 		return nil, &ConfigError{Stage: "unmarshal", cause: err}
 	}
+	if role != RoleMigrator {
+		if err := normalizeRole(mainConfig, role, k); err != nil {
+			return nil, &ConfigError{Stage: "validate", cause: err}
+		}
+	}
 
 	validate := validator.New()
 	// Observability owns its validation and optional vendor credentials. Validate
 	// only the existing required sections here, keeping stage errors distinct.
-	excluded := []string{"Observability"}
+	excluded := []string{"Observability", "API", "Redirector", "Worker", "Auth", "Server"}
 	switch role {
+	case RoleAPI:
+		excluded = append(excluded, "Integration")
+		if !mainConfig.API.ProducerEnabled {
+			excluded = append(excluded, "Redis")
+		}
 	case RoleMigrator:
-		excluded = append(excluded, "Server", "Auth", "Redis", "Integration")
+		excluded = append(excluded, "Server", "Redis", "Integration")
 	case RoleRedirector:
-		excluded = append(excluded, "Database", "Auth", "Redis", "Integration")
+		excluded = append(excluded, "Server", "Database", "Redis", "Integration")
 	case RoleWorker:
-		excluded = append(excluded, "Server", "Database", "Auth")
+		excluded = append(excluded, "Server", "Database")
 	}
 	if err := validate.StructExcept(mainConfig, excluded...); err != nil {
 		return nil, &ConfigError{Stage: "validate", cause: err}
 	}
-	if role == RoleMigrator {
+	if role == RoleMigrator || role == RoleAPI {
 		if err := validate.Var(mainConfig.Database.Port, "min=1,max=65535"); err != nil {
 			return nil, &ConfigError{Stage: "validate", cause: err}
 		}
@@ -148,4 +200,57 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	}
 
 	return mainConfig, nil
+}
+
+func normalizeRole(cfg *Config, role Role, k *koanf.Koanf) error {
+	settings := cfg.ForRole(role)
+	prefix := string(role) + "."
+	if !k.Exists(prefix + "listen_address") {
+		port := cfg.Server.Port
+		if port == "" {
+			port = map[Role]string{RoleAPI: "8080", RoleRedirector: "8081", RoleWorker: "8082"}[role]
+		}
+		host := ""
+		if role == RoleWorker {
+			host = "127.0.0.1"
+		}
+		settings.ListenAddress = net.JoinHostPort(host, port)
+	}
+	if !k.Exists(prefix + "drain_timeout") {
+		settings.DrainTimeout = 30 * time.Second
+	}
+	if !k.Exists(prefix + "readiness_timeout") {
+		settings.ReadinessTimeout = cfg.Observability.HealthChecks.Timeout
+	}
+	_, port, err := net.SplitHostPort(settings.ListenAddress)
+	if err != nil {
+		return fmt.Errorf("invalid role listen address")
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 0 || portNumber > 65535 || settings.DrainTimeout <= 0 || settings.ReadinessTimeout <= 0 {
+		return fmt.Errorf("invalid role port or deadline")
+	}
+	if !k.Exists("server.read_timeout") {
+		cfg.Server.ReadTimeout = 5
+	}
+	if !k.Exists("server.write_timeout") {
+		cfg.Server.WriteTimeout = 10
+	}
+	if !k.Exists("server.idle_timeout") {
+		cfg.Server.IdleTimeout = 60
+	}
+	if cfg.Server.ReadTimeout <= 0 || cfg.Server.WriteTimeout <= 0 || cfg.Server.IdleTimeout <= 0 {
+		return fmt.Errorf("invalid HTTP timeout")
+	}
+	// Keep legacy transport fields populated for middleware and existing callers.
+	cfg.Server.Port = port
+	switch role {
+	case RoleAPI:
+		cfg.API = settings
+	case RoleRedirector:
+		cfg.Redirector = settings
+	case RoleWorker:
+		cfg.Worker = settings
+	}
+	return nil
 }
