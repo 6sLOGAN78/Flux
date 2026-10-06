@@ -1,34 +1,51 @@
 package middleware
 
 import (
-	"github.com/google/uuid"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/labstack/echo/v4"
+	"strings"
 )
 
 const (
-	RequestIDHeader = "X-Request-ID"
-	RequestIDKey    = "request_id"
+	RequestIDHeader     = "X-Request-ID"
+	RequestIDKey        = "request_id"
+	CorrelationIDHeader = "X-Correlation-ID"
+	CorrelationIDKey    = "correlation_id"
 )
 
 func RequestID() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			requestID := c.Request().Header.Get(RequestIDHeader)
-			if requestID == "" {
-				requestID = uuid.New().String() // 4c90fc3f-39cc-4b04-af21-c83ee64aa67e
+			req := c.Request()
+			// Check length before parsing to bound work on attacker-controlled headers.
+			requestID, correlationID := req.Header.Get(RequestIDHeader), req.Header.Get(CorrelationIDHeader)
+			if len(requestID) != 36 || len(req.Header.Values(RequestIDHeader)) != 1 {
+				requestID = ""
 			}
-
-			c.Set(RequestIDKey, requestID)
-			c.Response().Header().Set(RequestIDHeader, requestID)
-
+			if len(correlationID) != 36 || len(req.Header.Values(CorrelationIDHeader)) != 1 {
+				correlationID = ""
+			}
+			ctx := observability.WithCorrelation(req.Context(), requestID, correlationID)
+			ids := observability.CorrelationFromContext(ctx)
+			c.Set(RequestIDKey, ids.RequestID)
+			c.Set(CorrelationIDKey, ids.CorrelationID)
+			for _, pair := range [][2]string{{RequestIDHeader, ids.RequestID}, {CorrelationIDHeader, ids.CorrelationID}} {
+				req.Header.Set(pair[0], pair[1])
+				c.Response().Header().Set(pair[0], pair[1])
+			}
+			c.SetRequest(req.WithContext(ctx))
 			return next(c)
 		}
 	}
 }
-
 func GetRequestID(c echo.Context) string {
-	if requestID, ok := c.Get(RequestIDKey).(string); ok {
-		return requestID
-	}
-	return ""
+	value, _ := c.Get(RequestIDKey).(string)
+	return value
+}
+func GetCorrelationID(c echo.Context) string {
+	value, _ := c.Get(CorrelationIDKey).(string)
+	return value
+}
+func equalPropagationHeader(key string) bool {
+	return strings.EqualFold(key, "tracestate") || strings.EqualFold(key, "baggage")
 }

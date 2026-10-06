@@ -11,6 +11,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
@@ -22,6 +23,7 @@ type Server struct {
 	Config        *config.Config
 	Logger        *zerolog.Logger
 	LoggerService *loggerPkg.LoggerService
+	Telemetry     *observability.Telemetry
 	DB            *database.Database
 	Redis         *redis.Client
 	Job           *job.JobService

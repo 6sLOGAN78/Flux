@@ -8,10 +8,13 @@ import (
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/middleware"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/transport"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ReadinessCheck declares a required, context-aware dependency of a role.
@@ -153,5 +156,22 @@ func (h *HealthHandler) logFailure(c echo.Context, name string, err error, durat
 	}
 	// Driver/provider text may contain credentials or payloads. Emit safe
 	// classification, component and timing once without serializing Err.
-	log.Error().Str("operation", "readiness").Str("component", name).Str("failure_kind", kind).Dur("duration", duration).Msg("readiness check failed")
+	dependency := name
+	if dependency == "database" {
+		dependency = "postgres"
+	}
+	category := "unavailable"
+	if errors.Is(err, context.Canceled) {
+		category = "canceled"
+	} else if errors.Is(err, context.DeadlineExceeded) || kind == "network_timeout" {
+		category = "timeout"
+	}
+	attrs := observability.SanitizeAttributes([]attribute.KeyValue{
+		attribute.String("operation", "dependency.check"),
+		attribute.String("dependency", dependency),
+		attribute.String("error.category", category),
+	}, false)
+	trace.SpanFromContext(c.Request().Context()).AddEvent("dependency.check", trace.WithAttributes(attrs...))
+	log.Error().Str("operation", "dependency.check").Str("dependency", dependency).Str("error.category", category).
+		Str("component", name).Str("failure_kind", kind).Dur("duration", duration).Msg("readiness check failed")
 }

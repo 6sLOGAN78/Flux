@@ -71,6 +71,7 @@ func newFixture(t *testing.T) fixture {
 	})
 	e.GET("/ready", func(c echo.Context) error { return errors.New(secret) })
 	e.GET("/live", func(c echo.Context) error { panic(secret) })
+	e.GET("/openapi", func(c echo.Context) error { return echo.NewHTTPError(400, secret) })
 	e.POST("/status", func(c echo.Context) error {
 		return errs.NewBadRequestError("Validation failed", true, nil, []errs.FieldError{{Field: "name", Error: "is required"}}, nil)
 	})
@@ -160,6 +161,30 @@ func TestHTTPInvalidIDsAreReplaced(t *testing.T) {
 	}
 }
 
+func TestHTTPRejectsDuplicateIDsAndUntrustedContext(t *testing.T) {
+	f := newFixture(t)
+	first, second := uuid.NewString(), uuid.NewString()
+	req := httptest.NewRequest("GET", "/status", nil)
+	req.Header.Add(middleware.RequestIDHeader, first)
+	req.Header.Add(middleware.RequestIDHeader, second)
+	req.Header.Add("X-Correlation-ID", first)
+	req.Header.Add("X-Correlation-ID", second)
+	req.Header.Set("traceparent", "00-00000000000000000000000000000000-2222222222222222-01")
+	state, _ := trace.ParseTraceState("private=" + secret)
+	sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceState: state})
+	req = req.WithContext(trace.ContextWithSpanContext(req.Context(), sc))
+	rec := httptest.NewRecorder()
+	f.e.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Header().Get(middleware.RequestIDHeader) == first || rec.Header().Get("X-Correlation-ID") == first {
+		t.Fatal("duplicate IDs were trusted")
+	}
+	span := f.spans.GetSpans()[0]
+	if span.Parent.IsValid() || span.SpanContext.TraceID() == sc.TraceID() || span.SpanContext.TraceState().Len() != 0 {
+		t.Fatal("invalid ingress inherited untrusted context")
+	}
+	assertPrivateAbsent(t, f.logs.String()+fmt.Sprint(f.spans.GetSpans()))
+}
+
 func TestHTTPBoundedLabelsAndSafeFailures(t *testing.T) {
 	f := newFixture(t)
 	for i := 0; i < 40; i++ {
@@ -213,6 +238,15 @@ func TestHTTPBoundedLabelsAndSafeFailures(t *testing.T) {
 		t.Fatalf("requests %d", count)
 	}
 	assertPrivateAbsent(t, f.logs.String()+fmt.Sprint(data)+fmt.Sprint(f.spans.GetSpans()))
+}
+
+func TestHTTPUnknownEchoErrorIsPrivate(t *testing.T) {
+	f := newFixture(t)
+	rec := request(f, "GET", "/openapi", "", "")
+	if rec.Code != 400 || strings.Contains(rec.Body.String(), secret) {
+		t.Fatal("unknown Echo error escaped", rec.Body)
+	}
+	assertPrivateAbsent(t, f.logs.String()+fmt.Sprint(f.spans.GetSpans()))
 }
 
 func attrMap(attrs []attribute.KeyValue) map[string]any {

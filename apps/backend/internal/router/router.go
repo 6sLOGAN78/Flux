@@ -19,38 +19,23 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 
 	router.HTTPErrorHandler = middlewares.Global.GlobalErrorHandler
 
-	// global middlewares
+	// Correlation, tracing and recovery wrap early CORS/rate-limit responses.
 	router.Use(
-		echoMiddleware.RateLimiterWithConfig(echoMiddleware.RateLimiterConfig{
-			Skipper: func(c echo.Context) bool {
-				return c.Path() == "/live" || c.Path() == "/ready"
-			},
-			Store: echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(20)),
-			DenyHandler: func(c echo.Context, identifier string, err error) error {
-				// Record rate limit hit metrics
-				if rateLimitMiddleware := middlewares.RateLimit; rateLimitMiddleware != nil {
-					rateLimitMiddleware.RecordRateLimitHit(c.Path())
-				}
-
-				s.Logger.Warn().
-					Str("request_id", middleware.GetRequestID(c)).
-					Str("identifier", identifier).
-					Str("path", c.Path()).
-					Str("method", c.Request().Method).
-					Str("ip", c.RealIP()).
-					Msg("rate limit exceeded")
-
-				return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded")
-			},
-		}),
-		middlewares.Global.CORS(),
-		middlewares.Global.Secure(),
 		middleware.RequestID(),
-		middlewares.Tracing.NewRelicMiddleware(),
-		middlewares.Tracing.EnhanceTracing(),
+		middleware.NewTracingMiddleware(s, s.Telemetry).EnhanceTracing(),
 		middlewares.ContextEnhancer.EnhanceContext(),
 		middlewares.Global.RequestLogger(),
 		middlewares.Global.Recover(),
+		middlewares.Global.CORS(),
+		middlewares.Global.Secure(),
+		echoMiddleware.RateLimiterWithConfig(echoMiddleware.RateLimiterConfig{
+			Skipper: func(c echo.Context) bool { return c.Path() == "/live" || c.Path() == "/ready" },
+			Store:   echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(20)),
+			DenyHandler: func(c echo.Context, _ string, _ error) error {
+				middleware.GetLogger(c).Warn().Str("operation", "http.request").Str("http.route", middleware.SafeRoute(c)).Str("http.request.method", middleware.SafeMethod(c.Request().Method)).Msg("http.request")
+				return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded")
+			},
+		}),
 	)
 
 	// register system routes
