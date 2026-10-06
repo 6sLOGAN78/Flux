@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Session resumed; continuing wave 2 with plan 01-05 after usage reset
-last_updated: "2026-10-06T13:06:54.551Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-10-06T13:13:14.323Z"
 last_activity: 2026-10-06
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 22
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 01 (Foundation Stability & System Boundaries) — EXECUTING
-Plan: 4 of 22
+Plan: 5 of 22
 Status: Ready to execute
 Last activity: 2026-10-06
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [██░░░░░░░░] 18%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase 01 P01 | 9min | 2 tasks | 7 files |
 | Phase 01 P02 | 3min | 2 tasks | 5 files |
 | Phase 01 P03 | 4min | 2 tasks | 9 files |
+| Phase 01 P05 | 6min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Separate raw SetupTestPostgres from migrating SetupTestDB; preserve migration failures for plan01-04.
 - [Phase 01]: Generic Echo handlers require per-invocation request factories; binder failures return Invalid request and validation failures return Validation failed with recognized field errors.
 - [Phase 01]: Configuration and cleanup errors expose stable stage/resource labels while retaining private causes through Unwrap; Asynq void Shutdown uses a narrow error-returning test seam. — Preserve safe diagnostics, original failures, existing FLUX key compatibility, and deterministic shutdown failure tests without starting workers.
+- [Phase 01]: Recover named health component schemas from the same authored ts-rest router inside the owned generator. — Existing document construction replaces components; preserve operation metadata and security schemes without expanding file ownership.
 
 ### Pending Todos
 
@@ -92,6 +94,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-06T13:06:54.539Z
-Stopped at: Session resumed; continuing wave 2 with plan 01-05 after usage reset
-Resume file: .planning/phases/01-foundation-stability-system-boundaries/01-05-PLAN.md
+Last session: 2026-10-06T13:13:14.312Z
+Stopped at: Completed 01-05-PLAN.md
+Resume file: None
