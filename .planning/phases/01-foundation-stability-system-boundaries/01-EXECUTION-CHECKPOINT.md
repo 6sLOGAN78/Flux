@@ -14,9 +14,9 @@ Status: Planning verified; execution blocked before the first task.
 
 ## Execution blocker
 
-The workspace's `.git` directory is empty and explicitly read-only under the current filesystem policy. `git rev-parse --is-inside-work-tree` fails with `not a git repository`. The GSD planning commit also failed with exit code 128. The executor protocol requires each completed task to be committed immediately and includes commit hashes in completion evidence. No executor was dispatched because that protocol cannot be satisfied here.
+Git was initialized outside the restricted session after the original checkpoint. `git rev-parse --is-inside-work-tree` now succeeds. The master branch has no commits yet and the initial files are staged. This session still mounts `.git` read-only: the requested `git init` attempt failed with `could not lock config file ... Read-only file system`. The executor protocol requires each completed task to be committed immediately and includes commit hashes in completion evidence. No executor was dispatched because that protocol cannot be satisfied here.
 
-Restore or initialize the normal Git repository with writable metadata outside this restricted session, then resume with `$gsd-execute-phase 1 --auto --no-transition`. Confirm Git works before source changes; do not relocate Git metadata to bypass the restriction. Use sequential execution or supported manual worktree isolation for the Codex runtime.
+Allow the session to write the normal repository's `.git` metadata, then resume with `$gsd-execute-phase 1 --auto --no-transition`. Initialization is already done; another `git init` is unnecessary. Confirm Git writes work before source changes; do not relocate Git metadata to bypass the restriction. Preserve the existing staging. Use sequential execution or supported manual worktree isolation for the Codex runtime.
 
 ## Tracking notes
 
