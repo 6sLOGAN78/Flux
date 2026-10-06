@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
-	"github.com/6sLOGAN78/flux/internal/lib/email"
 	loggerpkg "github.com/6sLOGAN78/flux/internal/logger"
 	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/hibiken/asynq"
@@ -44,6 +44,31 @@ const (
 type logCapture struct {
 	mu      sync.Mutex
 	records []sdklog.Record
+}
+
+type spanCapture struct{ *tracetest.InMemoryExporter }
+
+func (spanCapture) Shutdown(context.Context) error { return nil }
+
+type localEmailTransport struct{ url string }
+
+func (s localEmailTransport) SendWelcomeEmail(to, firstName string) error {
+	payload, _ := json.Marshal(map[string]any{"to": []string{to}, "html": firstName})
+	req, err := http.NewRequest(http.MethodPost, s.url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		body, _ := io.ReadAll(response.Body)
+		return errors.New(string(body))
+	}
+	return nil
 }
 
 func (c *logCapture) Export(_ context.Context, records []sdklog.Record) error {
@@ -77,7 +102,7 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			spans, logs := tracetest.NewInMemoryExporter(), &logCapture{}
+			spans, logs := spanCapture{tracetest.NewInMemoryExporter()}, &logCapture{}
 			tel, err := observability.New(ctx, observability.Settings{Enabled: true, SampleRatio: 1, ExportInterval: 10 * time.Millisecond, Exporters: observability.Exporters{Trace: spans, Log: logs}}, "worker")
 			require.NoError(t, err)
 			var output bytes.Buffer
@@ -100,10 +125,8 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 				_, _ = io.WriteString(w, `{"id":"local-email"}`)
 			}))
 			defer transport.Close()
-			t.Setenv("RESEND_BASE_URL", transport.URL+"/")
-			cfg := &config.Config{Worker: config.RoleConfig{DrainTimeout: time.Second}, Integration: config.IntegrationConfig{ResendAPIKey: "local-key"}}
-			consumerConfig := asynq.Config{Concurrency: 1, Queues: map[string]int{"default": 1}, ShutdownTimeout: time.Second, TaskCheckInterval: 10 * time.Millisecond, DelayedTaskCheckInterval: 100 * time.Millisecond, RetryDelayFunc: func(int, error, *asynq.Task) time.Duration { return 3 * time.Second }}
-			consumer := newConsumer(&log, client, email.NewClient(cfg, &log), tel, consumerConfig)
+			consumerConfig := asynq.Config{Concurrency: 1, Queues: map[string]int{"default": 1, "low": 1}, ShutdownTimeout: time.Second, TaskCheckInterval: 10 * time.Millisecond, DelayedTaskCheckInterval: 100 * time.Millisecond, RetryDelayFunc: func(int, error, *asynq.Task) time.Duration { return 3 * time.Second }}
+			consumer := newConsumer(&log, client, localEmailTransport{transport.URL}, tel, consumerConfig)
 			t.Cleanup(func() { require.NoError(t, consumer.Stop()); require.NoError(t, tel.Shutdown(context.Background())) })
 			producer := NewProducer(&log, client, tel)
 			var task *asynq.Task
@@ -120,7 +143,7 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 			case "legacy":
 				payload, e := json.Marshal(map[string]any{"to": "private-recipient@example.com", "first_name": "PrivateFirstName", "metadata": map[string]any{"version": 1, "request_id": requestID, "correlation_id": correlationID, "traceparent": parent, "tracestate": "private=" + privateMarker, "baggage": "private=" + privateMarker, "unknown": privateMarker}})
 				require.NoError(t, e)
-				task = asynq.NewTaskWithHeaders(TaskWelcome, payload, map[string]string{"tracestate": "private=" + privateMarker, "baggage": privateMarker}, asynq.MaxRetry(1))
+				task = asynq.NewTaskWithHeaders(TaskWelcome, payload, map[string]string{"tracestate": "private=" + privateMarker, "baggage": privateMarker}, asynq.MaxRetry(1), asynq.Queue("low"), asynq.ProcessIn(200*time.Millisecond), asynq.Timeout(7*time.Second), asynq.Deadline(time.Now().Add(15*time.Second)))
 			case "absent":
 				task, err = NewWelcomeEmailTask("private-recipient@example.com", "PrivateFirstName")
 			}
@@ -128,7 +151,7 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 			info, err := producer.Client.EnqueueContext(ctx, task)
 			require.NoError(t, err)
 			inspector := asynq.NewInspectorFromRedisClient(client)
-			queued, err := inspector.GetTaskInfo("default", info.ID)
+			queued, err := inspector.GetTaskInfo(info.Queue, info.ID)
 			require.NoError(t, err)
 			if mode == "context" {
 				require.NotContains(t, string(queued.Payload), privateMarker)
@@ -147,13 +170,17 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 				retryID = "safe:" + info.ID
 			}
 			require.Eventually(t, func() bool {
-				retried, err = inspector.GetTaskInfo("default", retryID)
+				retried, err = inspector.GetTaskInfo(info.Queue, retryID)
 				return err == nil && retried.State == asynq.TaskStateRetry
 			}, 2*time.Second, 10*time.Millisecond)
 			if mode == "legacy" {
-				_, err = inspector.GetTaskInfo("default", info.ID)
+				_, err = inspector.GetTaskInfo(info.Queue, info.ID)
 				require.ErrorIs(t, err, asynq.ErrTaskNotFound)
 				require.Equal(t, 1, retried.MaxRetry)
+				require.Equal(t, queued.Queue, retried.Queue)
+				require.Equal(t, queued.Timeout, retried.Timeout)
+				require.Equal(t, queued.Deadline, retried.Deadline)
+				require.Equal(t, queued.Retention, retried.Retention)
 			}
 			require.NotContains(t, string(retried.Payload), privateMarker)
 			require.NotContains(t, retried.LastErr, "PRIVATE_PROVIDER_ERROR")
@@ -170,12 +197,12 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("retry delivery deadline")
 			}
-			require.Eventually(t, func() bool { _, e := inspector.GetTaskInfo("default", retryID); return e != nil }, 2*time.Second, 10*time.Millisecond)
+			require.Eventually(t, func() bool { _, e := inspector.GetTaskInfo(info.Queue, retryID); return e != nil }, 2*time.Second, 10*time.Millisecond)
 			require.NoError(t, consumer.Stop())
 			require.NoError(t, tel.Shutdown(ctx))
 			captured := spans.GetSpans()
 			require.Len(t, captured, 2)
-			for _, span := range captured {
+			for attempt, span := range captured {
 				require.Equal(t, "job.process", span.Name)
 				require.Equal(t, trace.SpanKindConsumer, span.SpanKind)
 				require.Empty(t, span.SpanContext.TraceState().String())
@@ -185,6 +212,14 @@ func TestCorrelationRetryLegacyRedis(t *testing.T) {
 					require.Equal(t, "00f067aa0ba902b7", span.Parent.SpanID().String())
 					require.Len(t, span.Links, 1)
 					require.Empty(t, span.Links[0].SpanContext.TraceState().String())
+					require.Equal(t, span.Parent.TraceID(), span.Links[0].SpanContext.TraceID())
+					require.Equal(t, span.Parent.SpanID(), span.Links[0].SpanContext.SpanID())
+					require.True(t, span.Parent.IsSampled())
+				}
+				for _, attr := range span.Attributes {
+					if string(attr.Key) == "retry.count" {
+						require.Equal(t, int64(attempt), attr.Value.AsInt64())
+					}
 				}
 				data, _ := json.Marshal(span)
 				for _, marker := range []string{privateMarker, "PRIVATE_PROVIDER_ERROR", "private-recipient@example.com", "PrivateFirstName"} {

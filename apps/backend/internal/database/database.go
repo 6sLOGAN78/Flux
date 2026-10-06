@@ -10,12 +10,15 @@ import (
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	loggerConfig "github.com/6sLOGAN78/flux/internal/logger"
-	pgxzero "github.com/jackc/pgx-zerolog"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/tracelog"
-	"github.com/newrelic/go-agent/v3/integrations/nrpgx5"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type Database struct {
@@ -23,37 +26,40 @@ type Database struct {
 	log  *zerolog.Logger
 }
 
-// multiTracer allows chaining multiple tracers
-type multiTracer struct {
-	tracers []any
+type queryTracer struct {
+	tracer trace.Tracer
+	log    *zerolog.Logger
 }
+type querySpanKey struct{}
 
-// TraceQueryStart implements pgx tracer interface
-func (mt *multiTracer) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	for _, tracer := range mt.tracers {
-		if t, ok := tracer.(interface {
-			TraceQueryStart(context.Context, *pgx.Conn, pgx.TraceQueryStartData) context.Context
-		}); ok {
-			ctx = t.TraceQueryStart(ctx, conn, data)
-		}
-	}
-	return ctx
+// Query data (including SQL and arguments) is deliberately never inspected.
+func (t queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	ctx = baggage.ContextWithBaggage(ctx, baggage.Baggage{})
+	ctx = trace.ContextWithSpanContext(ctx, observability.CleanSpanContext(trace.SpanContextFromContext(ctx)))
+	ids := observability.CorrelationFromContext(ctx)
+	ctx, span := t.tracer.Start(ctx, "database.query", trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attribute.String("dependency", "postgres"), attribute.String("operation", "database.query"), attribute.String("db.system.name", "postgresql"), attribute.String("request_id", ids.RequestID), attribute.String("correlation_id", ids.CorrelationID)))
+	return context.WithValue(ctx, querySpanKey{}, span)
 }
-
-// TraceQueryEnd implements pgx tracer interface
-func (mt *multiTracer) TraceQueryEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryEndData) {
-	for _, tracer := range mt.tracers {
-		if t, ok := tracer.(interface {
-			TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData)
-		}); ok {
-			t.TraceQueryEnd(ctx, conn, data)
-		}
+func (t queryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	span, ok := ctx.Value(querySpanKey{}).(trace.Span)
+	if !ok {
+		return
 	}
+	defer span.End()
+	outcome := "success"
+	if data.Err != nil {
+		outcome = "error"
+		span.SetStatus(codes.Error, "")
+		span.SetAttributes(attribute.String("error.category", "unknown"))
+	}
+	span.SetAttributes(attribute.String("outcome", outcome))
+	log := loggerConfig.WithContext(*t.log, ctx)
+	log.Debug().Str("dependency", "postgres").Str("operation", "database.query").Str("outcome", outcome).Msg("database.query")
 }
 
 const DatabasePingTimeout = 10
 
-func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerConfig.LoggerService) (*Database, error) {
+func New(cfg *config.Config, logger *zerolog.Logger, _ *loggerConfig.LoggerService, telemetry ...*observability.Telemetry) (*Database, error) {
 	hostPort := net.JoinHostPort(cfg.Database.Host, strconv.Itoa(cfg.Database.Port))
 
 	// URL-encode the password
@@ -71,31 +77,11 @@ func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerConfig
 		return nil, fmt.Errorf("failed to parse pgx pool config: %w", err)
 	}
 
-	// Add New Relic PostgreSQL instrumentation
-	if loggerService != nil && loggerService.GetApplication() != nil {
-		pgxPoolConfig.ConnConfig.Tracer = nrpgx5.NewTracer()
+	tracer := noop.NewTracerProvider().Tracer("flux.database")
+	if len(telemetry) > 0 && telemetry[0] != nil && telemetry[0].Tracer != nil {
+		tracer = telemetry[0].Tracer
 	}
-
-	if cfg.Primary.Env == "local" {
-		globalLevel := logger.GetLevel()
-		pgxLogger := loggerConfig.NewPgxLogger(globalLevel)
-		// Chain tracers - New Relic first, then local logging
-		if pgxPoolConfig.ConnConfig.Tracer != nil {
-			// If New Relic tracer exists, create a multi-tracer
-			localTracer := &tracelog.TraceLog{
-				Logger:   pgxzero.NewLogger(pgxLogger),
-				LogLevel: tracelog.LogLevel(loggerConfig.GetPgxTraceLogLevel(globalLevel)),
-			}
-			pgxPoolConfig.ConnConfig.Tracer = &multiTracer{
-				tracers: []any{pgxPoolConfig.ConnConfig.Tracer, localTracer},
-			}
-		} else {
-			pgxPoolConfig.ConnConfig.Tracer = &tracelog.TraceLog{
-				Logger:   pgxzero.NewLogger(pgxLogger),
-				LogLevel: tracelog.LogLevel(loggerConfig.GetPgxTraceLogLevel(globalLevel)),
-			}
-		}
-	}
+	pgxPoolConfig.ConnConfig.Tracer = queryTracer{tracer: tracer, log: logger}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), pgxPoolConfig)
 	if err != nil {

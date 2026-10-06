@@ -9,23 +9,34 @@ import (
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/6sLOGAN78/flux/internal/lifecycle"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type JobService struct {
-	Client      *asynq.Client
-	server      *asynq.Server
-	logger      *zerolog.Logger
-	emailClient *email.Client
-	shutdown    func() error
-	closeClient func() error
-	stopOnce    sync.Once
-	stopErr     error
-	drainErr    error
-	drainOnce   sync.Once
-	drainDone   chan struct{}
+	Client       *asynq.Client
+	server       *asynq.Server
+	logger       *zerolog.Logger
+	emailClient  WelcomeEmailSender
+	shutdown     func() error
+	closeClient  func() error
+	stopOnce     sync.Once
+	stopErr      error
+	drainErr     error
+	drainOnce    sync.Once
+	drainDone    chan struct{}
+	tracer       trace.Tracer
+	replacements *asynq.Client
+	inspector    *asynq.Inspector
+}
+
+// WelcomeEmailSender is the worker's narrow, injectable delivery boundary.
+type WelcomeEmailSender interface {
+	SendWelcomeEmail(to, firstName string) error
 }
 
 // StopIntake prevents new claims without closing the shared Redis connection.
@@ -56,14 +67,25 @@ func (j *JobService) Drain(ctx context.Context) error {
 
 // NewProducer allocates only an enqueue client; it never constructs a consumer
 // or email transport. Its shared Redis connection is owned by the role.
-func NewProducer(logger *zerolog.Logger, client *redis.Client) *JobService {
-	return &JobService{Client: asynq.NewClientFromRedisClient(client), logger: logger}
+func NewProducer(logger *zerolog.Logger, client *redis.Client, telemetry ...*observability.Telemetry) *JobService {
+	return &JobService{Client: asynq.NewClientFromRedisClient(client), logger: logger, tracer: jobTracer(telemetry)}
+}
+
+func jobTracer(telemetry []*observability.Telemetry) trace.Tracer {
+	if len(telemetry) > 0 && telemetry[0] != nil && telemetry[0].Tracer != nil {
+		return telemetry[0].Tracer
+	}
+	return noop.NewTracerProvider().Tracer("flux.jobs")
 }
 
 // NewConsumer owns only worker processing over the role's shared Redis client.
 // Sharing the connection lets partial startup close it even before Start runs.
-func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Client, emailClient *email.Client) *JobService {
-	server := asynq.NewServerFromRedisClient(client, asynq.Config{
+func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Client, emailClient WelcomeEmailSender, telemetry ...*observability.Telemetry) *JobService {
+	var tel *observability.Telemetry
+	if len(telemetry) > 0 {
+		tel = telemetry[0]
+	}
+	return newConsumer(logger, client, emailClient, tel, asynq.Config{
 		Concurrency:     10,
 		Queues:          map[string]int{"critical": 6, "default": 3, "low": 1},
 		ShutdownTimeout: cfg.Worker.DrainTimeout,
@@ -71,7 +93,12 @@ func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Clien
 		// Keep that intake delay inside short configured shutdown budgets.
 		TaskCheckInterval: min(time.Second, cfg.Worker.DrainTimeout/10),
 	})
-	return &JobService{server: server, logger: logger, emailClient: emailClient, shutdown: func() error { server.Shutdown(); return nil }}
+}
+
+func newConsumer(logger *zerolog.Logger, client *redis.Client, emailClient WelcomeEmailSender, tel *observability.Telemetry, cfg asynq.Config) *JobService {
+	cfg.Logger = safeJobLogger{logger}
+	server := asynq.NewServerFromRedisClient(client, cfg)
+	return &JobService{server: server, logger: logger, emailClient: emailClient, tracer: jobTracer([]*observability.Telemetry{tel}), replacements: asynq.NewClientFromRedisClient(client), inspector: asynq.NewInspectorFromRedisClient(client), shutdown: func() error { server.Shutdown(); return nil }}
 }
 
 func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
@@ -84,6 +111,7 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 	server := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{
+			Logger:      safeJobLogger{logger},
 			Concurrency: 10,
 			Queues: map[string]int{
 				"critical": 6, // Higher priority queue for important emails
@@ -92,6 +120,7 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 			},
 		},
 	)
+	inspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
 
 	return &JobService{
 		Client:      client,
@@ -104,9 +133,21 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 			server.Shutdown()
 			return nil
 		},
-		closeClient: client.Close,
+		closeClient:  func() error { return errors.Join(client.Close(), inspector.Close()) },
+		tracer:       jobTracer(nil),
+		replacements: client,
+		inspector:    inspector,
 	}
 }
+
+// Asynq's operational messages can embed task/provider values. Do not format them.
+type safeJobLogger struct{ log *zerolog.Logger }
+
+func (l safeJobLogger) Debug(...interface{}) { l.log.Debug().Msg("job.process") }
+func (l safeJobLogger) Info(...interface{})  { l.log.Info().Msg("job.process") }
+func (l safeJobLogger) Warn(...interface{})  { l.log.Warn().Msg("job.process") }
+func (l safeJobLogger) Error(...interface{}) { l.log.Error().Msg("job.process") }
+func (l safeJobLogger) Fatal(...interface{}) { l.log.Error().Msg("job.process") }
 
 func (j *JobService) Start() error {
 	if j.server == nil {

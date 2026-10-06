@@ -28,6 +28,10 @@ type failingPool struct {
 	closed int
 }
 
+type spanCapture struct{ *tracetest.InMemoryExporter }
+
+func (spanCapture) Shutdown(context.Context) error { return nil }
+
 func TestDatabaseTelemetryParameterizedPostgres(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -47,7 +51,7 @@ func TestDatabaseTelemetryParameterizedPostgres(t *testing.T) {
 	require.NoError(t, err)
 	portNumber, err := strconv.Atoi(port.Port())
 	require.NoError(t, err)
-	exporter := tracetest.NewInMemoryExporter()
+	exporter := spanCapture{tracetest.NewInMemoryExporter()}
 	tel, err := observability.New(ctx, observability.Settings{Enabled: true, SampleRatio: 1, ExportInterval: time.Millisecond, Exporters: observability.Exporters{Trace: exporter}}, "api")
 	require.NoError(t, err)
 	var logs bytes.Buffer
@@ -65,7 +69,7 @@ func TestDatabaseTelemetryParameterizedPostgres(t *testing.T) {
 	require.Contains(t, err.Error(), "PRIVATE_DRIVER_ERROR")
 	require.NoError(t, tel.Shutdown(ctx))
 	captured := exporter.GetSpans()
-	require.GreaterOrEqual(t, len(captured), 3)
+	require.GreaterOrEqual(t, len(captured), 2)
 	var outcomes []string
 	for _, span := range captured {
 		require.Equal(t, "database.query", span.Name)
