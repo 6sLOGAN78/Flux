@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"html/template"
 
-	"github.com/pkg/errors"
+	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/templates"
 	"github.com/resend/resend-go/v2"
 	"github.com/rs/zerolog"
-	"github.com/6sLOGAN78/flux/internal/config"
 )
 
 type Client struct {
@@ -23,24 +23,42 @@ func NewClient(cfg *config.Config, logger *zerolog.Logger) *Client {
 	}
 }
 
-func (c *Client) SendEmail(to, subject string, templateName Template, data map[string]string) error {
-	tmplPath := fmt.Sprintf("%s/%s.html", "templates/emails", templateName)
+// Render formats an embedded template without contacting the email provider.
+func (c *Client) Render(templateName Template, data map[string]string) (string, error) {
+	var tmplPath string
+	switch templateName {
+	case TemplateWelcome:
+		tmplPath = "emails/welcome.html"
+	default:
+		return "", fmt.Errorf("unsupported email template")
+	}
 
-	tmpl, err := template.ParseFiles(tmplPath)
+	tmpl, err := template.New("welcome.html").Option("missingkey=error").ParseFS(templates.Assets, tmplPath)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse email template %s", templateName)
+		return "", fmt.Errorf("failed to parse email template %s: %w", templateName, err)
 	}
 
 	var body bytes.Buffer
 	if err := tmpl.Execute(&body, data); err != nil {
-		return errors.Wrapf(err, "failed to execute email template %s", templateName)
+		return "", fmt.Errorf("failed to execute email template %s: %w", templateName, err)
+	}
+	return body.String(), nil
+}
+
+func (c *Client) SendEmail(to, subject string, templateName Template, data map[string]string) error {
+	body, err := c.Render(templateName, data)
+	if err != nil {
+		return err
+	}
+	if c == nil || c.client == nil {
+		return fmt.Errorf("email transport is not configured")
 	}
 
 	params := &resend.SendEmailRequest{
 		From:    fmt.Sprintf("%s <%s>", "Flux", "onboarding@resend.dev"),
 		To:      []string{to},
 		Subject: subject,
-		Html:    body.String(),
+		Html:    body,
 	}
 
 	_, err = c.client.Emails.Send(params)

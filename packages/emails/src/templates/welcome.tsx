@@ -6,7 +6,6 @@ import {
   Heading,
   Hr,
   Html,
-  Img,
   Link,
   Preview,
   Section,
@@ -64,10 +63,7 @@ export const WelcomeEmail = ({
 
             <Section className="mt-8 text-center">
               <Text className="text-gray-500 text-xs">
-                © {new Date().getFullYear()} Alfred. All rights reserved.
-              </Text>
-              <Text className="text-gray-500 text-xs">
-                123 Project Street, Suite 100, San Francisco, CA 94103
+                © Flux. All rights reserved.
               </Text>
             </Section>
           </Container>
