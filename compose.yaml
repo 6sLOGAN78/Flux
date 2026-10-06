@@ -1,0 +1,39 @@
+# Local dependencies only; credentials are disposable development defaults.
+# Never deploy this file or reuse its credentials in production.
+name: flux
+
+services:
+  postgres:
+    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: ${FLUX_LOCAL_POSTGRES_DB:-flux}
+      POSTGRES_USER: ${FLUX_LOCAL_POSTGRES_USER:-flux_local}
+      POSTGRES_PASSWORD: ${FLUX_LOCAL_POSTGRES_PASSWORD:-flux_local_only}
+    ports:
+      - "127.0.0.1:${FLUX_LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${FLUX_LOCAL_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  redis_data:

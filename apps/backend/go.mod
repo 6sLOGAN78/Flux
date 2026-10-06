@@ -1,6 +1,6 @@
 module github.com/6sLOGAN78/flux
 
-go 1.25.5
+go 1.26.8
 
 require (
 	github.com/clerk/clerk-sdk-go/v2 v2.6.0
