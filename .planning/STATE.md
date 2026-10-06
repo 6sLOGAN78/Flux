@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-10-06T06:01:01.717Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-10-06T06:06:52.113Z"
 last_activity: 2026-10-06
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 22
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 01 (Foundation Stability & System Boundaries) — EXECUTING
-Plan: 3 of 22
+Plan: 4 of 22
 Status: Ready to execute
 Last activity: 2026-10-06
 
-Progress: [█░░░░░░░░░] 9%
+Progress: [█░░░░░░░░░] 14%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [█░░░░░░░░░] 9%
 *Updated after each plan completion*
 | Phase 01 P01 | 9min | 2 tasks | 7 files |
 | Phase 01 P02 | 3min | 2 tasks | 5 files |
+| Phase 01 P03 | 4min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Retain verified Node22.23.3 LTS and Bun1.3.14; select supported Go1.26.8 with identical digest-pinned PostgreSQL17.11 and Redis8.10.2 for local/test infrastructure.
 - [Phase 01]: Separate raw SetupTestPostgres from migrating SetupTestDB; preserve migration failures for plan01-04.
 - [Phase 01]: Generic Echo handlers require per-invocation request factories; binder failures return Invalid request and validation failures return Validation failed with recognized field errors.
+- [Phase 01]: Configuration and cleanup errors expose stable stage/resource labels while retaining private causes through Unwrap; Asynq void Shutdown uses a narrow error-returning test seam. — Preserve safe diagnostics, original failures, existing FLUX key compatibility, and deterministic shutdown failure tests without starting workers.
 
 ### Pending Todos
 
@@ -90,6 +92,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-06T06:01:01.702Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-10-06T06:06:52.103Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
