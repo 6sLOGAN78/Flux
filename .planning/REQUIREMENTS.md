@@ -11,7 +11,7 @@ Requirements for the first production-credible release. The managed Flux domain 
 
 - [x] **PLAT-01**: An operator can start the API, redirector, worker, and migrator as independently configured process roles without an API replica implicitly starting workers or migrations.
 - [x] **PLAT-02**: An operator can apply deterministic, versioned PostgreSQL migrations as a release step and verify forward migration from an empty database in CI.
-- [ ] **PLAT-03**: An operator can distinguish process liveness from dependency-backed readiness through separate health endpoints that return sanitized public diagnostics.
+- [x] **PLAT-03**: An operator can distinguish process liveness from dependency-backed readiness through separate health endpoints that return sanitized public diagnostics.
 - [x] **PLAT-04**: An operator can terminate API, redirector, and worker processes with SIGTERM and observe bounded draining and cleanup of all owned resources.
 - [x] **PLAT-05**: A developer can reproduce the supported toolchain and service dependencies locally and in CI from pinned project configuration.
 - [x] **PLAT-06**: A developer receives a failed CI result when formatting, linting, type checking, code generation, migrations, unit tests, integration tests, or builds drift or fail.
@@ -99,7 +99,7 @@ Requirements for the first production-credible release. The managed Flux domain 
 
 ### Security and Privacy
 
-- [ ] **SAFE-01**: Authentication credentials, session tokens, API credentials, event payload secrets, and personal data are redacted from logs, traces, metrics, errors, and generated documentation.
+- [x] **SAFE-01**: Authentication credentials, session tokens, API credentials, event payload secrets, and personal data are redacted from logs, traces, metrics, errors, and generated documentation.
 - [ ] **SAFE-02**: Session handling uses secure cookie and CSRF protections appropriate to the chosen authentication flow, with expiry and rotation behavior tested.
 - [ ] **SAFE-03**: All database access uses parameterized SQL, explicit transaction boundaries, and workspace-scoped queries or constraints.
 - [ ] **SAFE-04**: Any outbound URL processing resolves and connects with SSRF defenses against loopback, private, link-local, metadata, and disallowed redirect destinations.
@@ -178,7 +178,7 @@ Every v1 requirement maps to exactly one roadmap phase. v2 requirements are inte
 |-------------|-------|--------|
 | PLAT-01 | Phase 1 | Complete |
 | PLAT-02 | Phase 1 | Complete |
-| PLAT-03 | Phase 1 | Pending |
+| PLAT-03 | Phase 1 | Complete |
 | PLAT-04 | Phase 1 | Complete |
 | PLAT-05 | Phase 1 | Complete |
 | PLAT-06 | Phase 1 | Complete |
@@ -242,7 +242,7 @@ Every v1 requirement maps to exactly one roadmap phase. v2 requirements are inte
 | ANLY-08 | Phase 6 | Pending |
 | ANLY-09 | Phase 6 | Pending |
 | ANLY-10 | Phase 6 | Pending |
-| SAFE-01 | Phase 1 | Pending |
+| SAFE-01 | Phase 1 | Complete |
 | SAFE-02 | Phase 2 | Pending |
 | SAFE-03 | Phase 2 | Pending |
 | SAFE-04 | Phase 2 | Pending |
