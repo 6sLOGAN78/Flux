@@ -9,7 +9,7 @@ Requirements for the first production-credible release. The managed Flux domain 
 
 ### Platform Foundation
 
-- [ ] **PLAT-01**: An operator can start the API, redirector, worker, and migrator as independently configured process roles without an API replica implicitly starting workers or migrations.
+- [x] **PLAT-01**: An operator can start the API, redirector, worker, and migrator as independently configured process roles without an API replica implicitly starting workers or migrations.
 - [x] **PLAT-02**: An operator can apply deterministic, versioned PostgreSQL migrations as a release step and verify forward migration from an empty database in CI.
 - [ ] **PLAT-03**: An operator can distinguish process liveness from dependency-backed readiness through separate health endpoints that return sanitized public diagnostics.
 - [x] **PLAT-04**: An operator can terminate API, redirector, and worker processes with SIGTERM and observe bounded draining and cleanup of all owned resources.
@@ -176,7 +176,7 @@ Every v1 requirement maps to exactly one roadmap phase. v2 requirements are inte
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PLAT-01 | Phase 1 | Pending |
+| PLAT-01 | Phase 1 | Complete |
 | PLAT-02 | Phase 1 | Complete |
 | PLAT-03 | Phase 1 | Pending |
 | PLAT-04 | Phase 1 | Complete |
