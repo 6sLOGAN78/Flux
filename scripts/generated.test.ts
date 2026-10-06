@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -126,15 +126,41 @@ test("incomplete generated manifest fails before write mode publishes anything",
   });
 });
 
-test("real CLI runs all pinned generators from a different working directory without changing artifacts", async () => {
+test("real CLI runs all pinned generators from a different working directory without changing artifacts", { timeout: 120000 }, async () => {
   await load();
   const before = await Promise.all(artifacts.map((path) => readFile(join(repository, path))));
   const cwd = await mkdtemp(join(tmpdir(), "flux-generation-cwd-"));
   try {
-    const result = spawnSync("bun", [join(repository, "scripts/generate.ts"), "--check"], { cwd, encoding: "utf8", timeout: 120000 });
+    const result = spawnSync("bun", [join(repository, "scripts/generate.ts"), "--check"], {
+      cwd, env: { ...process.env, TMPDIR: cwd }, encoding: "utf8", timeout: 120000,
+    });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(await readdir(cwd), []);
     for (const [index, path] of artifacts.entries()) assert.deepEqual(await readFile(join(repository, path)), before[index]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("real CLI propagates a nonzero tool exit, hides tool output and cleans partial generation", { timeout: 120000 }, async () => {
+  await load();
+  const before = await Promise.all(artifacts.map((path) => readFile(join(repository, path))));
+  const cwd = await mkdtemp(join(tmpdir(), "flux-generation-failure-"));
+  try {
+    const bin = join(cwd, "bin");
+    await mkdir(bin);
+    await writeFile(join(bin, "go"), "#!/bin/sh\nprintf '%s' 'private-tool-output-sentinel'\nexit 17\n");
+    await chmod(join(bin, "go"), 0o700);
+    for (const mode of [[], ["--check"]]) {
+      const result = spawnSync("bun", [join(repository, "scripts/generate.ts"), ...mode], {
+        cwd, env: { ...process.env, TMPDIR: cwd, PATH: `${bin}:${process.env.PATH}` }, encoding: "utf8", timeout: 120000,
+      });
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+      assert.equal(result.stderr.trim(), "Generation failed: tools.lock.json");
+      assert.deepEqual(await readdir(cwd), ["bin"]);
+      for (const [index, path] of artifacts.entries()) assert.deepEqual(await readFile(join(repository, path)), before[index]);
+    }
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
