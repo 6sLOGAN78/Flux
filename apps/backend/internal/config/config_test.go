@@ -157,3 +157,66 @@ func TestConfigMigratorLoggingAndTimeoutValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
+	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
+		t.Run(string(role), func(t *testing.T) {
+			values := configValues()
+			delete(values, "auth")
+			if role != RoleWorker {
+				delete(values, "integration")
+				delete(values, "redis")
+			}
+			if role != RoleAPI {
+				delete(values, "database")
+			}
+			cfg, err := loadConfigForRole(configProvider{values: values}, role)
+			if err != nil {
+				t.Fatalf("unused secrets blocked %s: %v (%v)", role, err, errors.Unwrap(err))
+			}
+			settings := cfg.ForRole(role)
+			if settings.ListenAddress == "" || settings.DrainTimeout <= 0 || settings.ReadinessTimeout <= 0 || cfg.Server.ReadTimeout != 5 {
+				t.Fatalf("role settings missing or legacy fallback changed: %+v", settings)
+			}
+		})
+	}
+}
+
+func TestRoleConfigOverridesAndValidation(t *testing.T) {
+	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
+		values := configValues()
+		values[string(role)] = map[string]any{"listen_address": "127.0.0.1:9099", "drain_timeout": "3s", "readiness_timeout": "500ms"}
+		cfg, err := loadConfigForRole(configProvider{values: values}, role)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if settings := cfg.ForRole(role); settings.ListenAddress != "127.0.0.1:9099" || settings.DrainTimeout.String() != "3s" || settings.ReadinessTimeout.String() != "500ms" {
+			t.Fatalf("role overrides lost: %+v", settings)
+		}
+		for _, key := range []string{"listen_address", "drain_timeout", "readiness_timeout"} {
+			fields := values[string(role)].(map[string]any)
+			old := fields[key]
+			if key == "listen_address" {
+				fields[key] = "SECRET-MARKER"
+			} else {
+				fields[key] = "-1s"
+			}
+			_, err := loadConfigForRole(configProvider{values: values}, role)
+			if err == nil || strings.Contains(err.Error(), "SECRET-MARKER") {
+				t.Fatalf("invalid %s accepted or leaked: %v", key, err)
+			}
+			fields[key] = old
+		}
+	}
+	values := configValues()
+	delete(values, "redis")
+	delete(values, "integration")
+	values["api"] = map[string]any{"producer_enabled": true}
+	if _, err := loadConfigForRole(configProvider{values: values}, RoleAPI); err == nil {
+		t.Fatal("declared producer accepted without Redis")
+	}
+	delete(values, "api")
+	if _, err := loadConfigForRole(configProvider{values: values}, RoleWorker); err == nil {
+		t.Fatal("worker accepted without Redis/email")
+	}
+}
