@@ -479,7 +479,17 @@ func TestRoleBinaryStartup(t *testing.T) {
 		}
 	})
 	t.Run("task_targets", func(t *testing.T) {
+		outputDir := t.TempDir()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		build := exec.CommandContext(ctx, "task", "--dir", root, "build", "BIN_DIR="+outputDir)
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("task build failed: %v: %s", err, output)
+		}
 		for _, role := range []string{"api", "redirector", "worker", "migrator"} {
+			if info, err := os.Stat(filepath.Join(outputDir, role)); err != nil || !info.Mode().IsRegular() {
+				t.Fatalf("task build did not produce %s binary: %v", role, err)
+			}
 			for _, action := range []string{"run", "build"} {
 				cmd := exec.Command("task", "--dir", root, "--dry", action+":"+role)
 				output, err := cmd.CombinedOutput()

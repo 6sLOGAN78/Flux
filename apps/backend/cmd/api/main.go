@@ -13,8 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// The legacy flux command is an API compatibility shim. Use cmd/worker for
-// consumers and cmd/migrator for explicit migrations.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Stderr)

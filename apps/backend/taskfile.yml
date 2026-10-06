@@ -1,5 +1,8 @@
 version: '3'
 
+vars:
+  BIN_DIR: '{{.TASKFILE_DIR}}/build/bin'
+
 tasks:
   help:
     desc: print this help message
@@ -8,9 +11,66 @@ tasks:
     silent: true
 
   run:
-    desc: run the cmd/flux application
+    desc: run the API role through the legacy Flux compatibility command
+    dir: '{{.TASKFILE_DIR}}'
     cmds:
     - go run ./cmd/flux
+
+  run:api:
+    desc: run only the API role (explicit migrations are separate)
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go run ./cmd/api
+
+  run:redirector:
+    desc: run only the redirector role
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go run ./cmd/redirector
+
+  run:worker:
+    desc: run only the worker role and its management listener
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go run ./cmd/worker
+
+  run:migrator:
+    desc: apply embedded migrations and exit
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go run ./cmd/migrator
+
+  build:
+    desc: build all four independently deployable role binaries
+    cmds:
+    - task: build:api
+    - task: build:redirector
+    - task: build:worker
+    - task: build:migrator
+
+  build:api:
+    desc: build the API binary
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go build -o '{{.BIN_DIR}}/api' ./cmd/api
+
+  build:redirector:
+    desc: build the redirector binary
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go build -o '{{.BIN_DIR}}/redirector' ./cmd/redirector
+
+  build:worker:
+    desc: build the worker binary
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go build -o '{{.BIN_DIR}}/worker' ./cmd/worker
+
+  build:migrator:
+    desc: build the one-shot migrator binary
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - go build -o '{{.BIN_DIR}}/migrator' ./cmd/migrator
 
   migrations:new:
     desc: create a new database migration

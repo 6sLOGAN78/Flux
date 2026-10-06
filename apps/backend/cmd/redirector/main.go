@@ -13,8 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// The legacy flux command is an API compatibility shim. Use cmd/worker for
-// consumers and cmd/migrator for explicit migrations.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Stderr)
@@ -24,22 +22,22 @@ func main() {
 
 // run returns the process exit decision after releasing the role's resources.
 func run(ctx context.Context, output io.Writer) int {
-	log := zerolog.New(output).With().Str("role", string(config.RoleAPI)).Timestamp().Logger()
-	cfg, err := config.LoadConfigForRole(config.RoleAPI)
+	log := zerolog.New(output).With().Str("role", string(config.RoleRedirector)).Timestamp().Logger()
+	cfg, err := config.LoadConfigForRole(config.RoleRedirector)
 	if err != nil {
-		log.Error().Err(err).Msg("api configuration failed")
+		log.Error().Err(err).Msg("redirector configuration failed")
 		return 1
 	}
-	role, err := app.NewAPI(ctx, cfg)
+	role, err := app.NewRedirector(ctx, cfg)
 	if err != nil {
-		log.Error().Err(err).Msg("api construction failed")
+		log.Error().Err(err).Msg("redirector construction failed")
 		return 1
 	}
 	runErr := role.Run(ctx)
-	closeCtx, cancel := context.WithTimeout(context.Background(), cfg.ForRole(config.RoleAPI).DrainTimeout)
+	closeCtx, cancel := context.WithTimeout(context.Background(), cfg.ForRole(config.RoleRedirector).DrainTimeout)
 	defer cancel()
 	if err := errors.Join(runErr, role.Close(closeCtx)); err != nil {
-		log.Error().Err(err).Msg("api execution failed")
+		log.Error().Err(err).Msg("redirector execution failed")
 		return 1
 	}
 	return 0
