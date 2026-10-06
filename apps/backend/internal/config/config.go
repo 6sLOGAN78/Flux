@@ -1,11 +1,23 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
-	"strings"
+)
+
+// Role selects the resources owned by a process.
+type Role string
+
+const (
+	RoleAPI        Role = "api"
+	RoleRedirector Role = "redirector"
+	RoleWorker     Role = "worker"
+	RoleMigrator   Role = "migrator"
 )
 
 type Config struct {
@@ -65,18 +77,36 @@ func (e *ConfigError) Error() string { return "configuration " + e.Stage + " fai
 func (e *ConfigError) Unwrap() error { return e.cause }
 
 func LoadConfig() (*Config, error) {
-	return loadConfig(env.Provider("FLUX_", ".", func(s string) string {
+	return LoadConfigForRole(RoleAPI)
+}
+
+// LoadConfigForRole preserves FLUX environment names and validates owned resources.
+func LoadConfigForRole(role Role) (*Config, error) {
+	return loadConfigForRole(env.Provider("FLUX_", ".", func(s string) string {
 		return strings.ToLower(strings.TrimPrefix(s, "FLUX_"))
-	}))
+	}), role)
 }
 
 func loadConfig(provider koanf.Provider) (*Config, error) {
+	return loadConfigForRole(provider, RoleAPI)
+}
+
+func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
+	switch role {
+	case RoleAPI, RoleRedirector, RoleWorker, RoleMigrator:
+	default:
+		return nil, &ConfigError{Stage: "role", cause: fmt.Errorf("unsupported process role")}
+	}
 	k := koanf.New(".")
 	if err := k.Load(provider, nil); err != nil {
 		return nil, &ConfigError{Stage: "load", cause: err}
 	}
 
 	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
+	if role == RoleMigrator {
+		// A one-shot command needs neither HTTP settings nor pool sizing.
+		mainConfig.Database = DatabaseConfig{MaxOpenConns: 1, MaxIdleConns: 1, ConnMaxLifetime: 60, ConnMaxIdleTime: 30}
+	}
 	if err := k.Unmarshal("", mainConfig); err != nil {
 		return nil, &ConfigError{Stage: "unmarshal", cause: err}
 	}
@@ -84,8 +114,22 @@ func loadConfig(provider koanf.Provider) (*Config, error) {
 	validate := validator.New()
 	// Observability owns its validation and optional vendor credentials. Validate
 	// only the existing required sections here, keeping stage errors distinct.
-	if err := validate.StructExcept(mainConfig, "Observability"); err != nil {
+	excluded := []string{"Observability"}
+	switch role {
+	case RoleMigrator:
+		excluded = append(excluded, "Server", "Auth", "Redis", "Integration")
+	case RoleRedirector:
+		excluded = append(excluded, "Database", "Auth", "Redis", "Integration")
+	case RoleWorker:
+		excluded = append(excluded, "Server", "Database", "Auth")
+	}
+	if err := validate.StructExcept(mainConfig, excluded...); err != nil {
 		return nil, &ConfigError{Stage: "validate", cause: err}
+	}
+	if role == RoleMigrator {
+		if err := validate.Var(mainConfig.Database.Port, "min=1,max=65535"); err != nil {
+			return nil, &ConfigError{Stage: "validate", cause: err}
+		}
 	}
 
 	// Override service name and environment from primary config
@@ -95,6 +139,12 @@ func loadConfig(provider koanf.Provider) (*Config, error) {
 	// Validate observability config
 	if err := mainConfig.Observability.Validate(); err != nil {
 		return nil, &ConfigError{Stage: "observability", cause: err}
+	}
+	if role == RoleMigrator {
+		logging := mainConfig.Observability.Logging
+		if (logging.Format != "json" && logging.Format != "console") || mainConfig.Observability.HealthChecks.Timeout <= 0 {
+			return nil, &ConfigError{Stage: "observability", cause: fmt.Errorf("invalid logging format or operation timeout")}
+		}
 	}
 
 	return mainConfig, nil

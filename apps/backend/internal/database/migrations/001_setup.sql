@@ -1,6 +1,7 @@
--- Write your migrate up statements here
+-- Bootstrap the migration ledger without introducing product schema.
+SELECT 1;
 
 ---- create above / drop below ----
 
--- Write your migrate down statements here. If this migration is irreversible
--- Then delete the separator line above.
+-- The bootstrap has no application schema to undo.
+SELECT 1;

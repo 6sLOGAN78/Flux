@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	containerconfig "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -68,6 +73,21 @@ func TestMigrationFailuresPreserveSafeCauses(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "SECRET-MARKER") {
 		t.Fatalf("connect cause/redaction failed: %v", err)
 	}
+	var cleanup app.Cleanup
+	cause := errors.New("SECRET-MARKER cleanup failure")
+	if err := cleanup.Push("migration_connection", func(closeCtx context.Context) error {
+		if closeCtx.Err() != nil {
+			t.Fatal("cleanup inherited canceled operation context")
+		}
+		return cause
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err = closeMigration(&cleanup)
+	var typed *MigrationError
+	if !errors.Is(err, cause) || !errors.As(err, &typed) || typed.Operation != "close" || strings.Contains(err.Error(), "SECRET-MARKER") {
+		t.Fatalf("cleanup stage/cause/redaction failed: %v", err)
+	}
 }
 
 func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
@@ -77,7 +97,10 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image: image, ExposedPorts: []string{"5432/tcp"},
-			Env:        map[string]string{"POSTGRES_USER": "testuser", "POSTGRES_PASSWORD": "SECRET-MARKER !@:/?+", "POSTGRES_DB": "migration_test"},
+			Env: map[string]string{"POSTGRES_USER": "testuser", "POSTGRES_PASSWORD": "SECRET-MARKER !@:/?+", "POSTGRES_DB": "migration_test"},
+			HostConfigModifier: func(cfg *containerconfig.HostConfig) {
+				cfg.PortBindings = network.PortMap{network.MustParsePort("5432/tcp"): {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: "0"}}}
+			},
 			WaitingFor: wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
 		}, Started: true,
 	})
@@ -160,11 +183,19 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 		}
 	}
 	minimalEnv = append(minimalEnv, "FLUX_PRIMARY.ENV=test", "FLUX_DATABASE.HOST="+host, "FLUX_DATABASE.PORT="+port.Port(), "FLUX_DATABASE.USER=testuser", "FLUX_DATABASE.PASSWORD="+cfg.Database.Password, "FLUX_DATABASE.NAME=migration_test", "FLUX_DATABASE.SSL_MODE=disable")
+	// Exercise the executable's first run from an empty migration ledger too.
+	if _, err := conn.Exec(ctx, "DROP TABLE schema_version"); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
 		cmd := exec.CommandContext(ctx, binary)
 		cmd.Dir, cmd.Env = t.TempDir(), minimalEnv
 		output, err := cmd.CombinedOutput()
-		if err != nil || !bytes.Contains(output, []byte(fmt.Sprintf("\"end_version\":%d", want))) || bytes.Contains(output, []byte("SECRET-MARKER")) {
+		start := int32(0)
+		if i == 1 {
+			start = want
+		}
+		if err != nil || !bytes.Contains(output, []byte(fmt.Sprintf("\"start_version\":%d", start))) || !bytes.Contains(output, []byte(fmt.Sprintf("\"end_version\":%d", want))) || bytes.Contains(output, []byte("SECRET-MARKER")) {
 			t.Fatalf("one-shot binary: %v: %s", err, output)
 		}
 	}
@@ -177,5 +208,17 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 	failed.Dir, failed.Env = t.TempDir(), append(minimalEnv, "FLUX_DATABASE.PORT=1")
 	if output, err := failed.CombinedOutput(); err == nil || bytes.Contains(output, []byte("SECRET-MARKER")) || bytes.Contains(output, []byte(net.JoinHostPort(host, "1"))) {
 		t.Fatalf("failed binary status/redaction: %v: %s", err, output)
+	}
+	if _, err := conn.Exec(ctx, "UPDATE schema_version SET version = 0; CREATE FUNCTION reject_version_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'SECRET-MARKER'; END $$; CREATE TRIGGER reject_version_update BEFORE UPDATE ON schema_version FOR EACH ROW EXECUTE FUNCTION reject_version_update()"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = MigrateWithResult(ctx, cfg)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || strings.Contains(err.Error(), "SECRET-MARKER") {
+		t.Fatalf("real migration failure cause/redaction: %v", err)
+	}
+	var connections int
+	if err := conn.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND usename = current_user AND pid <> pg_backend_pid()").Scan(&connections); err != nil || connections != 0 {
+		t.Fatalf("one-shot connection leaked: count %d, %v", connections, err)
 	}
 }

@@ -1,22 +1,11 @@
 version: '3'
 
-vars:
-  FLUX_DB_DSN: '{{.FLUX_DB_DSN | default ""}}'
-
 tasks:
   help:
     desc: print this help message
     cmds:
     - task --list-all
     silent: true
-
-  confirm:
-    desc: confirmation prompt
-    cmds:
-    - |
-      echo -n 'Are you sure? [y/N] ' && read ans && [ ${ans:-N} = y ]
-    silent: true
-    internal: true
 
   run:
     desc: run the cmd/flux application
@@ -37,12 +26,23 @@ tasks:
     - echo 'Creating migration file for {{.NAME}}...'
     - tern new -m ./internal/database/migrations {{.NAME}}
 
-  migrations:up:
-    desc: apply all up database migrations
-    deps: [ confirm ]
+  migrate:
+    desc: apply embedded database migrations using FLUX_DATABASE configuration
+    dir: '{{.TASKFILE_DIR}}'
     cmds:
-    - echo 'Running up migrations...'
-    - tern migrate -m ./internal/database/migrations --conn-string {{.FLUX_DB_DSN}}
+    - go run ./cmd/migrator
+
+  migrate:check:
+    desc: apply and repeat embedded migrations non-interactively for CI
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+    - task: migrate
+    - task: migrate
+
+  migrations:up:
+    desc: compatibility alias for explicit embedded migrations
+    cmds:
+    - task: migrate
 
   tidy:
     desc: format all .go files, and tidy and vendor module dependencies
