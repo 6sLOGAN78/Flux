@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -13,6 +14,73 @@ import (
 type configProvider struct {
 	values map[string]any
 	err    error
+}
+
+func TestObservabilityCompatibleKeysAndSettings(t *testing.T) {
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "FLUX_") {
+			t.Setenv(key, "")
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Setenv("FLUX_PRIMARY.ENV", "test")
+	t.Setenv("FLUX_OBSERVABILITY.NEW_RELIC.LICENSE_KEY", "SECRET-MARKER")
+	t.Setenv("FLUX_OBSERVABILITY.NEW_RELIC.DEBUG_LOGGING", "true")
+	t.Setenv("FLUX_OBSERVABILITY.OTLP.ENABLED", "true")
+	t.Setenv("FLUX_OBSERVABILITY.OTLP.ENDPOINT", "http://localhost:4318")
+	t.Setenv("FLUX_OBSERVABILITY.OTLP.EXPORT_TIMEOUT", "750ms")
+	t.Setenv("FLUX_OBSERVABILITY.OTLP.SAMPLE_RATIO", "0.25")
+	cfg, err := LoadConfigForRole(RoleRedirector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Observability.NewRelic.LicenseKey != "SECRET-MARKER" || !cfg.Observability.NewRelic.DebugLogging {
+		t.Fatal("legacy keys no longer bind")
+	}
+	s := cfg.Observability.TelemetrySettings()
+	if !s.Enabled || s.Endpoint != "http://localhost:4318" || s.ExportTimeout != 750*time.Millisecond || s.SampleRatio != .25 || s.Environment != "test" {
+		t.Fatalf("mapping changed: %+v", s)
+	}
+}
+
+func TestObservabilityTypedSafeValidation(t *testing.T) {
+	for _, mutate := range []func(*ObservabilityConfig){
+		func(c *ObservabilityConfig) { c.OTLP.Endpoint = "http://user:SECRET-MARKER@collector" },
+		func(c *ObservabilityConfig) { c.OTLP.Endpoint = "http://collector/?token=SECRET-MARKER" },
+		func(c *ObservabilityConfig) { c.OTLP.Endpoint = "SECRET-MARKER" },
+		func(c *ObservabilityConfig) { c.OTLP.Endpoint = "http://collector:99999" },
+		func(c *ObservabilityConfig) { c.OTLP.ExportTimeout = -time.Second },
+		func(c *ObservabilityConfig) { c.OTLP.ExportInterval = time.Hour },
+		func(c *ObservabilityConfig) { c.OTLP.BatchSize = c.OTLP.QueueSize + 1 },
+		func(c *ObservabilityConfig) { c.Logging.Level = "SECRET-MARKER" },
+	} {
+		c := DefaultObservabilityConfig()
+		c.OTLP.Enabled = true
+		mutate(c)
+		err := c.Validate()
+		var typed *ConfigError
+		if !errors.As(err, &typed) || typed.Stage != "observability" || errors.Unwrap(typed) == nil {
+			t.Fatalf("missing typed wrapped error: %v", err)
+		}
+		if strings.Contains(fmt.Sprint(err, errors.Unwrap(typed)), "SECRET-MARKER") {
+			t.Fatal("validation exposed input")
+		}
+	}
+	for _, enabled := range []bool{false, true} {
+		c := DefaultObservabilityConfig()
+		c.OTLP.Enabled = enabled
+		if err := c.Validate(); err != nil {
+			t.Fatalf("optional endpoint rejected: %v", err)
+		}
+	}
+	c := DefaultObservabilityConfig()
+	c.OTLP.Endpoint = "SECRET-MARKER"
+	if err := c.Validate(); err != nil || c.TelemetrySettings().Endpoint != "" {
+		t.Fatalf("disabled export became a dependency: %v", err)
+	}
 }
 
 func (p configProvider) Read() (map[string]any, error) { return p.values, p.err }
