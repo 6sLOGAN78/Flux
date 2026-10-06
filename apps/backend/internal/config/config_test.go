@@ -101,3 +101,59 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 		t.Fatalf("primary metadata not preserved")
 	}
 }
+
+func TestConfigMigratorRole(t *testing.T) {
+	values := configValues()
+	delete(values, "auth")
+	delete(values, "redis")
+	delete(values, "integration")
+	delete(values, "server")
+	cfg, err := loadConfigForRole(configProvider{values: values}, RoleMigrator)
+	if err != nil || cfg == nil {
+		t.Fatalf("PostgreSQL-only configuration rejected: %v", err)
+	}
+	if cfg.Server.Port != "" || cfg.Auth.SecretKey != "" || cfg.Redis.Address != "" {
+		t.Fatal("unused services were configured")
+	}
+	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker, Role("unknown")} {
+		if _, err := loadConfigForRole(configProvider{values: values}, role); err == nil {
+			t.Fatalf("incomplete/unknown role %q accepted", role)
+		}
+	}
+	for _, field := range []string{"host", "port", "user", "name", "ssl_mode"} {
+		t.Run(field, func(t *testing.T) {
+			fields := values["database"].(map[string]any)
+			original := fields[field]
+			delete(fields, field)
+			defer func() { fields[field] = original }()
+			_, err := loadConfigForRole(configProvider{values: values}, RoleMigrator)
+			var typed *ConfigError
+			var validationErrors validator.ValidationErrors
+			if !errors.As(err, &typed) || typed.Stage != "validate" || !errors.As(err, &validationErrors) {
+				t.Fatalf("missing database field did not retain typed cause: %v", err)
+			}
+		})
+	}
+}
+
+func TestConfigMigratorLoggingAndTimeoutValidation(t *testing.T) {
+	for _, values := range []map[string]any{
+		{"observability": map[string]any{"logging": map[string]any{"level": "SECRET-MARKER"}}},
+		{"observability": map[string]any{"logging": map[string]any{"format": "SECRET-MARKER"}}},
+		{"observability": map[string]any{"health_checks": map[string]any{"timeout": "-1s"}}},
+		{"database": map[string]any{"port": -1}},
+	} {
+		base := configValues()
+		for section, fields := range values {
+			if section == "database" {
+				base[section].(map[string]any)["port"] = fields.(map[string]any)["port"]
+			} else {
+				base[section] = fields
+			}
+		}
+		_, err := loadConfigForRole(configProvider{values: base}, RoleMigrator)
+		if err == nil || strings.Contains(err.Error(), "SECRET-MARKER") {
+			t.Fatalf("invalid logging/timeout accepted or leaked: %v", err)
+		}
+	}
+}
