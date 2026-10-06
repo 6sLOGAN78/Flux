@@ -1,7 +1,7 @@
 # Phase 1 Execution Checkpoint
 
 Recorded: 2026-10-06
-Status: Planning verified; execution blocked before the first task.
+Status: Planning verified; Git write access verified; execution unblocked.
 
 ## Saved result
 
@@ -12,11 +12,10 @@ Status: Planning verified; execution blocked before the first task.
 - Structural validation passed for all plans. No application implementation or application tests have run.
 - The broad post-planning report flags 64 requirements allocated to later phases; all ten Phase 1 requirements pass.
 
-## Execution blocker
+## Execution status: unblocked
 
-Git was initialized outside the restricted session after the original checkpoint. `git rev-parse --is-inside-work-tree` now succeeds. The master branch has no commits yet and the initial files are staged. This session still mounts `.git` read-only: the requested `git init` attempt failed with `could not lock config file ... Read-only file system`. The executor protocol requires each completed task to be committed immediately and includes commit hashes in completion evidence. No executor was dispatched because that protocol cannot be satisfied here.
-
-Allow the session to write the normal repository's `.git` metadata, then resume with `$gsd-execute-phase 1 --auto --no-transition`. Initialization is already done; another `git init` is unnecessary. Confirm Git writes work before source changes; do not relocate Git metadata to bypass the restriction. Preserve the existing staging. Use sequential execution or supported manual worktree isolation for the Codex runtime.
+The previous session encountered a read-only filesystem restriction where `.git` was mounted read-only (`os.statvfs('.git').f_flag & os.ST_RDONLY`).
+In this session, filesystem policy permits writes to `.git` metadata (`ST_RDONLY: False`, write test passed). Git initialization, commits, and branch operations are fully functional. Phase 1 execution can now proceed through the 22 plans starting at `01-01-PLAN.md`.
 
 ## Tracking notes
 
