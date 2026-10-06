@@ -33,6 +33,9 @@ func (r *RoleRuntime) constructWorker(f roleFactories) error {
 		return err
 	}
 	r.Server.Job = consumer
+	if consumer != nil {
+		r.lifecycle.stop = consumer.StopIntake
+	}
 	r.readiness = workerReadinessChecks(r.Server, adapter)
 	return nil
 }

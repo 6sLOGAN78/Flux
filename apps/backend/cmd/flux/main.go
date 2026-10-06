@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -16,7 +13,7 @@ import (
 // The legacy flux command is an API compatibility shim. Use cmd/worker for
 // consumers and cmd/migrator for explicit migrations.
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := app.NotifyContext(context.Background())
 	code := run(ctx, os.Stderr)
 	stop()
 	os.Exit(code)
@@ -35,10 +32,7 @@ func run(ctx context.Context, output io.Writer) int {
 		log.Error().Err(err).Msg("api construction failed")
 		return 1
 	}
-	runErr := role.Run(ctx)
-	closeCtx, cancel := context.WithTimeout(context.Background(), cfg.ForRole(config.RoleAPI).DrainTimeout)
-	defer cancel()
-	if err := errors.Join(runErr, role.Close(closeCtx)); err != nil {
+	if err := role.Run(ctx); err != nil {
 		log.Error().Err(err).Msg("api execution failed")
 		return 1
 	}

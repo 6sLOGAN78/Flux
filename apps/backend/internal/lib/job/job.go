@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/lib/email"
@@ -22,6 +23,35 @@ type JobService struct {
 	closeClient func() error
 	stopOnce    sync.Once
 	stopErr     error
+	drainErr    error
+	drainOnce   sync.Once
+	drainDone   chan struct{}
+}
+
+// StopIntake prevents new claims without closing the shared Redis connection.
+func (j *JobService) StopIntake() {
+	if j.server != nil {
+		j.server.Stop()
+	}
+}
+
+// Drain joins one consumer shutdown within the caller's overall deadline.
+func (j *JobService) Drain(ctx context.Context) error {
+	j.drainOnce.Do(func() {
+		j.drainDone = make(chan struct{})
+		go func() {
+			if j.shutdown != nil {
+				j.drainErr = j.shutdown()
+			}
+			close(j.drainDone)
+		}()
+	})
+	select {
+	case <-j.drainDone:
+		return j.drainErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // NewProducer allocates only an enqueue client; it never constructs a consumer
@@ -37,6 +67,9 @@ func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Clien
 		Concurrency:     10,
 		Queues:          map[string]int{"critical": 6, "default": 3, "low": 1},
 		ShutdownTimeout: cfg.Worker.DrainTimeout,
+		// Asynq Stop waits for its idle poll sleep (up to 1.5 intervals).
+		// Keep that intake delay inside short configured shutdown budgets.
+		TaskCheckInterval: min(time.Second, cfg.Worker.DrainTimeout/10),
 	})
 	return &JobService{server: server, logger: logger, emailClient: emailClient, shutdown: func() error { server.Shutdown(); return nil }}
 }
@@ -100,7 +133,7 @@ func (j *JobService) Stop() error {
 			_ = cleanup.Push("job producer", func(context.Context) error { return j.closeClient() })
 		}
 		if j.shutdown != nil {
-			_ = cleanup.Push("job consumer", func(context.Context) error { return j.shutdown() })
+			_ = cleanup.Push("job consumer", j.Drain)
 		}
 		j.stopErr = cleanup.Close(context.Background())
 	})

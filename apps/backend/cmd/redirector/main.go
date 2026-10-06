@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -14,7 +11,7 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := app.NotifyContext(context.Background())
 	code := run(ctx, os.Stderr)
 	stop()
 	os.Exit(code)
@@ -33,10 +30,7 @@ func run(ctx context.Context, output io.Writer) int {
 		log.Error().Err(err).Msg("redirector construction failed")
 		return 1
 	}
-	runErr := role.Run(ctx)
-	closeCtx, cancel := context.WithTimeout(context.Background(), cfg.ForRole(config.RoleRedirector).DrainTimeout)
-	defer cancel()
-	if err := errors.Join(runErr, role.Close(closeCtx)); err != nil {
+	if err := role.Run(ctx); err != nil {
 		log.Error().Err(err).Msg("redirector execution failed")
 		return 1
 	}

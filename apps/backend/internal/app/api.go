@@ -40,6 +40,7 @@ type RoleRuntime struct {
 	listener  net.Listener
 	settings  config.RoleConfig
 	readiness []handler.ReadinessCheck
+	lifecycle Lifecycle
 }
 
 type API struct{ *RoleRuntime }
@@ -109,6 +110,7 @@ func newRole(ctx context.Context, role config.Role, cfg *config.Config, factorie
 		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("configuration required")}
 	}
 	runtime = &RoleRuntime{Role: role, settings: cfg.ForRole(role)}
+	runtime.lifecycle.cleanup = &runtime.cleanup
 	if runtime.settings.DrainTimeout <= 0 || runtime.settings.ReadinessTimeout <= 0 || runtime.settings.ListenAddress == "" {
 		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("normalized role configuration required")}
 	}
@@ -129,6 +131,15 @@ func newRole(ctx context.Context, role config.Role, cfg *config.Config, factorie
 	if role == config.RoleWorker {
 		if cause := factories.startConsumer(runtime.Server.Job); cause != nil {
 			return runtime, &StartupError{Role: role, Stage: "start consumer", cause: cause}
+		}
+		if runtime.Server.Job != nil {
+			runtime.lifecycle.drain = func(ctx context.Context) error {
+				// Management stays reachable and unready while active jobs finish.
+				if err := runtime.Server.Job.Drain(ctx); err != nil {
+					return err
+				}
+				return runtime.Server.Shutdown(ctx)
+			}
 		}
 	}
 	return runtime, nil
@@ -191,7 +202,9 @@ func (r *RoleRuntime) constructHTTP(f roleFactories) error {
 		return &StartupError{Role: r.Role, Stage: "router", cause: err}
 	}
 	r.HTTP = httpRouter
-	router.RegisterHealthRoutes(httpRouter, handler.NewReadinessHandler(r.Server.Logger, r.settings.ReadinessTimeout, r.readiness))
+	health := handler.NewReadinessHandler(r.Server.Logger, r.settings.ReadinessTimeout, r.readiness)
+	health.SetReadinessGate(r.lifecycle.Ready)
+	router.RegisterHealthRoutes(httpRouter, health)
 	r.Server.SetupHTTPServerAt(r.settings.ListenAddress, httpRouter)
 	listener, err := f.listen(r.settings.ListenAddress)
 	if err != nil {
@@ -207,6 +220,8 @@ func (r *RoleRuntime) constructHTTP(f roleFactories) error {
 	}); err != nil {
 		return err
 	}
+	r.lifecycle.drain = r.Server.Shutdown
+	// Also attempt HTTP shutdown after a worker drain failure or partial startup.
 	return r.cleanup.Push("http", r.Server.Shutdown)
 }
 
@@ -260,7 +275,7 @@ func (r *RoleRuntime) Run(ctx context.Context) error {
 }
 
 // Close drains HTTP, then closes dependents and shared resources exactly once.
-func (r *RoleRuntime) Close(ctx context.Context) error { return r.cleanup.Close(ctx) }
+func (r *RoleRuntime) Close(ctx context.Context) error { return r.lifecycle.Shutdown(ctx) }
 
 // Address exposes the bound address, including automatically assigned test ports.
 func (r *RoleRuntime) Address() string { return r.listener.Addr().String() }

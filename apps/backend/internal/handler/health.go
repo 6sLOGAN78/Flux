@@ -25,7 +25,12 @@ type HealthHandler struct {
 	logger  *zerolog.Logger
 	timeout time.Duration
 	checks  []ReadinessCheck
+	ready   func() bool
 }
+
+// SetReadinessGate connects supervisor shutdown without dependency probes.
+// Composition calls this before the listener starts serving requests.
+func (h *HealthHandler) SetReadinessGate(ready func() bool) { h.ready = ready }
 
 // NewHealthHandler preserves registry construction without inferring dependencies
 // from the server container. Role composition injects its own required checks.
@@ -61,6 +66,11 @@ type readinessResult struct {
 // Only this goroutine writes the response or logs results. Late completions send
 // to the buffered channel without retaining the Echo request context.
 func (h *HealthHandler) Ready(c echo.Context) error {
+	if h.ready != nil && !h.ready() {
+		return c.JSON(http.StatusServiceUnavailable, transport.HealthReadyResponse{
+			Status: transport.TransportHealthReadyResponseStatusNotReady, Checks: []healthComponent{},
+		})
+	}
 	ctx, cancel := context.WithTimeout(c.Request().Context(), h.timeout)
 	defer cancel()
 	response := transport.HealthReadyResponse{Status: transport.TransportHealthReadyResponseStatusReady, Checks: make([]healthComponent, len(h.checks))}
@@ -112,7 +122,7 @@ func (h *HealthHandler) Ready(c echo.Context) error {
 			break
 		}
 	}
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || (h.ready != nil && !h.ready()) {
 		response.Status = transport.TransportHealthReadyResponseStatusNotReady
 		status = http.StatusServiceUnavailable
 	}
