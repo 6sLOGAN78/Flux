@@ -94,8 +94,8 @@ func TestLoggerRejectsUnvalidatedFieldsAndWarnsSafely(t *testing.T) {
 	cfg.NewRelic.LicenseKey = sentinel
 	cfg.NewRelic.DebugLogging = true
 	service := NewLoggerService(cfg)
-	if service.GetApplication() != nil {
-		t.Fatal("legacy vendor was initialized")
+	if service.LogSink != nil {
+		t.Fatal("legacy adapter acquired a provider")
 	}
 	log := NewLogger(cfg, &output, nil)
 	log.Info().Str("request_id", sentinel).Str("correlation_id", sentinel).Str("trace_id", strings.Repeat("0", 32)).Str("span_id", strings.Repeat("0", 16)).Str("http.route", sentinel).Str("error.stage", sentinel).Str("stack", sentinel).Msg(sentinel)

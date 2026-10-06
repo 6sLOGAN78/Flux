@@ -19,15 +19,14 @@ import (
 // Server receives role-owned resources and adapts them for existing packages.
 // It never allocates infrastructure or starts background consumers.
 type Server struct {
-	Role          config.Role
-	Config        *config.Config
-	Logger        *zerolog.Logger
-	LoggerService *loggerPkg.LoggerService
-	Telemetry     *observability.Telemetry
-	DB            *database.Database
-	Redis         *redis.Client
-	Job           *job.JobService
-	httpServer    *http.Server
+	Role       config.Role
+	Config     *config.Config
+	Logger     *zerolog.Logger
+	Telemetry  *observability.Telemetry
+	DB         *database.Database
+	Redis      *redis.Client
+	Job        *job.JobService
+	httpServer *http.Server
 }
 
 // Dependencies are allocated and closed by the composing app role.
@@ -38,11 +37,11 @@ type Dependencies struct {
 }
 
 // New retains the legacy call signature while accepting explicit dependencies.
-func New(cfg *config.Config, log *zerolog.Logger, service *loggerPkg.LoggerService, owned ...Dependencies) (*Server, error) {
+func New(cfg *config.Config, log *zerolog.Logger, _ *loggerPkg.LoggerService, owned ...Dependencies) (*Server, error) {
 	if cfg == nil || log == nil {
 		return nil, errors.New("server configuration and logger required")
 	}
-	srv := &Server{Config: cfg, Logger: log, LoggerService: service}
+	srv := &Server{Config: cfg, Logger: log}
 	if len(owned) > 1 {
 		return nil, errors.New("one explicit dependency graph required")
 	}

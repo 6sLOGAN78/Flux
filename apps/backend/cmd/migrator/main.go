@@ -5,11 +5,14 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
-	"github.com/rs/zerolog"
+	"github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/observability"
+	"go.opentelemetry.io/otel/codes"
 )
 
 func main() {
@@ -20,28 +23,73 @@ func main() {
 }
 
 func run(ctx context.Context, output io.Writer) int {
-	log := zerolog.New(output).With().Str("role", string(config.RoleMigrator)).Timestamp().Logger()
+	log := logger.NewLogger(config.DefaultObservabilityConfig(), output, nil)
 	cfg, err := config.LoadConfigForRole(config.RoleMigrator)
 	if err != nil {
-		log.Error().Err(err).Msg("migrator configuration failed")
+		log.Error().Str("error", observability.SafeError(err)).Msg("configuration.validate")
 		return 1
 	}
-	level, err := zerolog.ParseLevel(cfg.Observability.Logging.Level)
-	if err != nil {
-		log.Error().Msg("migrator logging configuration failed")
+	return runConfigured(ctx, cfg, output, migratorFactories{
+		telemetry: func(ctx context.Context, settings observability.Settings, role string) (*observability.Telemetry, func(context.Context) error, error) {
+			owner, err := observability.New(ctx, settings, role)
+			if err != nil {
+				return nil, nil, err
+			}
+			return owner, owner.Shutdown, nil
+		},
+		migrate: func(ctx context.Context, cfg *config.Config, closeContext func() context.Context) (database.MigrationResult, error) {
+			return database.MigrateWithResult(ctx, cfg, closeContext)
+		},
+	})
+}
+
+type migratorFactories struct {
+	telemetry func(context.Context, observability.Settings, string) (*observability.Telemetry, func(context.Context) error, error)
+	migrate   func(context.Context, *config.Config, func() context.Context) (database.MigrationResult, error)
+}
+
+// PostgreSQL close and provider flush share one lazily started exit deadline.
+func runConfigured(ctx context.Context, cfg *config.Config, output io.Writer, f migratorFactories) (code int) {
+	log := logger.NewLogger(cfg.Observability, output, nil)
+	var exitOnce sync.Once
+	var exitCtx context.Context
+	var cancelExit context.CancelFunc
+	closeContext := func() context.Context {
+		exitOnce.Do(func() {
+			exitCtx, cancelExit = context.WithTimeout(context.Background(), cfg.Observability.HealthChecks.Timeout)
+		})
+		return exitCtx
+	}
+	defer func() {
+		if cancelExit != nil {
+			cancelExit()
+		}
+	}()
+	owner, closeOwner, err := f.telemetry(ctx, cfg.Observability.TelemetrySettings(), string(config.RoleMigrator))
+	if closeOwner != nil {
+		defer func() {
+			if err := closeOwner(closeContext()); err != nil {
+				log.Error().Str("error", observability.SafeError(err)).Msg("telemetry.shutdown")
+				code = 1
+			}
+		}()
+	}
+	if err != nil || owner == nil {
+		log.Error().Str("error", observability.SafeError(err)).Msg("telemetry.export")
 		return 1
 	}
-	if cfg.Observability.Logging.Format == "console" {
-		log = log.Output(zerolog.ConsoleWriter{Out: output})
-	}
-	log = log.Level(level)
+	log = logger.NewLogger(cfg.Observability, output, owner.Logger)
 	ctx, cancel := context.WithTimeout(ctx, cfg.Observability.HealthChecks.Timeout)
 	defer cancel()
-	result, err := database.MigrateWithResult(ctx, cfg)
+	ctx, span := owner.Tracer.Start(ctx, "database.query")
+	defer span.End()
+	result, err := f.migrate(ctx, cfg, closeContext)
+	log = logger.WithContext(log, ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("database migration failed")
+		span.SetStatus(codes.Error, "")
+		log.Error().Str("error", observability.SafeError(err)).Msg("database.query")
 		return 1
 	}
-	log.Info().Int32("start_version", result.StartVersion).Int32("end_version", result.EndVersion).Msg("database migration completed")
+	log.Info().Str("outcome", "success").Int32("start_version", result.StartVersion).Int32("end_version", result.EndVersion).Msg("database.query")
 	return 0
 }

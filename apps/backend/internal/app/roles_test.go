@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func roleTestConfig() *config.Config {
@@ -38,6 +41,103 @@ func roleTestConfig() *config.Config {
 		API:        config.RoleConfig{ListenAddress: "127.0.0.1:0", DrainTimeout: time.Second, ReadinessTimeout: time.Second},
 		Redirector: config.RoleConfig{ListenAddress: "127.0.0.1:0", DrainTimeout: time.Second, ReadinessTimeout: time.Second},
 		Worker:     config.RoleConfig{ListenAddress: "127.0.0.1:0", DrainTimeout: time.Second, ReadinessTimeout: time.Second},
+	}
+}
+
+type roleTraceCapture struct{ *tracetest.InMemoryExporter }
+
+func (e *roleTraceCapture) Shutdown(context.Context) error { return nil }
+
+type roleLogCapture struct {
+	mu      sync.Mutex
+	records []sdklog.Record
+}
+
+func (e *roleLogCapture) Export(_ context.Context, records []sdklog.Record) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, r := range records {
+		e.records = append(e.records, r.Clone())
+	}
+	return nil
+}
+func (*roleLogCapture) Shutdown(context.Context) error   { return nil }
+func (*roleLogCapture) ForceFlush(context.Context) error { return nil }
+
+func TestRoleTelemetryExportsAfterWorkAndDependencyClose(t *testing.T) {
+	for _, role := range []config.Role{config.RoleAPI, config.RoleRedirector, config.RoleWorker} {
+		t.Run(string(role), func(t *testing.T) {
+			var opened, closed []string
+			f := roleSpies("", &opened, &closed, nil)
+			var output bytes.Buffer
+			traces := &roleTraceCapture{tracetest.NewInMemoryExporter()}
+			logs := &roleLogCapture{}
+			var owner *observability.Telemetry
+			f.telemetry = func(ctx context.Context, cfg *config.Config, gotRole config.Role) (*observability.Telemetry, func(context.Context) error, error) {
+				s := cfg.Observability.TelemetrySettings()
+				s.Enabled = true
+				s.ExportInterval = time.Minute
+				s.Exporters = observability.Exporters{Trace: traces, Log: logs}
+				var err error
+				owner, err = observability.New(ctx, s, string(gotRole))
+				return owner, func(ctx context.Context) error {
+					if role != config.RoleRedirector && len(closed) == 0 {
+						t.Error("provider closed before dependencies")
+					}
+					return owner.Shutdown(ctx)
+				}, err
+			}
+			f.logger = func(cfg *config.Config, tel *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error) {
+				log := loggerPkg.NewLogger(cfg.Observability, &output, tel.Logger)
+				return &log, nil, nil
+			}
+			baseDB := f.database
+			f.database = func(ctx context.Context, srv *server.Server) (*database.Database, func(context.Context) error, error) {
+				if srv.Telemetry != owner {
+					t.Error("database did not receive role owner")
+				}
+				db, closer, err := baseDB(ctx, srv)
+				return db, func(ctx context.Context) error {
+					_, span := srv.Telemetry.Tracer.Start(ctx, "database.query")
+					span.End()
+					return closer(ctx)
+				}, err
+			}
+			r, err := newRole(context.Background(), role, roleTestConfig(), f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.Server.Telemetry != owner {
+				t.Fatal("server owner differs")
+			}
+			req := httptest.NewRequest("GET", "/live?token=SECRET-MARKER", nil)
+			req.Header.Set("Authorization", "SECRET-MARKER")
+			r.HTTP.ServeHTTP(httptest.NewRecorder(), req)
+			if err := r.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			spans := traces.GetSpans()
+			wantSpans := 1
+			if role == config.RoleAPI {
+				wantSpans++
+			}
+			if len(spans) != wantSpans {
+				t.Fatalf("flush exported %d spans, want %d", len(spans), wantSpans)
+			}
+			for _, span := range spans {
+				if strings.Contains(fmt.Sprint(span), "SECRET-MARKER") {
+					t.Fatal("span leaked request")
+				}
+			}
+			logs.mu.Lock()
+			defer logs.mu.Unlock()
+			if len(logs.records) != 1 || logs.records[0].TraceID() != spans[0].SpanContext.TraceID() {
+				t.Fatal("role logger was not injected/correlated")
+			}
+			if strings.Contains(output.String(), "SECRET-MARKER") {
+				t.Fatal("stdout leaked request")
+			}
+		})
 	}
 }
 
@@ -58,10 +158,10 @@ func roleSpies(fail string, opened, closed *[]string, cause error) roleFactories
 			owner, err := observability.New(ctx, cfg.Observability.TelemetrySettings(), string(role))
 			return owner, func(ctx context.Context) error { return errors.Join(close(ctx), owner.Shutdown(ctx)) }, err
 		},
-		logger: func(*config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error) {
+		logger: func(*config.Config, *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error) {
 			close, err := stage("logger")
 			log := zerolog.Nop()
-			return &log, nil, close, err
+			return &log, close, err
 		},
 		database: func(context.Context, *server.Server) (*database.Database, func(context.Context) error, error) {
 			close, err := stage("database")
@@ -204,6 +304,21 @@ func TestRoleConstructionFailureUnwinds(t *testing.T) {
 					t.Fatalf("failed %s: closed %v, want %v", fail, closed, want)
 				}
 			})
+		}
+	}
+}
+
+func TestRolePartialProviderFailureStillReleasesOwner(t *testing.T) {
+	for _, role := range []config.Role{config.RoleAPI, config.RoleRedirector, config.RoleWorker} {
+		var opened, closed []string
+		f := roleSpies("", &opened, &closed, nil)
+		cause := errors.New("SECRET-MARKER provider")
+		f.telemetry = func(context.Context, *config.Config, config.Role) (*observability.Telemetry, func(context.Context) error, error) {
+			return nil, func(context.Context) error { closed = append(closed, "provider"); return cause }, cause
+		}
+		r, err := newRole(context.Background(), role, roleTestConfig(), f)
+		if r != nil || !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") || !reflect.DeepEqual(closed, []string{"provider"}) {
+			t.Fatalf("%s partial provider owner leaked: %v %v", role, err, closed)
 		}
 	}
 }

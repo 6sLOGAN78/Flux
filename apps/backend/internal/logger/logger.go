@@ -11,20 +11,17 @@ import (
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/observability"
-	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// LoggerService preserves consumers until plan 01-17. Composition roots own
-// injected providers; this adapter never initializes a vendor application.
+// LoggerService retains the legacy constructor log-sink adapter without ownership.
 type LoggerService struct{ LogSink otellog.Logger }
 
 func NewLoggerService(_ *config.ObservabilityConfig) *LoggerService { return &LoggerService{} }
 func (*LoggerService) Shutdown()                                    {}
-func (*LoggerService) GetApplication() *newrelic.Application        { return nil }
 
 func NewLoggerWithService(cfg *config.ObservabilityConfig, service *LoggerService) zerolog.Logger {
 	var sink otellog.Logger
@@ -78,15 +75,6 @@ func (contextHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 	if ids.RequestID != "" {
 		e.Str("request_id", ids.RequestID).Str("correlation_id", ids.CorrelationID)
 	}
-}
-
-// WithTraceContext adapts legacy trace IDs without creating a vendor application.
-func WithTraceContext(log zerolog.Logger, txn *newrelic.Transaction) zerolog.Logger {
-	if txn == nil {
-		return log
-	}
-	m := txn.GetTraceMetadata()
-	return log.With().Str("trace_id", m.TraceID).Str("span_id", m.SpanID).Logger()
 }
 
 type safeWriter struct {

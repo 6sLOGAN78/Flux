@@ -7,7 +7,6 @@ require (
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/google/uuid v1.6.0
 	github.com/hibiken/asynq v0.26.0
-	github.com/jackc/pgx-zerolog v0.0.0-20230315001418-f978528409eb
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jackc/tern/v2 v2.4.1
 	github.com/joho/godotenv v1.5.1
@@ -15,11 +14,6 @@ require (
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/labstack/echo/v4 v4.15.2
 	github.com/moby/moby/api v1.54.1
-	github.com/newrelic/go-agent/v3 v3.43.3
-	github.com/newrelic/go-agent/v3/integrations/nrecho-v4 v1.1.5
-	github.com/newrelic/go-agent/v3/integrations/nrpgx5 v1.3.4
-	github.com/newrelic/go-agent/v3/integrations/nrpkgerrors v1.1.0
-	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.14.1
 	github.com/resend/resend-go/v2 v2.28.0
 	github.com/rs/zerolog v1.35.1
@@ -92,7 +86,6 @@ require (
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
-	github.com/newrelic/go-agent/v3/integrations/nrredis-v9 v1.1.2
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect

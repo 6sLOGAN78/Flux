@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"io"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -146,5 +147,15 @@ func TestForbiddenVendorGraphRejectsHiddenDependencies(t *testing.T) {
 	}
 	if err := inspectVendorGraph([]byte(`{"Path":"go.opentelemetry.io/otel"}`)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestForbiddenVendorSourceRejectsBuildTaggedImports(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "hidden.go"), []byte("//go:build vendor_hidden\n\npackage hidden\nimport _ \"github.com/newrelic/go-agent/v3/newrelic\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := inspectVendorSource(root); err == nil {
+		t.Fatal("build tag hid vendor import")
 	}
 }

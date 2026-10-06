@@ -45,7 +45,7 @@ func Migrate(ctx context.Context, logger *zerolog.Logger, cfg *config.Config) er
 }
 
 // MigrateWithResult applies all embedded migrations and closes its one-shot connection.
-func MigrateWithResult(ctx context.Context, cfg *config.Config) (result MigrationResult, err error) {
+func MigrateWithResult(ctx context.Context, cfg *config.Config, closeContexts ...func() context.Context) (result MigrationResult, err error) {
 	if cfg == nil {
 		return result, &MigrationError{Operation: "config", cause: errors.New("configuration required")}
 	}
@@ -57,13 +57,23 @@ func MigrateWithResult(ctx context.Context, cfg *config.Config) (result Migratio
 		return result, &MigrationError{Operation: "connect", cause: err}
 	}
 	var cleanup lifecycle.Cleanup
-	if err := cleanup.Push("migration_connection", conn.Close); err != nil {
+	closeConnection := conn.Close
+	if len(closeContexts) > 0 && closeContexts[0] != nil {
+		closeConnection = func(context.Context) error { return conn.Close(closeContexts[0]()) }
+	}
+	if err := cleanup.Push("migration_connection", closeConnection); err != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return result, &MigrationError{Operation: "ownership", cause: errors.Join(err, conn.Close(closeCtx))}
 	}
 	defer func() {
-		err = errors.Join(err, closeMigration(&cleanup))
+		if len(closeContexts) > 0 && closeContexts[0] != nil {
+			if cause := cleanup.Close(closeContexts[0]()); cause != nil {
+				err = errors.Join(err, &MigrationError{Operation: "close", cause: cause})
+			}
+		} else {
+			err = errors.Join(err, closeMigration(&cleanup))
+		}
 	}()
 	m, err := tern.NewMigrator(ctx, conn, "schema_version")
 	if err != nil {

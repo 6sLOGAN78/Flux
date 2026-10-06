@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 
 	"github.com/6sLOGAN78/flux/internal/app"
 	"github.com/6sLOGAN78/flux/internal/config"
-	"github.com/rs/zerolog"
+	"github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/observability"
 )
 
 func main() {
@@ -19,19 +21,23 @@ func main() {
 
 // run returns the process exit decision after releasing the role's resources.
 func run(ctx context.Context, output io.Writer) int {
-	log := zerolog.New(output).With().Str("role", string(config.RoleWorker)).Timestamp().Logger()
+	log := logger.NewLogger(config.DefaultObservabilityConfig(), output, nil)
 	cfg, err := config.LoadConfigForRole(config.RoleWorker)
 	if err != nil {
-		log.Error().Err(err).Msg("worker configuration failed")
+		log.Error().Str("error", observability.SafeError(err)).Msg("configuration.validate")
 		return 1
 	}
 	role, err := app.NewWorker(ctx, cfg)
 	if err != nil {
-		log.Error().Err(err).Msg("worker construction failed")
+		log.Error().Str("error", observability.SafeError(err)).Msg("database.connect")
 		return 1
 	}
 	if err := role.Run(ctx); err != nil {
-		log.Error().Err(err).Msg("worker execution failed")
+		event := log.Error().Str("error", observability.SafeError(err))
+		if errors.Is(err, context.DeadlineExceeded) {
+			event.Str("error.stage", "deadline")
+		}
+		event.Msg("telemetry.shutdown")
 		return 1
 	}
 	return 0

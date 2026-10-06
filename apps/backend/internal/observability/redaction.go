@@ -36,7 +36,7 @@ func validUUID(value string) bool {
 
 // SafeOperation maps all uncontrolled text to a constant bounded operation name.
 func SafeOperation(value string) string {
-	if oneOf(value, "http.request", "database.query", "database.connect", "redis.command", "job.enqueue", "job.process", "email.send", "dependency.check", "telemetry.export", "telemetry.shutdown") {
+	if oneOf(value, "configuration.validate", "http.request", "database.query", "database.connect", "redis.command", "job.enqueue", "job.process", "email.send", "dependency.check", "telemetry.export", "telemetry.shutdown") {
 		return value
 	}
 	return "operation"
@@ -44,6 +44,9 @@ func SafeOperation(value string) string {
 
 func safeAttribute(a attribute.KeyValue, metric bool) bool {
 	key := string(a.Key)
+	if key == "start_version" || key == "end_version" {
+		return !metric && a.Value.Type() == attribute.INT64 && a.Value.AsInt64() >= 0 && a.Value.AsInt64() <= 2147483647
+	}
 	if key == "http.response.status_code" || key == "retry.count" {
 		return a.Value.Type() == attribute.INT64 && a.Value.AsInt64() >= 0 && a.Value.AsInt64() <= 999
 	}
@@ -69,7 +72,7 @@ func safeAttribute(a attribute.KeyValue, metric bool) bool {
 	case "error.category":
 		return oneOf(v, "unknown", "timeout", "canceled", "unavailable", "validation")
 	case "error.stage":
-		return oneOf(v, "connect", "query", "enqueue", "process", "send", "export", "shutdown", "validate")
+		return oneOf(v, "connect", "query", "enqueue", "process", "send", "export", "shutdown", "deadline", "validate")
 	case "job.type":
 		return v == "email:welcome"
 	case "db.system.name":

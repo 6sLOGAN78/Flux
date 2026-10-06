@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
@@ -12,6 +13,8 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/middleware"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/6sLOGAN78/flux/internal/router"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/service"
@@ -56,7 +59,8 @@ func NewAPI(ctx context.Context, cfg *config.Config) (*API, error) {
 }
 
 type roleFactories struct {
-	logger        func(*config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error)
+	telemetry     func(context.Context, *config.Config, config.Role) (*observability.Telemetry, func(context.Context) error, error)
+	logger        func(*config.Config, *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error)
 	database      func(context.Context, *server.Server) (*database.Database, func(context.Context) error, error)
 	redis         func(context.Context, *server.Server) (*redis.Client, func(context.Context) error, error)
 	producer      func(*server.Server) (*job.JobService, func(context.Context) error, error)
@@ -69,13 +73,19 @@ type roleFactories struct {
 
 func defaultRoleFactories() roleFactories {
 	return roleFactories{
-		logger: func(cfg *config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error) {
-			// Optional monitoring exporters are not required infrastructure.
-			log := loggerPkg.NewLoggerWithService(cfg.Observability, nil)
-			return &log, nil, nil, nil
+		logger: func(cfg *config.Config, owner *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error) {
+			log := loggerPkg.NewLogger(cfg.Observability, os.Stdout, owner.Logger)
+			return &log, nil, nil
+		},
+		telemetry: func(ctx context.Context, cfg *config.Config, role config.Role) (*observability.Telemetry, func(context.Context) error, error) {
+			owner, err := observability.New(ctx, cfg.Observability.TelemetrySettings(), string(role))
+			if err != nil {
+				return nil, nil, err
+			}
+			return owner, owner.Shutdown, nil
 		},
 		database: func(_ context.Context, srv *server.Server) (*database.Database, func(context.Context) error, error) {
-			db, err := database.New(srv.Config, srv.Logger, srv.LoggerService)
+			db, err := database.New(srv.Config, srv.Logger, nil, srv.Telemetry)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -91,12 +101,12 @@ func defaultRoleFactories() roleFactories {
 			return client, func(context.Context) error { return client.Close() }, nil
 		},
 		producer: func(srv *server.Server) (*job.JobService, func(context.Context) error, error) {
-			producer := job.NewProducer(srv.Logger, srv.Redis)
+			producer := job.NewProducer(srv.Logger, srv.Redis, srv.Telemetry)
 			return producer, func(context.Context) error { return producer.Stop() }, nil
 		},
 		email: func(srv *server.Server) (*email.Client, error) { return email.NewClient(srv.Config, srv.Logger), nil },
 		consumer: func(srv *server.Server, adapter *email.Client) (*job.JobService, func(context.Context) error, error) {
-			consumer := job.NewConsumer(srv.Logger, srv.Config, srv.Redis, adapter)
+			consumer := job.NewConsumer(srv.Logger, srv.Config, srv.Redis, adapter, srv.Telemetry)
 			return consumer, func(context.Context) error { return consumer.Stop() }, nil
 		},
 		startConsumer: func(consumer *job.JobService) error { return consumer.Start() },
@@ -146,15 +156,23 @@ func newRole(ctx context.Context, role config.Role, cfg *config.Config, factorie
 }
 
 func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config, f roleFactories) error {
-	log, loggerService, closeLogger, err := f.logger(cfg)
-	if err := r.own("logger", closeLogger, err); err != nil {
+	owner, closeTelemetry, err := f.telemetry(ctx, cfg, r.Role)
+	if err := r.own("telemetry", closeTelemetry, err); err != nil {
 		return err
 	}
-	r.Server, err = server.New(cfg, log, loggerService)
+	if owner == nil {
+		return &StartupError{Role: r.Role, Stage: "telemetry", cause: errors.New("provider required")}
+	}
+	log, closeLogger, cause := f.logger(cfg, owner)
+	if err := r.own("logger", closeLogger, cause); err != nil {
+		return err
+	}
+	r.Server, err = server.New(cfg, log, nil)
 	if err != nil {
 		return &StartupError{Role: r.Role, Stage: "server", cause: err}
 	}
 	r.Server.Role = r.Role
+	r.Server.Telemetry = owner
 	if r.Role == config.RoleRedirector {
 		r.readiness = redirectorReadinessChecks()
 	}
@@ -187,13 +205,15 @@ func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config
 }
 
 func (r *RoleRuntime) own(stage string, close func(context.Context) error, cause error) error {
+	if close != nil {
+		if err := r.cleanup.Push(stage, close); err != nil {
+			return err
+		}
+	}
 	if cause != nil {
 		return &StartupError{Role: r.Role, Stage: stage, cause: cause}
 	}
-	if close == nil {
-		return nil
-	}
-	return r.cleanup.Push(stage, close)
+	return nil
 }
 
 func (r *RoleRuntime) constructHTTP(f roleFactories) error {
@@ -227,7 +247,12 @@ func (r *RoleRuntime) constructHTTP(f roleFactories) error {
 
 func defaultRoleRouter(role config.Role, srv *server.Server) (*echo.Echo, error) {
 	if role != config.RoleAPI {
-		return echo.New(), nil
+		e := echo.New()
+		global := middleware.NewGlobalMiddlewares(srv)
+		e.HTTPErrorHandler = global.GlobalErrorHandler
+		e.Use(middleware.RequestID(), middleware.NewTracingMiddleware(srv, srv.Telemetry).EnhanceTracing(),
+			middleware.NewContextEnhancer(srv).EnhanceContext(), global.RequestLogger(), global.Recover())
+		return e, nil
 	}
 	// No product route currently uses Clerk; do not initialize unused secrets.
 	services := &service.Services{Job: srv.Job}

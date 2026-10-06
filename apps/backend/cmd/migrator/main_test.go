@@ -17,7 +17,8 @@ import (
 func TestRoleMigratorProviderOwnership(t *testing.T) {
 	for _, stage := range []string{"success", "telemetry", "migration", "close"} {
 		t.Run(stage, func(t *testing.T) {
-			cfg := &config.Config{Observability: config.DefaultObservabilityConfig(), Migrator: config.RoleConfig{DrainTimeout: 100 * time.Millisecond}}
+			cfg := &config.Config{Observability: config.DefaultObservabilityConfig()}
+			cfg.Observability.HealthChecks.Timeout = 100 * time.Millisecond
 			var events []string
 			var exit context.Context
 			cause := errors.New("SECRET-MARKER")
@@ -46,7 +47,7 @@ func TestRoleMigratorProviderOwnership(t *testing.T) {
 					events = append(events, "migration", "postgres_close")
 					exit = closeContext()
 					deadline, ok := exit.Deadline()
-					if !ok || time.Until(deadline) > cfg.Migrator.DrainTimeout {
+					if !ok || time.Until(deadline) > cfg.Observability.HealthChecks.Timeout {
 						t.Error("unbounded exit")
 					}
 					if stage == "migration" {

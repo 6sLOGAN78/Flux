@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/6sLOGAN78/flux/internal/server"
 )
 
@@ -14,17 +13,11 @@ type Middlewares struct {
 }
 
 func NewMiddlewares(s *server.Server) *Middlewares {
-	// Get New Relic application instance from server
-	var nrApp *newrelic.Application
-	if s.LoggerService != nil {
-		nrApp = s.LoggerService.GetApplication()
-	}
-
 	return &Middlewares{
 		Global:          NewGlobalMiddlewares(s),
 		Auth:            NewAuthMiddleware(s),
 		ContextEnhancer: NewContextEnhancer(s),
-		Tracing:         NewTracingMiddleware(s, nrApp),
+		Tracing:         NewTracingMiddleware(s, s.Telemetry),
 		RateLimit:       NewRateLimitMiddleware(s),
 	}
 }
