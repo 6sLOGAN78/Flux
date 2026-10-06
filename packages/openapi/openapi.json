@@ -1,119 +1,159 @@
 {
-  "openapi": "3.0.2",
-  "paths": {
-    "/status": {
-      "get": {
-        "description": "Get health status",
-        "summary": "Get health",
-        "tags": [
-          "Health"
-        ],
-        "parameters": [],
-        "operationId": "getHealth",
-        "responses": {
-          "200": {
-            "description": "200",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "healthy",
-                        "unhealthy"
-                      ]
-                    },
-                    "timestamp": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "environment": {
-                      "type": "string"
-                    },
-                    "checks": {
-                      "type": "object",
-                      "properties": {
-                        "database": {
-                          "type": "object",
-                          "properties": {
-                            "status": {
-                              "type": "string"
-                            },
-                            "response_time": {
-                              "type": "string"
-                            },
-                            "error": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "status",
-                            "response_time"
-                          ]
-                        },
-                        "redis": {
-                          "type": "object",
-                          "properties": {
-                            "status": {
-                              "type": "string"
-                            },
-                            "response_time": {
-                              "type": "string"
-                            },
-                            "error": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "status",
-                            "response_time"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "database"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "status",
-                    "timestamp",
-                    "environment",
-                    "checks"
-                  ]
-                }
-              }
-            }
+  "components": {
+    "schemas": {
+      "transport.HealthLiveResponse": {
+        "additionalProperties": false,
+        "description": "Process liveness, independent of external dependencies.",
+        "example": {
+          "status": "alive"
+        },
+        "properties": {
+          "status": {
+            "enum": [
+              "alive"
+            ],
+            "type": "string"
           }
-        }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "transport.HealthLiveResponse",
+        "type": "object"
+      },
+      "transport.HealthReadyResponse": {
+        "additionalProperties": false,
+        "description": "Readiness of this process and its required components. Only coarse states are exposed.",
+        "example": {
+          "checks": [
+            {
+              "name": "database",
+              "state": "ready"
+            }
+          ],
+          "status": "ready"
+        },
+        "properties": {
+          "checks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "state": {
+                  "enum": [
+                    "ready",
+                    "not_ready"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "transport.HealthReadyResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "x-service-token": {
+        "in": "header",
+        "name": "x-service-token",
+        "type": "apiKey"
       }
     }
   },
   "info": {
-    "version": "1.0.0",
+    "description": "Flux REST API - Documentation",
     "title": "Flux REST API - Documentation",
-    "description": "Flux REST API - Documentation"
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.2",
+  "paths": {
+    "/live": {
+      "get": {
+        "description": "Report that the process is alive without probing dependencies.",
+        "operationId": "getLive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.HealthLiveResponse"
+                }
+              }
+            },
+            "description": "200"
+          }
+        },
+        "summary": "Get process liveness",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Report sanitized states for dependencies required by this process.",
+        "operationId": "getReady",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.HealthReadyResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.HealthReadyResponse"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "summary": "Get process readiness",
+        "tags": [
+          "Health"
+        ]
+      }
+    }
   },
   "servers": [
     {
-      "url": "http://localhost:8080",
-      "description": "Local Server"
+      "description": "Local Server",
+      "url": "http://localhost:8080"
     }
-  ],
-  "components": {
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
-      },
-      "x-service-token": {
-        "type": "apiKey",
-        "name": "x-service-token",
-        "in": "header"
-      }
-    }
-  }
+  ]
 }

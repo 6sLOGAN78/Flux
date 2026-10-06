@@ -6,13 +6,14 @@
   "scripts": {
     "gen": "tsx src/gen.ts",
     "build": "tsc && tsc-alias",
+    "test": "bun test src/gen.test.ts",
     "dev": "wait-on ../zod/dist/index.js && tsc && (concurrently \"tsc -w\" \"tsc-alias -w\")",
     "clean": "rimraf dist tsconfig.tsbuildinfo .turbo node_modules"
   },
   "exports": {
     "./contracts": {
       "types": "./dist/contracts/index.d.ts",
-      "default": "./dist/contract/index.js"
+      "default": "./dist/contracts/index.js"
     }
   },
   "keywords": [],

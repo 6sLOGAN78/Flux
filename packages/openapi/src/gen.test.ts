@@ -15,7 +15,7 @@ const servedPath = join(root, "apps/backend/static/openapi.json");
 
 type Generator = {
   serializeOpenAPI: (document?: unknown) => string;
-  generateOpenAPI: (outputs?: string[]) => Promise<void>;
+  generateOpenAPI: (outputs?: string[], write?: (path: string, bytes: string) => Promise<void>) => Promise<void>;
 };
 
 const loadGenerator = async (): Promise<Generator> => {
@@ -23,7 +23,7 @@ const loadGenerator = async (): Promise<Generator> => {
   const source = await readFile(generatorPath, "utf8");
   assert.match(source, /export (const|function) serializeOpenAPI/);
   assert.match(source, /export (const|async function|function) generateOpenAPI/);
-  return await import("./gen.js") as unknown as Generator;
+  return await import(generatorPath) as unknown as Generator;
 };
 
 const withDirectory = async (run: (directory: string) => Promise<void>) => {
@@ -82,6 +82,7 @@ test("serialization ignores object insertion order and preserves binary file con
   assert.equal(serializeOpenAPI({ z: { b: 2, a: 1 }, a: [2, 1] }), serializeOpenAPI({ a: [2, 1], z: { a: 1, b: 2 } }));
   const file = { type: "object", properties: { type: { type: "string", enum: ["file"] } }, required: ["type"] };
   assert.deepEqual(JSON.parse(serializeOpenAPI(file)), { format: "binary", type: "string" });
+  assert.equal(serializeOpenAPI(file), serializeOpenAPI({ required: ["type"], properties: { type: { enum: ["file"], type: "string" } }, type: "object" }));
 });
 
 test("generation awaits writes and produces matching repeatable bytes", async () => {
@@ -121,6 +122,31 @@ test("rename failure rejects and temporary files are removed", async () => {
     await assert.rejects(generateOpenAPI([blocked]));
     assert.deepEqual(await readdir(directory), ["blocked.json"]);
   });
+});
+
+test("each asynchronous write failure is awaited, preserved, and cleaned up", async () => {
+  const { generateOpenAPI } = await loadGenerator();
+  for (const failedIndex of [0, 1]) {
+    await withDirectory(async (directory) => {
+      const outputs = [join(directory, "first.json"), join(directory, "second.json")];
+      for (const output of outputs) await writeFile(output, "original");
+      const failure = new Error(`write failure ${failedIndex}`);
+      let writes = 0;
+      let settled = false;
+      await assert.rejects(generateOpenAPI(outputs, async (path, bytes) => {
+        const index = writes++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (index === failedIndex) {
+          settled = true;
+          throw failure;
+        }
+        await writeFile(path, bytes);
+      }), (error) => error === failure);
+      assert.equal(settled, true);
+      for (const output of outputs) assert.equal(await readFile(output, "utf8"), "original");
+      assert.deepEqual((await readdir(directory)).sort(), ["first.json", "second.json"]);
+    });
+  }
 });
 
 test("CLI works from another directory and both tracked artifacts match", async () => {

@@ -1,18 +1,26 @@
 import { initContract } from "@ts-rest/core";
-import { z } from "zod";
-import { ZHealthResponse } from "@flux/zod";
-import { getSecurityMetadata } from "@/utils.js";
+import { ZHealthLiveResponse, ZHealthReadyResponse } from "@flux/zod";
 
 const c = initContract();
 
 export const healthContract = c.router({
-  getHealth: {
-    summary: "Get health",
-    path: "/status",
+  getLive: {
+    summary: "Get process liveness",
+    path: "/live",
     method: "GET",
-    description: "Get health status",
+    description: "Report that the process is alive without probing dependencies.",
     responses: {
-      200: ZHealthResponse,
+      200: ZHealthLiveResponse,
+    },
+  },
+  getReady: {
+    summary: "Get process readiness",
+    path: "/ready",
+    method: "GET",
+    description: "Report sanitized states for dependencies required by this process.",
+    responses: {
+      200: ZHealthReadyResponse,
+      503: ZHealthReadyResponse,
     },
   },
 });
