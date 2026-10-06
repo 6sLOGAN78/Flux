@@ -1,13 +1,11 @@
 package config
 
 import (
-	"os"
-	"strings" 
 	"github.com/go-playground/validator/v10"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
-	"github.com/rs/zerolog"
+	"strings"
 )
 
 type Config struct {
@@ -56,35 +54,38 @@ type AuthConfig struct {
 	SecretKey string `koanf:"secret_key" validate:"required"`
 }
 
+// ConfigError identifies a failed stage without exposing provider diagnostics.
+// The original error remains available through errors.Is and errors.As.
+type ConfigError struct {
+	Stage string
+	cause error
+}
+
+func (e *ConfigError) Error() string { return "configuration " + e.Stage + " failed" }
+func (e *ConfigError) Unwrap() error { return e.cause }
+
 func LoadConfig() (*Config, error) {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
-
-	k := koanf.New(".")
-
-	err := k.Load(env.Provider("FLUX_", ".", func(s string) string {
+	return loadConfig(env.Provider("FLUX_", ".", func(s string) string {
 		return strings.ToLower(strings.TrimPrefix(s, "FLUX_"))
-	}), nil)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("could not load initial env variables")
+	}))
+}
+
+func loadConfig(provider koanf.Provider) (*Config, error) {
+	k := koanf.New(".")
+	if err := k.Load(provider, nil); err != nil {
+		return nil, &ConfigError{Stage: "load", cause: err}
 	}
 
-	mainConfig := &Config{}
-
-	err = k.Unmarshal("", mainConfig)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("could not unmarshal main config")
+	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
+	if err := k.Unmarshal("", mainConfig); err != nil {
+		return nil, &ConfigError{Stage: "unmarshal", cause: err}
 	}
 
 	validate := validator.New()
-
-	err = validate.Struct(mainConfig)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("config validation failed")
-	}
-
-	// Set default observability config if not provided
-	if mainConfig.Observability == nil {
-		mainConfig.Observability = DefaultObservabilityConfig()
+	// Observability owns its validation and optional vendor credentials. Validate
+	// only the existing required sections here, keeping stage errors distinct.
+	if err := validate.StructExcept(mainConfig, "Observability"); err != nil {
+		return nil, &ConfigError{Stage: "validate", cause: err}
 	}
 
 	// Override service name and environment from primary config
@@ -93,7 +94,7 @@ func LoadConfig() (*Config, error) {
 
 	// Validate observability config
 	if err := mainConfig.Observability.Validate(); err != nil {
-		logger.Fatal().Err(err).Msg("invalid observability config")
+		return nil, &ConfigError{Stage: "observability", cause: err}
 	}
 
 	return mainConfig, nil

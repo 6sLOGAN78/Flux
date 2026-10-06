@@ -19,13 +19,15 @@ func TestCleanupReverseAllAndIdempotent(t *testing.T) {
 		name string
 		err  error
 	}{{"database", first}, {"redis", nil}, {"worker", last}} {
-		cleanup.Push(entry.name, func(ctx context.Context) error {
+		if err := cleanup.Push(entry.name, func(ctx context.Context) error {
 			if ctx.Value("marker") != "kept" {
 				t.Error("context not passed to closer")
 			}
 			order = append(order, entry.name)
 			return entry.err
-		})
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	err := cleanup.Close(context.WithValue(context.Background(), "marker", "kept"))
 	if !reflect.DeepEqual(order, []string{"worker", "redis", "database"}) {
@@ -45,7 +47,9 @@ func TestCleanupReverseAllAndIdempotent(t *testing.T) {
 func TestCleanupConcurrentClose(t *testing.T) {
 	var cleanup Cleanup
 	var calls atomic.Int32
-	cleanup.Push("resource", func(context.Context) error { calls.Add(1); return nil })
+	if err := cleanup.Push("resource", func(context.Context) error { calls.Add(1); return nil }); err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Go(func() {
@@ -57,5 +61,15 @@ func TestCleanupConcurrentClose(t *testing.T) {
 	wg.Wait()
 	if calls.Load() != 1 {
 		t.Fatalf("closer called %d times", calls.Load())
+	}
+}
+
+func TestCleanupRejectsOwnershipAfterClose(t *testing.T) {
+	var cleanup Cleanup
+	if err := cleanup.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup.Push("late", func(context.Context) error { t.Fatal("rejected closer ran"); return nil }); !errors.Is(err, ErrCleanupClosed) {
+		t.Fatalf("late ownership was not rejected: %v", err)
 	}
 }

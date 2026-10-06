@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/6sLOGAN78/flux/internal/config"
+	loggerConfig "github.com/6sLOGAN78/flux/internal/logger"
 	pgxzero "github.com/jackc/pgx-zerolog"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/tracelog"
 	"github.com/newrelic/go-agent/v3/integrations/nrpgx5"
 	"github.com/rs/zerolog"
-	"github.com/6sLOGAN78/flux/internal/config"
-	loggerConfig "github.com/6sLOGAN78/flux/internal/logger"
 )
 
 type Database struct {
@@ -109,13 +109,25 @@ func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerConfig
 
 	ctx, cancel := context.WithTimeout(context.Background(), DatabasePingTimeout*time.Second)
 	defer cancel()
-	if err = pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	if err = pingPool(ctx, pool); err != nil {
+		return nil, err
 	}
 
 	logger.Info().Msg("connected to the database")
 
 	return database, nil
+}
+
+// pingPool transfers ownership only after a successful initial ping.
+func pingPool(ctx context.Context, pool interface {
+	Ping(context.Context) error
+	Close()
+}) error {
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+	return nil
 }
 
 func (db *Database) Close() error {

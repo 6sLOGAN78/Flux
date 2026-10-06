@@ -53,19 +53,19 @@ func TestConfigStages(t *testing.T) {
 				t.Fatalf("want stage %s, got %v", stage, err)
 			}
 			if errors.Unwrap(typed) == nil {
-				t.Fatal("original cause was lost")
+				t.Fatalf("original cause was lost")
 			}
 			if stage == "load" && !errors.Is(err, loadCause) {
-				t.Fatal("load cause was lost")
+				t.Fatalf("load cause was lost")
 			}
 			if stage == "validate" {
 				var validationErrors validator.ValidationErrors
 				if !errors.As(err, &validationErrors) {
-					t.Fatal("validator cause was lost")
+					t.Fatalf("validator cause was lost")
 				}
 			}
 			if strings.Contains(fmt.Sprint(err), "SECRET-MARKER") {
-				t.Fatal("public diagnostic leaked a secret")
+				t.Fatalf("public diagnostic leaked a secret")
 			}
 		})
 	}
@@ -77,6 +77,9 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 		key, _, _ := strings.Cut(item, "=")
 		if strings.HasPrefix(key, "FLUX_") {
 			t.Setenv(key, "")
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatalf("unset isolated environment: %v", err)
+			}
 		}
 	}
 	for section, fields := range configValues() {
@@ -95,6 +98,6 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 		t.Fatalf("existing keys changed: %v", cfg.Database.Host)
 	}
 	if cfg.Observability.Environment != "test" || cfg.Observability.ServiceName != "flux" {
-		t.Fatal("primary metadata not preserved")
+		t.Fatalf("primary metadata not preserved")
 	}
 }

@@ -1,15 +1,25 @@
 package job
 
 import (
+	"context"
+	"sync"
+
+	"github.com/6sLOGAN78/flux/internal/app"
+	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
-	"github.com/6sLOGAN78/flux/internal/config"
 )
 
 type JobService struct {
-	Client *asynq.Client
-	server *asynq.Server
-	logger *zerolog.Logger
+	Client      *asynq.Client
+	server      *asynq.Server
+	logger      *zerolog.Logger
+	emailClient *email.Client
+	shutdown    func() error
+	closeClient func() error
+	stopOnce    sync.Once
+	stopErr     error
 }
 
 func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
@@ -32,9 +42,17 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 	)
 
 	return &JobService{
-		Client: client,
-		server: server,
-		logger: logger,
+		Client:      client,
+		server:      server,
+		logger:      logger,
+		emailClient: email.NewClient(cfg, logger),
+		shutdown: func() error {
+			// Asynq's Shutdown has no error return; the seam also allows
+			// deterministic failure tests without starting a worker process.
+			server.Shutdown()
+			return nil
+		},
+		closeClient: client.Close,
 	}
 }
 
@@ -51,8 +69,14 @@ func (j *JobService) Start() error {
 	return nil
 }
 
-func (j *JobService) Stop() {
-	j.logger.Info().Msg("Stopping background job server")
-	j.server.Shutdown()
-	j.Client.Close()
+func (j *JobService) Stop() error {
+	j.stopOnce.Do(func() {
+		j.logger.Info().Msg("Stopping background job server")
+		var cleanup app.Cleanup
+		// Producer is allocated first and outlives its dependent consumer.
+		_ = cleanup.Push("job producer", func(context.Context) error { return j.closeClient() })
+		_ = cleanup.Push("job consumer", func(context.Context) error { return j.shutdown() })
+		j.stopErr = cleanup.Close(context.Background())
+	})
+	return j.stopErr
 }

@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/lib/email"
+	"github.com/hibiken/asynq"
+	"github.com/rs/zerolog"
 )
 
-var emailClient *email.Client
-
 func (j *JobService) InitHandlers(config *config.Config, logger *zerolog.Logger) {
-	emailClient = email.NewClient(config, logger)
+	j.emailClient = email.NewClient(config, logger)
 }
 
 func (j *JobService) handleWelcomeEmailTask(ctx context.Context, t *asynq.Task) error {
@@ -28,7 +26,7 @@ func (j *JobService) handleWelcomeEmailTask(ctx context.Context, t *asynq.Task) 
 		Str("to", p.To).
 		Msg("Processing welcome email task")
 
-	err := emailClient.SendWelcomeEmail(
+	err := j.emailClient.SendWelcomeEmail(
 		p.To,
 		p.FirstName,
 	)
