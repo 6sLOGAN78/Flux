@@ -1,8 +1,12 @@
 package config
 
 import (
-	"fmt"
+	"errors"
+	"net/url"
+	"strconv"
 	"time"
+
+	"github.com/6sLOGAN78/flux/internal/observability"
 )
 
 type ObservabilityConfig struct {
@@ -11,6 +15,18 @@ type ObservabilityConfig struct {
 	Logging      LoggingConfig      `koanf:"logging" validate:"required"`
 	NewRelic     NewRelicConfig     `koanf:"new_relic" validate:"required"`
 	HealthChecks HealthChecksConfig `koanf:"health_checks" validate:"required"`
+	OTLP         OTLPConfig         `koanf:"otlp"`
+}
+
+// OTLPConfig binds compatible FLUX_OBSERVABILITY.OTLP.* names. Export is optional.
+type OTLPConfig struct {
+	Enabled        bool          `koanf:"enabled"`
+	Endpoint       string        `koanf:"endpoint"`
+	SampleRatio    float64       `koanf:"sample_ratio"`
+	QueueSize      int           `koanf:"queue_size"`
+	BatchSize      int           `koanf:"batch_size"`
+	ExportTimeout  time.Duration `koanf:"export_timeout"`
+	ExportInterval time.Duration `koanf:"export_interval"`
 }
 
 type LoggingConfig struct {
@@ -37,6 +53,7 @@ func DefaultObservabilityConfig() *ObservabilityConfig {
 	return &ObservabilityConfig{
 		ServiceName: "flux",
 		Environment: "development",
+		OTLP:        OTLPConfig{SampleRatio: 1, QueueSize: 256, BatchSize: 64, ExportTimeout: 2 * time.Second, ExportInterval: 5 * time.Second},
 		Logging: LoggingConfig{
 			Level:              "info",
 			Format:             "json",
@@ -58,8 +75,9 @@ func DefaultObservabilityConfig() *ObservabilityConfig {
 }
 
 func (c *ObservabilityConfig) Validate() error {
+	fail := func(message string) error { return &ConfigError{Stage: "observability", cause: errors.New(message)} }
 	if c.ServiceName == "" {
-		return fmt.Errorf("service_name is required")
+		return fail("service_name is required")
 	}
 
 	// Validate log level
@@ -67,15 +85,53 @@ func (c *ObservabilityConfig) Validate() error {
 		"debug": true, "info": true, "warn": true, "error": true,
 	}
 	if !validLevels[c.Logging.Level] {
-		return fmt.Errorf("invalid logging level: %s (must be one of: debug, info, warn, error)", c.Logging.Level)
+		return fail("invalid logging level")
+	}
+	if c.Logging.Format != "json" && c.Logging.Format != "console" {
+		return fail("invalid logging format")
 	}
 
 	// Validate slow query threshold
 	if c.Logging.SlowQueryThreshold < 0 {
-		return fmt.Errorf("logging slow_query_threshold must be non-negative")
+		return fail("logging slow_query_threshold must be non-negative")
+	}
+	s := c.TelemetrySettings()
+	switch s.Environment {
+	case "local", "development", "test", "staging", "production":
+	default:
+		return fail("invalid telemetry environment")
+	}
+	if s.QueueSize < 1 || s.QueueSize > 4096 || s.BatchSize < 1 || s.BatchSize > s.QueueSize || s.SampleRatio < 0 || s.SampleRatio > 1 || s.SampleRatio != s.SampleRatio || s.ExportTimeout < time.Millisecond || s.ExportTimeout > 30*time.Second || s.ExportInterval < time.Millisecond || s.ExportInterval > time.Minute {
+		return fail("invalid telemetry bounds")
+	}
+	if s.Endpoint != "" {
+		u, err := url.Parse(s.Endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+			return fail("invalid telemetry endpoint")
+		}
+		if port := u.Port(); port != "" {
+			n, err := strconv.Atoi(port)
+			if err != nil || n < 1 || n > 65535 {
+				return fail("invalid telemetry endpoint port")
+			}
+		}
+		if u.Host[len(u.Host)-1] == ':' {
+			return fail("invalid telemetry endpoint host")
+		}
 	}
 
 	return nil
+}
+
+// TelemetrySettings maps settings without introducing a collector readiness gate.
+// Disabled endpoints are ignored, including stale legacy monitoring values.
+func (c *ObservabilityConfig) TelemetrySettings() observability.Settings {
+	o := c.OTLP
+	endpoint := ""
+	if o.Enabled {
+		endpoint = o.Endpoint
+	}
+	return observability.Settings{Enabled: o.Enabled, Endpoint: endpoint, Environment: c.Environment, SampleRatio: o.SampleRatio, QueueSize: o.QueueSize, BatchSize: o.BatchSize, ExportTimeout: o.ExportTimeout, ExportInterval: o.ExportInterval}
 }
 
 func (c *ObservabilityConfig) GetLogLevel() string {

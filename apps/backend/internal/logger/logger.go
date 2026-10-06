@@ -1,221 +1,226 @@
 package logger
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/pkgerrors"
+	"go.opentelemetry.io/otel/attribute"
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// LoggerService manages New Relic integration and logger creation
-type LoggerService struct {
-	nrApp *newrelic.Application
+// LoggerService preserves consumers until plan 01-17. Composition roots own
+// injected providers; this adapter never initializes a vendor application.
+type LoggerService struct{ LogSink otellog.Logger }
+
+func NewLoggerService(_ *config.ObservabilityConfig) *LoggerService { return &LoggerService{} }
+func (*LoggerService) Shutdown()                                    {}
+func (*LoggerService) GetApplication() *newrelic.Application        { return nil }
+
+func NewLoggerWithService(cfg *config.ObservabilityConfig, service *LoggerService) zerolog.Logger {
+	var sink otellog.Logger
+	if service != nil {
+		sink = service.LogSink
+	}
+	return NewLogger(cfg, os.Stdout, sink)
 }
 
-// NewLoggerService creates a new logger service
-func NewLoggerService(cfg *config.ObservabilityConfig) *LoggerService {
+const legacyWarning = "legacy observability settings are deprecated"
 
-	service := &LoggerService{}
-
-	if cfg.NewRelic.LicenseKey == "" {
-		return service
+// NewLogger sends stdout JSON and OTel records through one sanitizing writer.
+// Console remains a compatible setting; output is consistently structured JSON.
+func NewLogger(cfg *config.ObservabilityConfig, output io.Writer, sink otellog.Logger) zerolog.Logger {
+	if cfg == nil {
+		cfg = config.DefaultObservabilityConfig()
 	}
-
-	var configOptions []newrelic.ConfigOption
-
-	configOptions = append(
-		configOptions,
-		newrelic.ConfigAppName(cfg.ServiceName),
-		newrelic.ConfigLicense(cfg.NewRelic.LicenseKey),
-		newrelic.ConfigDistributedTracerEnabled(
-			cfg.NewRelic.DistributedTracingEnabled,
-		),
-	)
-
-	// Optional debug logging
-	if cfg.NewRelic.DebugLogging {
-		configOptions = append(
-			configOptions,
-			newrelic.ConfigDebugLogger(os.Stdout),
-		)
+	if output == nil {
+		output = os.Stdout
 	}
-
-	app, err := newrelic.NewApplication(configOptions...)
+	level, err := zerolog.ParseLevel(cfg.GetLogLevel())
 	if err != nil {
-		return service
+		level = zerolog.InfoLevel
 	}
-
-	service.nrApp = app
-
-	return service
+	writer := &safeWriter{output: output, sink: sink}
+	log := zerolog.New(writer).Level(level).Hook(contextHook{}).With().Timestamp().Logger()
+	if cfg.NewRelic.LicenseKey != "" || cfg.NewRelic.DebugLogging || !cfg.NewRelic.AppLogForwardingEnabled || !cfg.NewRelic.DistributedTracingEnabled {
+		warning := log.Level(zerolog.WarnLevel)
+		warning.Warn().Msg(legacyWarning)
+	}
+	return log
 }
 
-// Shutdown shuts down New Relic
-func (ls *LoggerService) Shutdown() {
-	if ls.nrApp != nil {
-		ls.nrApp.Shutdown(10 * time.Second)
+// WithContext attaches validated correlation metadata at event emission.
+func WithContext(log zerolog.Logger, ctx context.Context) zerolog.Logger {
+	return log.With().Ctx(ctx).Logger()
+}
+
+type contextHook struct{}
+
+func (contextHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
+	ctx := e.GetCtx()
+	if ctx == nil {
+		return
+	}
+	sc := observability.CleanSpanContext(trace.SpanContextFromContext(ctx))
+	if sc.IsValid() {
+		e.Str("trace_id", sc.TraceID().String()).Str("span_id", sc.SpanID().String())
+	}
+	ids := observability.CorrelationFromContext(ctx)
+	if ids.RequestID != "" {
+		e.Str("request_id", ids.RequestID).Str("correlation_id", ids.CorrelationID)
 	}
 }
 
-// GetApplication returns New Relic app instance
-func (ls *LoggerService) GetApplication() *newrelic.Application {
-	return ls.nrApp
+// WithTraceContext adapts legacy trace IDs without creating a vendor application.
+func WithTraceContext(log zerolog.Logger, txn *newrelic.Transaction) zerolog.Logger {
+	if txn == nil {
+		return log
+	}
+	m := txn.GetTraceMetadata()
+	return log.With().Str("trace_id", m.TraceID).Str("span_id", m.SpanID).Logger()
 }
 
-// NewLoggerWithService creates configured zerolog logger
-func NewLoggerWithService(
-	cfg *config.ObservabilityConfig,
-	loggerService *LoggerService,
-) zerolog.Logger {
+type safeWriter struct {
+	mu     sync.Mutex
+	output io.Writer
+	sink   otellog.Logger
+}
 
-	var logLevel zerolog.Level
-
-	switch cfg.GetLogLevel() {
-	case "debug":
-		logLevel = zerolog.DebugLevel
-
-	case "info":
-		logLevel = zerolog.InfoLevel
-
-	case "warn":
-		logLevel = zerolog.WarnLevel
-
-	case "error":
-		logLevel = zerolog.ErrorLevel
-
-	default:
-		logLevel = zerolog.InfoLevel
+func (w *safeWriter) Write(p []byte) (int, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(p, &raw); err != nil {
+		return 0, err
 	}
-
-	zerolog.TimeFieldFormat = "2006-01-02 15:04:05"
-	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
-
-	var writer io.Writer
-
-	// Production JSON logs
-	if cfg.IsProduction() &&
-		cfg.Logging.Format == "json" {
-
-		writer = os.Stdout
-
-	} else {
-
-		// Development pretty console logs
-		writer = zerolog.ConsoleWriter{
-			Out:        os.Stdout,
-			TimeFormat: "2006-01-02 15:04:05",
+	if _, exists := raw[zerolog.ErrorFieldName]; exists {
+		delete(raw, "error.category")
+	}
+	attrs := make([]attribute.KeyValue, 0, 16)
+	keys := make([]string, 0, len(raw))
+	for key := range raw {
+		keys = append(keys, key)
+	}
+	// Correlation precedes bounded operational attributes, independently of map order.
+	sort.Strings(keys)
+	keys = append([]string{"request_id", "correlation_id"}, keys...)
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		value := raw[key]
+		var s string
+		if json.Unmarshal(value, &s) == nil {
+			attrs = append(attrs, attribute.String(key, s))
+			continue
+		}
+		var n int64
+		if json.Unmarshal(value, &n) == nil {
+			attrs = append(attrs, attribute.Int64(key, n))
 		}
 	}
-
-	logger := zerolog.New(writer).
-		Level(logLevel).
-		With().
-		Timestamp().
-		Str("service", cfg.ServiceName).
-		Str("environment", cfg.Environment).
-		Logger()
-
-	// Add stack traces in development
-	if !cfg.IsProduction() {
-		logger = logger.With().
-			Stack().
-			Logger()
+	if _, exists := raw[zerolog.ErrorFieldName]; exists {
+		// The original error has already been marshaled by zerolog. Never inspect it.
+		attrs = append([]attribute.KeyValue{attribute.String("error.category", "unknown")}, attrs...)
 	}
-
-	return logger
+	attrs = observability.SanitizeAttributes(attrs, false)
+	safe := make(map[string]any, len(attrs)+6)
+	for _, a := range attrs {
+		safe[string(a.Key)] = a.Value.AsInterface()
+	}
+	var message, level string
+	_ = json.Unmarshal(raw[zerolog.MessageFieldName], &message)
+	_ = json.Unmarshal(raw[zerolog.LevelFieldName], &level)
+	safe["message"] = observability.SafeOperation(message)
+	if message == legacyWarning {
+		safe["message"] = legacyWarning
+	}
+	parsedLevel, err := zerolog.ParseLevel(level)
+	if err != nil {
+		parsedLevel = zerolog.InfoLevel
+		level = "info"
+	}
+	safe["level"] = level
+	now := time.Now().UTC()
+	safe["time"] = now.Format(time.RFC3339Nano)
+	if _, exists := raw[zerolog.ErrorFieldName]; exists {
+		safe["error"] = observability.SafeError(io.ErrUnexpectedEOF)
+		safe["error.category"] = "unknown"
+	}
+	ctx := context.Background()
+	var tid, sid string
+	_ = json.Unmarshal(raw["trace_id"], &tid)
+	_ = json.Unmarshal(raw["span_id"], &sid)
+	traceID, te := trace.TraceIDFromHex(tid)
+	spanID, se := trace.SpanIDFromHex(sid)
+	if te == nil && se == nil && traceID.IsValid() && spanID.IsValid() && traceID.String() == tid && spanID.String() == sid {
+		safe["trace_id"] = tid
+		safe["span_id"] = sid
+		ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{TraceID: traceID, SpanID: spanID}))
+	}
+	data, err := json.Marshal(safe)
+	if err != nil {
+		return 0, err
+	}
+	data = append(data, '\n')
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if n, err := w.output.Write(data); err != nil {
+		return 0, err
+	} else if n != len(data) {
+		return 0, io.ErrShortWrite
+	}
+	if w.sink != nil {
+		var record otellog.Record
+		record.SetTimestamp(now)
+		record.SetBody(attribute.StringValue(observability.SafeOperation(message)))
+		record.SetSeverity(severity(parsedLevel))
+		record.AddAttributes(attrs...)
+		w.sink.Emit(ctx, record)
+	}
+	return len(p), nil
 }
 
-// WithTraceContext adds trace metadata to logs
-func WithTraceContext(
-	logger zerolog.Logger,
-	txn *newrelic.Transaction,
-) zerolog.Logger {
-
-	if txn == nil {
-		return logger
-	}
-
-	metadata := txn.GetTraceMetadata()
-
-	return logger.With().
-		Str("trace.id", metadata.TraceID).
-		Str("span.id", metadata.SpanID).
-		Logger()
-}
-
-// NewPgxLogger creates pgx SQL logger
-func NewPgxLogger(level zerolog.Level) zerolog.Logger {
-
-	writer := zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: "2006-01-02 15:04:05",
-
-		FormatFieldValue: func(i any) string {
-
-			switch v := i.(type) {
-
-			case string:
-
-				if len(v) > 200 {
-					return v[:200] + "..."
-				}
-
-				return v
-
-			case []byte:
-
-				var obj interface{}
-
-				if err := json.Unmarshal(v, &obj); err == nil {
-
-					pretty, _ := json.MarshalIndent(
-						obj,
-						"",
-						"    ",
-					)
-
-					return "\n" + string(pretty)
-				}
-
-				return string(v)
-
-			default:
-				return fmt.Sprintf("%v", v)
-			}
-		},
-	}
-
-	return zerolog.New(writer).
-		Level(level).
-		With().
-		Timestamp().
-		Str("component", "database").
-		Logger()
-}
-
-// GetPgxTraceLogLevel converts zerolog level to pgx log level
-func GetPgxTraceLogLevel(level zerolog.Level) int {
-
+func severity(level zerolog.Level) otellog.Severity {
 	switch level {
+	case zerolog.TraceLevel:
+		return otellog.SeverityTrace
+	case zerolog.DebugLevel:
+		return otellog.SeverityDebug
+	case zerolog.WarnLevel:
+		return otellog.SeverityWarn
+	case zerolog.ErrorLevel:
+		return otellog.SeverityError
+	case zerolog.FatalLevel, zerolog.PanicLevel:
+		return otellog.SeverityFatal
+	default:
+		return otellog.SeverityInfo
+	}
+}
 
+// NewPgxLogger rejects SQL, arguments and opaque driver errors at the sink.
+func NewPgxLogger(level zerolog.Level) zerolog.Logger {
+	return NewLogger(config.DefaultObservabilityConfig(), os.Stdout, nil).Level(level)
+}
+func GetPgxTraceLogLevel(level zerolog.Level) int {
+	switch level {
 	case zerolog.DebugLevel:
 		return 6
-
 	case zerolog.InfoLevel:
 		return 4
-
 	case zerolog.WarnLevel:
 		return 3
-
 	case zerolog.ErrorLevel:
 		return 2
-
 	default:
 		return 0
 	}

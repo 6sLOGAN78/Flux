@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/observability"
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/trace"
@@ -115,12 +118,56 @@ func TestLoggerRejectsUnvalidatedFieldsAndWarnsSafely(t *testing.T) {
 }
 
 func TestPGXCompatibilityLoggerSanitizesOutput(t *testing.T) {
-	// The same writer used by the pgx compatibility constructor must reject SQL and args.
-	var output bytes.Buffer
-	log := NewLogger(config.DefaultObservabilityConfig(), &output, nil)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = original; _ = w.Close(); _ = r.Close() })
+	log := NewPgxLogger(zerolog.DebugLevel)
 	log.Debug().Str("sql", sentinel).Interface("args", []string{sentinel}).Msg(sentinel)
 	log.Error().Err(errors.New(sentinel)).Str("sql", sentinel).Msg(sentinel)
-	if strings.Contains(output.String(), "SECRET-MARKER") {
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(output), "SECRET-MARKER") {
 		t.Fatal("pgx fields escaped the sink")
+	}
+	if lines := bytes.Count(output, []byte("\n")); lines != 2 {
+		t.Fatalf("missing pgx records: %d", lines)
+	}
+}
+
+func TestConcurrentContextLoggersKeepRecordsSeparate(t *testing.T) {
+	var output bytes.Buffer
+	base := NewLogger(config.DefaultObservabilityConfig(), &output, nil)
+	var workers sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		workers.Go(func() {
+			log := WithContext(base, observability.WithCorrelation(context.Background(), sentinel, sentinel))
+			log.Info().Str("operation", "job.process").Msg("job.process")
+		})
+	}
+	workers.Wait()
+	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n"))
+	if len(lines) != 20 {
+		t.Fatalf("missing records: %d", len(lines))
+	}
+	ids := map[string]bool{}
+	for _, line := range lines {
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatal(err)
+		}
+		id, ok := record["request_id"].(string)
+		if !ok || id == "" || ids[id] || record["correlation_id"] != id {
+			t.Fatalf("crossed context: %v", record)
+		}
+		ids[id] = true
 	}
 }
