@@ -24,6 +24,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	loggerPkg "github.com/6sLOGAN78/flux/internal/logger"
+	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/6sLOGAN78/flux/internal/server"
 	backendTesting "github.com/6sLOGAN78/flux/internal/testing"
 	"github.com/hibiken/asynq"
@@ -49,6 +50,14 @@ func roleSpies(fail string, opened, closed *[]string, cause error) roleFactories
 		return func(context.Context) error { *closed = append(*closed, name); return cause }, nil
 	}
 	return roleFactories{
+		telemetry: func(ctx context.Context, cfg *config.Config, role config.Role) (*observability.Telemetry, func(context.Context) error, error) {
+			close, err := stage("telemetry")
+			if err != nil {
+				return nil, close, err
+			}
+			owner, err := observability.New(ctx, cfg.Observability.TelemetrySettings(), string(role))
+			return owner, func(ctx context.Context) error { return errors.Join(close(ctx), owner.Shutdown(ctx)) }, err
+		},
 		logger: func(*config.Config) (*zerolog.Logger, *loggerPkg.LoggerService, func(context.Context) error, error) {
 			close, err := stage("logger")
 			log := zerolog.Nop()
@@ -107,10 +116,10 @@ func TestRoleResourceGraphs(t *testing.T) {
 		producer bool
 		want     []string
 	}{
-		{config.RoleAPI, false, []string{"logger", "database", "router", "listener"}},
-		{config.RoleAPI, true, []string{"logger", "database", "redis", "producer", "router", "listener"}},
-		{config.RoleRedirector, false, []string{"logger", "router", "listener"}},
-		{config.RoleWorker, false, []string{"logger", "redis", "email", "consumer", "router", "listener", "start consumer"}},
+		{config.RoleAPI, false, []string{"telemetry", "logger", "database", "router", "listener"}},
+		{config.RoleAPI, true, []string{"telemetry", "logger", "database", "redis", "producer", "router", "listener"}},
+		{config.RoleRedirector, false, []string{"telemetry", "logger", "router", "listener"}},
+		{config.RoleWorker, false, []string{"telemetry", "logger", "redis", "email", "consumer", "router", "listener", "start consumer"}},
 	} {
 		t.Run(string(test.role)+string(rune('0'+boolInt(test.producer))), func(t *testing.T) {
 			cfg := roleTestConfig()
@@ -138,15 +147,15 @@ func TestRoleResourceGraphs(t *testing.T) {
 			if err := role.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			wantClosed := []string{"logger"}
+			wantClosed := []string{"logger", "telemetry"}
 			if test.role == config.RoleAPI {
-				wantClosed = []string{"database", "logger"}
+				wantClosed = []string{"database", "logger", "telemetry"}
 				if test.producer {
-					wantClosed = []string{"producer", "redis", "database", "logger"}
+					wantClosed = []string{"producer", "redis", "database", "logger", "telemetry"}
 				}
 			}
 			if test.role == config.RoleWorker {
-				wantClosed = []string{"consumer", "redis", "logger"}
+				wantClosed = []string{"consumer", "redis", "logger", "telemetry"}
 			}
 			if !reflect.DeepEqual(closed, wantClosed) {
 				t.Fatalf("close order %v, want %v", closed, wantClosed)
@@ -168,12 +177,12 @@ func boolInt(value bool) int {
 func TestRoleConstructionFailureUnwinds(t *testing.T) {
 	cause := errors.New("SECRET-MARKER")
 	for _, role := range []config.Role{config.RoleAPI, config.RoleRedirector, config.RoleWorker} {
-		stages := []string{"logger", "router", "listener"}
+		stages := []string{"telemetry", "logger", "router", "listener"}
 		if role == config.RoleAPI {
-			stages = []string{"logger", "database", "redis", "producer", "router", "listener"}
+			stages = []string{"telemetry", "logger", "database", "redis", "producer", "router", "listener"}
 		}
 		if role == config.RoleWorker {
-			stages = []string{"logger", "redis", "email", "consumer", "router", "listener", "start consumer"}
+			stages = []string{"telemetry", "logger", "redis", "email", "consumer", "router", "listener", "start consumer"}
 		}
 		for _, fail := range stages {
 			t.Run(string(role)+"/"+fail, func(t *testing.T) {
@@ -187,7 +196,7 @@ func TestRoleConstructionFailureUnwinds(t *testing.T) {
 				var want []string
 				for i := len(opened) - 1; i >= 0; i-- {
 					switch opened[i] {
-					case "logger", "database", "redis", "producer", "consumer":
+					case "telemetry", "logger", "database", "redis", "producer", "consumer":
 						want = append(want, opened[i])
 					}
 				}
@@ -316,7 +325,7 @@ func TestRoleCloseAggregatesAndStartupReleasesListener(t *testing.T) {
 	if !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") {
 		t.Fatalf("close failure lost or leaked: %v", err)
 	}
-	for _, name := range []string{"consumer", "redis", "logger"} {
+	for _, name := range []string{"consumer", "redis", "logger", "telemetry"} {
 		if !strings.Contains(err.Error(), name) {
 			t.Fatalf("close skipped %s: %v", name, err)
 		}
