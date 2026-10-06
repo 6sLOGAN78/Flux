@@ -15,7 +15,7 @@ Requirements for the first production-credible release. The managed Flux domain 
 - [x] **PLAT-04**: An operator can terminate API, redirector, and worker processes with SIGTERM and observe bounded draining and cleanup of all owned resources.
 - [x] **PLAT-05**: A developer can reproduce the supported toolchain and service dependencies locally and in CI from pinned project configuration.
 - [x] **PLAT-06**: A developer receives a failed CI result when formatting, linting, type checking, code generation, migrations, unit tests, integration tests, or builds drift or fail.
-- [ ] **PLAT-07**: An operator can correlate requests and asynchronous work through structured logs, request/correlation IDs, traces, and bounded-cardinality metrics without leaking secrets or raw sensitive values.
+- [x] **PLAT-07**: An operator can correlate requests and asynchronous work through structured logs, request/correlation IDs, traces, and bounded-cardinality metrics without leaking secrets or raw sensitive values.
 - [x] **PLAT-08**: A developer can update the versioned API contract and regenerate checked Go and TypeScript boundaries, with CI detecting stale generated artifacts.
 
 ### Identity and Workspaces
@@ -182,7 +182,7 @@ Every v1 requirement maps to exactly one roadmap phase. v2 requirements are inte
 | PLAT-04 | Phase 1 | Complete |
 | PLAT-05 | Phase 1 | Complete |
 | PLAT-06 | Phase 1 | Complete |
-| PLAT-07 | Phase 1 | Pending |
+| PLAT-07 | Phase 1 | Complete |
 | PLAT-08 | Phase 1 | Complete |
 | TEN-01 | Phase 2 | Pending |
 | TEN-02 | Phase 2 | Pending |
