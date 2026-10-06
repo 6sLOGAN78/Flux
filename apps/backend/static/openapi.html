@@ -6,7 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
   <body>
-    <script id="api-reference" data-url="/static/openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script
+      id="api-reference"
+      data-url="/static/openapi.json"
+      data-configuration='{"withDefaultFonts":false,"telemetry":false,"hideClientButton":true,"agent":{"disabled":true}}'
+    ></script>
+    <!-- Official Scalar 1.73.0 standalone bytes verified against the npm tarball. -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.73.0/dist/browser/standalone.js"
+      integrity="sha384-OKyMdsDX84ypSZEhVun8YElXk5c2GQaH3EXPOc6ItmVcLDUAvKHYwvDLvAgsqVtB"
+      crossorigin="anonymous"
+    ></script>
   </body>
 </html>
