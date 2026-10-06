@@ -1,0 +1,10 @@
+{
+  "oapi-codegen": {
+    "module": "github.com/oapi-codegen/oapi-codegen/v2",
+    "version": "v2.8.0",
+    "sum": "h1:s4hxMxuqtR8jPzXkBTtFwY/SBuj3gEAYikmbBSdtLMM=",
+    "goModSum": "h1:yae2TI9IYB5vxQ35gFrpXh9L5H1eJv4MAUK1jumGMTo=",
+    "source": "https://github.com/oapi-codegen/oapi-codegen/releases/tag/v2.8.0",
+    "verified": "2026-10-06"
+  }
+}

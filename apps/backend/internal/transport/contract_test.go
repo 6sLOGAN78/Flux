@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/transport"
+	"gopkg.in/yaml.v3"
 )
 
 func readJSON(t *testing.T, path string) map[string]any {
@@ -211,8 +212,27 @@ func TestPinnedGenerationMatchesCheckedArtifact(t *testing.T) {
 	}
 	for i := range 2 {
 		output := filepath.Join(t.TempDir(), "health.gen.go")
+		configData, err := os.ReadFile("oapi-codegen.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config map[string]any
+		if err := yaml.Unmarshal(configData, &config); err != nil {
+			t.Fatal(err)
+		}
+		// The generator gives the config's output precedence over the -o flag.
+		// Change only the temporary output destination, preserving all options.
+		config["output"] = output
+		configData, err = yaml.Marshal(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		configPath := filepath.Join(t.TempDir(), "oapi-codegen.yaml")
+		if err := os.WriteFile(configPath, configData, 0o600); err != nil {
+			t.Fatal(err)
+		}
 		cmd := exec.CommandContext(ctx, "go", "run", module+"/cmd/oapi-codegen@"+version,
-			"-config", "oapi-codegen.yaml", "-o", output, "../../../../packages/openapi/openapi.json")
+			"-config", configPath, "../../../../packages/openapi/openapi.json")
 		if log, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generation %d: %v\n%s", i+1, err, log)
 		}

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.0/configuration-schema.json
+# Run from apps/backend:
+# go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/transport/oapi-codegen.yaml ../../packages/openapi/openapi.json
+package: transport
+output: internal/transport/health.gen.go
+generate:
+  models: true
+output-options:
+  # Preserve schema-derived declarations; expose package-local names as aliases.
+  # This template changes naming only. Fields and enums still come from OpenAPI.
+  user-templates:
+    typedef.tmpl: |
+      {{range .Types}}
+      {{ .DocComment }}
+      type {{.TypeName}} {{if .IsAlias }}={{end}} {{.Schema.TypeDecl}}
+      {{end}}
+
+      // HealthLiveResponse is the canonical liveness transport in this package.
+      type HealthLiveResponse = TransportHealthLiveResponse
+
+      // HealthReadyResponse is the canonical readiness transport in this package.
+      type HealthReadyResponse = TransportHealthReadyResponse
