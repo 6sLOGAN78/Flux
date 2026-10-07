@@ -39,5 +39,24 @@
   "dependencies": {
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
+  },
+  "overrides": {
+    "axios": "1.20.0",
+    "baseline-browser-mapping": "2.11.27",
+    "brace-expansion": "5.0.12",
+    "engine.io": "6.6.11",
+    "esbuild": "0.28.2",
+    "fast-uri": "4.2.1",
+    "form-data": "4.0.6",
+    "joi": "18.2.9",
+    "nanoid": "6.0.2",
+    "next": "16.4.0",
+    "postcss": "8.5.29",
+    "prismjs": "1.30.0",
+    "sharp": "0.35.5",
+    "socket.io-parser": "4.2.7",
+    "source-map-js": "1.2.2",
+    "ts-deepmerge": "8.0.0",
+    "ws": "8.22.0"
   }
 }
