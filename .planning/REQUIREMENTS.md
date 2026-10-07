@@ -106,7 +106,7 @@ Requirements for the first production-credible release. The managed Flux domain 
 - [ ] **SAFE-05**: Raw IP addresses are not retained indefinitely; the collection, derivation, retention, and deletion policy is documented before click data ships.
 - [ ] **SAFE-06**: Retention or deletion rules cover primary rows, analytics projections, caches, event streams, retries, dead letters, exports, logs, and replay suppression so deleted data is not silently resurrected.
 - [ ] **SAFE-07**: Security-relevant membership, role, link suspension, identity, and integration actions produce tenant-scoped audit records with actor, action, resource, time, and safe metadata.
-- [ ] **SAFE-08**: Dependency and secret scanning run in CI and produce actionable failures without publishing discovered secret values.
+- [x] **SAFE-08**: Dependency and secret scanning run in CI and produce actionable failures without publishing discovered secret values.
 
 ## v2 Requirements
 
@@ -249,7 +249,7 @@ Every v1 requirement maps to exactly one roadmap phase. v2 requirements are inte
 | SAFE-05 | Phase 4 | Pending |
 | SAFE-06 | Phase 6 | Pending |
 | SAFE-07 | Phase 5 | Pending |
-| SAFE-08 | Phase 1 | Pending |
+| SAFE-08 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 74 total

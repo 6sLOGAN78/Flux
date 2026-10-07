@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Resumed plan 01-21 scanners after usage reset
-last_updated: "2026-10-07T22:47:02.433Z"
+stopped_at: Completed 01-21-PLAN.md
+last_updated: "2026-10-07T23:24:20.027Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 01 (Foundation Stability & System Boundaries) — EXECUTING
-Plan: 21 of 22
+Plan: 22 of 22
 Status: Ready to execute
 Last activity: 2026-10-07
 
-Progress: [█████████░] 91%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [█████████░] 91%
 | Phase 01 P18 | 11min | 2 tasks | 5 files |
 | Phase 01 P19 | 18min | 2 tasks | 5 files |
 | Phase 01 P20 | 46min | 2 tasks | 10 files |
+| Phase 01 P21 | 36min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Preserve safe nonzero application Links but drop complete collector Link/event collections with pinned OTTL 0.162.0; validate dirty signals and final 200 cumulative metrics independently.
 - [Phase 01]: Pin official Biome2.5.15, golangci-lint2.14.0, staticcheck2026.2.1, Gitleaks8.30.1 and source-built govulncheckv1.8.0 with Go1.26.8 and verified source/executable hashes. — Upstream govulncheck has no prebuilts; isolated readonly source builds reproduce exact measured hashes without application dependencies; preserve Go checks through v2 migration.
 - [Phase 01]: Use explicit uncached quality stages and compare the compiled Go test listing with all selected unit/integration tests; preserve direct Taskfile migrations to prevent recursive test dispatch. — Guarantee backend and workspace completeness, successful race-enabled test execution and bounded private diagnostics without weakening existing gates.
+- [Phase 01]: Scan all backend roles and tests at package exposure level; retain unused module inventory advisories visibly; constrain public scanner metadata to recognized identifiers and manifest/file-backed labels. — Fail every vulnerable imported package and execution/report error without advisory exceptions or disclosure of private scanner content.
 
 ### Pending Todos
 
@@ -126,6 +128,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-07T22:47:02.418Z
-Stopped at: Resumed plan 01-21 scanners after usage reset
-Resume file: .planning/phases/01-foundation-stability-system-boundaries/01-21-PLAN.md
+Last session: 2026-10-07T23:24:20.015Z
+Stopped at: Completed 01-21-PLAN.md
+Resume file: None
