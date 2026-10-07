@@ -3,10 +3,14 @@ package testing
 import (
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/server"
+	"github.com/rs/zerolog"
+)
+
+const (
+	testSlowQueryThreshold = 100 * time.Millisecond
 )
 
 // CreateTestServer creates a server instance for testing
@@ -19,11 +23,11 @@ func CreateTestServer(logger *zerolog.Logger, db *TestDB) *server.Server {
 			Logging: config.LoggingConfig{
 				Level:              "info",
 				Format:             "json",
-				SlowQueryThreshold: 100 * time.Millisecond,
+				SlowQueryThreshold: testSlowQueryThreshold,
 			},
 			NewRelic: config.NewRelicConfig{
 				LicenseKey:                "",    // Empty for tests
-				AppLogForwardingEnabled:   false, // Disabled for tests  
+				AppLogForwardingEnabled:   false, // Disabled for tests
 				DistributedTracingEnabled: false, // Disabled for tests
 				DebugLogging:              false, // Disabled for tests
 			},

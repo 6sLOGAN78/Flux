@@ -7,6 +7,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/handler"
 )
 
+// Redirector owns the redirector role runtime.
 type Redirector struct{ *RoleRuntime }
 
 // NewRedirector constructs only the Phase 1 system HTTP and logging graph.

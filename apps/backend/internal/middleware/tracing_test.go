@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,41 +49,58 @@ func newFixture(t *testing.T) fixture {
 	logs := new(bytes.Buffer)
 	log := logger.NewLogger(config.DefaultObservabilityConfig(), logs, nil)
 	s := &server.Server{Role: config.RoleAPI, Logger: &log}
-	tel := &observability.Telemetry{Tracer: tp.Tracer("flux.http"), Meter: mp.Meter("flux.http"), Propagator: observability.TraceparentPropagator{}}
+	tel := &observability.Telemetry{Tracer: tp.Tracer("flux.http"),
+		Meter:      mp.Meter("flux.http"),
+		Propagator: observability.TraceparentPropagator{}}
 	state, err := trace.ParseTraceState("private=" + secret)
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := trace.Link{SpanContext: trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceState: state, TraceFlags: trace.FlagsSampled}), Attributes: []attribute.KeyValue{attribute.String("private", secret)}}
+	link := trace.Link{SpanContext: trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1},
+		SpanID:     trace.SpanID{2},
+		TraceState: state,
+		TraceFlags: trace.FlagsSampled}),
+		Attributes: []attribute.KeyValue{attribute.String("private",
+			secret)}}
 	tm := middleware.NewTracingMiddleware(s, tel, link)
 	global := middleware.NewGlobalMiddlewares(s)
 	e := echo.New()
 	e.HTTPErrorHandler = global.GlobalErrorHandler
-	e.Use(middleware.RequestID(), tm.EnhanceTracing(), middleware.NewContextEnhancer(s).EnhanceContext(), global.RequestLogger(), global.Recover())
+	e.Use(middleware.RequestID(),
+		tm.EnhanceTracing(),
+		middleware.NewContextEnhancer(s).
+			EnhanceContext(),
+		global.RequestLogger(),
+		global.Recover())
 	e.GET("/status", func(c echo.Context) error {
 		if baggage.FromContext(c.Request().Context()).Len() != 0 {
 			t.Error("baggage reached handler")
 		}
-		if c.Request().Header.Get("tracestate") != "" || c.Request().Header.Get("baggage") != "" {
+		if c.Request().Header.Get("Tracestate") != "" || c.Request().Header.Get("Baggage") != "" {
 			t.Error("private propagation headers reached handler")
 		}
 		c.Set(middleware.UserIDKey, secret)
 		return c.NoContent(http.StatusOK)
 	})
-	e.GET("/ready", func(c echo.Context) error { return errors.New(secret) })
-	e.GET("/live", func(c echo.Context) error { panic(secret) })
-	e.GET("/openapi", func(c echo.Context) error { return echo.NewHTTPError(400, secret) })
-	e.POST("/status", func(c echo.Context) error {
-		return errs.NewBadRequestError("Validation failed", true, nil, []errs.FieldError{{Field: "name", Error: "is required"}}, nil)
+	e.GET("/ready", func(_ echo.Context) error { return errors.New(secret) })
+	e.GET("/live", func(_ echo.Context) error { panic(secret) })
+	e.GET("/openapi", func(_ echo.Context) error { return echo.NewHTTPError(400, secret) })
+	e.POST("/status", func(_ echo.Context) error {
+		return errs.NewBadRequestError("Validation failed",
+			true,
+			nil,
+			[]errs.FieldError{{Field: "name",
+				Error: "is required"}},
+			nil)
 	})
-	return fixture{e, spans, reader, logs}
+	return fixture{e: e, spans: spans, reader: reader, logs: logs}
 }
 
 func request(f fixture, method, target, requestID, correlationID string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, nil)
-	req.Header.Set("traceparent", parent)
-	req.Header.Set("tracestate", "private="+secret)
-	req.Header.Set("baggage", "private="+secret)
+	req.Header.Set("Traceparent", parent)
+	req.Header.Set("Tracestate", "private="+secret)
+	req.Header.Set("Baggage", "private="+secret)
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Cookie", "session="+secret)
 	req.Header.Set("User-Agent", secret)
@@ -104,7 +122,10 @@ func TestHTTPInjectedTelemetryAndCorrelation(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatal(rec.Code)
 	}
-	if rec.Header().Get(middleware.RequestIDHeader) != requestID || rec.Header().Get("X-Correlation-ID") != correlationID {
+	if rec.Header().
+		Get(middleware.RequestIDHeader) != requestID ||
+		rec.Header().
+			Get("X-Correlation-ID") != correlationID {
 		t.Fatal("response correlation mismatch")
 	}
 	spans := f.spans.GetSpans()
@@ -115,32 +136,50 @@ func TestHTTPInjectedTelemetryAndCorrelation(t *testing.T) {
 	if span.SpanKind != trace.SpanKindServer || span.Name != "http.request" {
 		t.Fatal("missing server span")
 	}
-	if span.Parent.SpanID().String() != "2222222222222222" || span.SpanContext.TraceID().String() != "11111111111111111111111111111111" {
+	if span.Parent.SpanID().
+		String() != "2222222222222222" ||
+		span.SpanContext.TraceID().
+			String() != "11111111111111111111111111111111" {
 		t.Fatal("parent lost")
 	}
 	if span.Parent.TraceState().Len() != 0 || span.SpanContext.TraceState().Len() != 0 {
 		t.Fatal("span tracestate retained")
 	}
-	if len(span.Links) != 1 || span.Links[0].SpanContext.TraceState().Len() != 0 || len(span.Links[0].Attributes) != 0 {
+	if len(span.Links) != 1 ||
+		span.Links[0].SpanContext.TraceState().
+			Len() != 0 ||
+		len(span.Links[0].Attributes) != 0 {
 		t.Fatal("unsafe Link retained")
 	}
 	attrs := attrMap(span.Attributes)
-	if attrs["request_id"] != requestID || attrs["correlation_id"] != correlationID || attrs["http.route"] != "/status" {
+	if attrs["request_id"] != requestID ||
+		attrs["correlation_id"] != correlationID ||
+		attrs["http.route"] != "/status" {
 		t.Fatal(attrs)
 	}
 	var record map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(f.logs.Bytes()), &record); err != nil {
 		t.Fatal(err)
 	}
-	if record["request_id"] != requestID || record["correlation_id"] != correlationID || record["trace_id"] != span.SpanContext.TraceID().String() || record["span_id"] != span.SpanContext.SpanID().String() {
+	if record["request_id"] != requestID ||
+		record["correlation_id"] != correlationID ||
+		record["trace_id"] != span.SpanContext.TraceID().
+			String() ||
+		record["span_id"] != span.SpanContext.SpanID().
+			String() {
 		t.Fatal(record)
 	}
-	assertPrivateAbsent(t, string(f.logs.Bytes())+fmt.Sprint(spans))
+	assertPrivateAbsent(t, f.logs.String()+fmt.Sprint(spans))
 }
 
 func TestHTTPInvalidIDsAreReplaced(t *testing.T) {
-	for _, invalid := range []string{"", secret, strings.Repeat("a", 8192), uuid.Nil.String(), "11111111-1111-1111-1111-11111111111A"} {
-		t.Run(fmt.Sprint(len(invalid))+invalid[:min(len(invalid), 8)], func(t *testing.T) {
+	for _, invalid := range []string{"",
+		secret,
+		strings.Repeat("a",
+			8192),
+		uuid.Nil.String(),
+		"11111111-1111-1111-1111-11111111111A"} {
+		t.Run(strconv.Itoa(len(invalid))+invalid[:min(len(invalid), 8)], func(t *testing.T) {
 			f := newFixture(t)
 			rec := request(f, "GET", "/status", invalid, invalid)
 			for _, header := range []string{middleware.RequestIDHeader, "X-Correlation-ID"} {
@@ -154,7 +193,10 @@ func TestHTTPInvalidIDsAreReplaced(t *testing.T) {
 				}
 			}
 			attrs := attrMap(f.spans.GetSpans()[0].Attributes)
-			if attrs["request_id"] != rec.Header().Get(middleware.RequestIDHeader) || attrs["correlation_id"] != rec.Header().Get("X-Correlation-ID") {
+			if attrs["request_id"] != rec.Header().
+				Get(middleware.RequestIDHeader) ||
+				attrs["correlation_id"] != rec.Header().
+					Get("X-Correlation-ID") {
 				t.Fatal("span ID mismatch")
 			}
 		})
@@ -164,30 +206,40 @@ func TestHTTPInvalidIDsAreReplaced(t *testing.T) {
 func TestHTTPRejectsDuplicateIDsAndUntrustedContext(t *testing.T) {
 	f := newFixture(t)
 	first, second := uuid.NewString(), uuid.NewString()
-	req := httptest.NewRequest("GET", "/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
 	req.Header.Add(middleware.RequestIDHeader, first)
 	req.Header.Add(middleware.RequestIDHeader, second)
 	req.Header.Add("X-Correlation-ID", first)
 	req.Header.Add("X-Correlation-ID", second)
-	req.Header.Set("traceparent", "00-00000000000000000000000000000000-2222222222222222-01")
+	req.Header.Set("Traceparent", "00-00000000000000000000000000000000-2222222222222222-01")
 	state, _ := trace.ParseTraceState("private=" + secret)
-	sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceState: state})
+	sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1},
+		SpanID:     trace.SpanID{2},
+		TraceState: state})
 	req = req.WithContext(trace.ContextWithSpanContext(req.Context(), sc))
 	rec := httptest.NewRecorder()
 	f.e.ServeHTTP(rec, req)
-	if rec.Code != 200 || rec.Header().Get(middleware.RequestIDHeader) == first || rec.Header().Get("X-Correlation-ID") == first {
+	if rec.Code != 200 ||
+		rec.Header().
+			Get(middleware.RequestIDHeader) == first ||
+		rec.Header().
+			Get("X-Correlation-ID") == first {
 		t.Fatal("duplicate IDs were trusted")
 	}
 	span := f.spans.GetSpans()[0]
-	if span.Parent.IsValid() || span.SpanContext.TraceID() == sc.TraceID() || span.SpanContext.TraceState().Len() != 0 {
+	if span.Parent.IsValid() ||
+		span.SpanContext.TraceID() == sc.TraceID() ||
+		span.SpanContext.TraceState().
+			Len() != 0 {
 		t.Fatal("invalid ingress inherited untrusted context")
 	}
 	assertPrivateAbsent(t, f.logs.String()+fmt.Sprint(f.spans.GetSpans()))
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestHTTPBoundedLabelsAndSafeFailures(t *testing.T) {
 	f := newFixture(t)
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		request(f, "GET", fmt.Sprintf("/status?token=%s-%d", secret, i), "", "")
 		request(f, "GET", fmt.Sprintf("/%s-%d", secret, i), "", "")
 	}
@@ -198,7 +250,11 @@ func TestHTTPBoundedLabelsAndSafeFailures(t *testing.T) {
 		}
 	}
 	validation := request(f, "POST", "/status", "", "")
-	if validation.Code != 400 || !strings.Contains(validation.Body.String(), "Validation failed") || !strings.Contains(validation.Body.String(), "is required") {
+	if validation.Code != 400 ||
+		!strings.Contains(validation.Body.String(),
+			"Validation failed") ||
+		!strings.Contains(validation.Body.String(),
+			"is required") {
 		t.Fatal("public validation regressed", validation.Body)
 	}
 	var data metricdata.ResourceMetrics
@@ -258,7 +314,15 @@ func attrMap(attrs []attribute.KeyValue) map[string]any {
 }
 func assertPrivateAbsent(t *testing.T, output string) {
 	t.Helper()
-	for _, forbidden := range []string{secret, "192.0.2.71", "user_agent", "user_id", "Authorization", "Cookie", "tracestate", "baggage", "?token="} {
+	for _, forbidden := range []string{secret,
+		"192.0.2.71",
+		"user_agent",
+		"user_id",
+		"Authorization",
+		"Cookie",
+		"tracestate",
+		"baggage",
+		"?token="} {
 		if strings.Contains(output, forbidden) {
 			t.Fatalf("private marker retained: %s", forbidden)
 		}

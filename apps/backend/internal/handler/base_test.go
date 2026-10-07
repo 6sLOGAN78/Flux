@@ -33,24 +33,33 @@ func isolationWrapper(kind string, observe func(*isolatedRequest)) echo.HandlerF
 	newRequest := func() *isolatedRequest { return &isolatedRequest{} }
 	switch kind {
 	case "json":
-		return handler.Handle(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) (isolatedRequest, error) {
-			observe(req)
-			return *req, nil
-		}, http.StatusOK, newRequest)
+		return handler.Handle(handler.NewHandler(nil),
+			func(_ echo.Context,
+				req *isolatedRequest) (isolatedRequest,
+				error) {
+				observe(req)
+				return *req, nil
+			}, http.StatusOK, newRequest)
 	case "file":
-		return handler.HandleFile(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) ([]byte, error) {
-			observe(req)
-			return []byte(req.Marker), nil
-		}, http.StatusOK, newRequest, "marker.txt", "text/plain")
+		return handler.HandleFile(handler.NewHandler(nil),
+			func(_ echo.Context,
+				req *isolatedRequest) ([]byte,
+				error) {
+				observe(req)
+				return []byte(req.Marker), nil
+			}, http.StatusOK, newRequest, "marker.txt", "text/plain")
 	default:
-		return handler.HandleNoContent(handler.NewHandler(nil), func(c echo.Context, req *isolatedRequest) error {
-			observe(req)
-			c.Response().Header().Set("X-Marker", req.Marker)
-			return nil
-		}, http.StatusNoContent, newRequest)
+		return handler.HandleNoContent(handler.NewHandler(nil),
+			func(c echo.Context,
+				req *isolatedRequest) error {
+				observe(req)
+				c.Response().Header().Set("X-Marker", req.Marker)
+				return nil
+			}, http.StatusNoContent, newRequest)
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestWrappersIsolateConcurrentRequests(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{"json", "file", "no_content"} {
@@ -69,18 +78,21 @@ func TestWrappersIsolateConcurrentRequests(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					r := httptest.NewRequest(http.MethodPost, "/isolation", strings.NewReader(string(body)))
+					r := httptest.NewRequest(http.MethodPost,
+						"/isolation",
+						strings.NewReader(string(body)))
 					r.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 					response := httptest.NewRecorder()
-					if err := wrapped(e.NewContext(r, response)); err != nil {
-						t.Error(err)
+					if err75 := wrapped(e.NewContext(r, response)); err75 != nil {
+						t.Error(err75)
 						return
 					}
 					got := response.Body.String()
 					if kind == "json" {
 						var decoded isolatedRequest
-						if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
-							t.Error(err)
+						if err82 := json.Unmarshal(response.Body.Bytes(),
+							&decoded); err82 != nil {
+							t.Error(err82)
 							return
 						}
 						got = decoded.Marker
@@ -105,8 +117,13 @@ func TestWrappersDoNotRetainOmittedFields(t *testing.T) {
 			t.Parallel()
 			e := echo.New()
 			var optional []string
-			wrapped := isolationWrapper(kind, func(req *isolatedRequest) { optional = append(optional, req.Optional) })
-			for _, body := range []string{`{"marker":"first","optional":"private-first-request"}`, `{"marker":"second"}`} {
+			wrapped := isolationWrapper(kind,
+				func(req *isolatedRequest) {
+					optional = append(optional,
+						req.Optional)
+				})
+			for _, body := range []string{`{"marker":"first","optional":"private-first-request"}`,
+				`{"marker":"second"}`} {
 				r := httptest.NewRequest(http.MethodPost, "/isolation", strings.NewReader(body))
 				r.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 				if err := wrapped(e.NewContext(r, httptest.NewRecorder())); err != nil {

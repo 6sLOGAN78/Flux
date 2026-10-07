@@ -20,15 +20,16 @@ import (
 // ReadinessCheck declares a required, context-aware dependency of a role.
 // Names are fixed by composition, never derived from request input or errors.
 type ReadinessCheck struct {
-	Name  string
 	Check func(context.Context) error
+	Name  string
 }
 
+// HealthHandler serves process liveness and dependency readiness.
 type HealthHandler struct {
 	logger  *zerolog.Logger
-	timeout time.Duration
-	checks  []ReadinessCheck
 	ready   func() bool
+	checks  []ReadinessCheck
+	timeout time.Duration
 }
 
 // SetReadinessGate connects supervisor shutdown without dependency probes.
@@ -60,8 +61,8 @@ type healthComponent = struct {
 }
 
 type readinessResult struct {
-	index    int
 	err      error
+	index    int
 	duration time.Duration
 }
 
@@ -76,22 +77,14 @@ func (h *HealthHandler) Ready(c echo.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(c.Request().Context(), h.timeout)
 	defer cancel()
-	response := transport.HealthReadyResponse{Status: transport.TransportHealthReadyResponseStatusReady, Checks: make([]healthComponent, len(h.checks))}
+	response := transport.HealthReadyResponse{Status: transport.TransportHealthReadyResponseStatusReady,
+		Checks: make([]healthComponent,
+			len(h.checks))}
 	results := make(chan readinessResult, len(h.checks))
 	for i, check := range h.checks {
-		response.Checks[i] = healthComponent{Name: check.Name, State: transport.TransportHealthReadyResponseChecksStateNotReady}
-		go func(index int, check ReadinessCheck) {
-			start := time.Now()
-			var err error
-			if check.Check == nil {
-				err = errors.New("required check is unconfigured")
-			} else if ctx.Err() != nil {
-				err = ctx.Err()
-			} else {
-				err = check.Check(ctx)
-			}
-			results <- readinessResult{index: index, err: err, duration: time.Since(start)}
-		}(i, check)
+		response.Checks[i] = healthComponent{Name: check.Name,
+			State: transport.TransportHealthReadyResponseChecksStateNotReady}
+		go runReadinessCheck(ctx, i, check, results)
 	}
 	pending := make([]bool, len(h.checks))
 	for i := range pending {
@@ -117,18 +110,7 @@ func (h *HealthHandler) Ready(c echo.Context) error {
 			remaining = 0
 		}
 	}
-	status := http.StatusOK
-	for _, check := range response.Checks {
-		if check.State != transport.TransportHealthReadyResponseChecksStateReady {
-			response.Status = transport.TransportHealthReadyResponseStatusNotReady
-			status = http.StatusServiceUnavailable
-			break
-		}
-	}
-	if ctx.Err() != nil || (h.ready != nil && !h.ready()) {
-		response.Status = transport.TransportHealthReadyResponseStatusNotReady
-		status = http.StatusServiceUnavailable
-	}
+	status := h.readinessStatus(ctx, &response)
 	return c.JSON(status, response)
 }
 
@@ -174,4 +156,34 @@ func (h *HealthHandler) logFailure(c echo.Context, name string, err error, durat
 	trace.SpanFromContext(c.Request().Context()).AddEvent("dependency.check", trace.WithAttributes(attrs...))
 	log.Error().Str("operation", "dependency.check").Str("dependency", dependency).Str("error.category", category).
 		Str("component", name).Str("failure_kind", kind).Dur("duration", duration).Msg("readiness check failed")
+}
+
+func runReadinessCheck(ctx context.Context, index int, check ReadinessCheck, results chan<- readinessResult) {
+	start := time.Now()
+	var err error
+	switch {
+	case check.Check == nil:
+		err = errors.New("required check is unconfigured")
+	case ctx.Err() != nil:
+		err = ctx.Err()
+	default:
+		err = check.Check(ctx)
+	}
+	results <- readinessResult{index: index, err: err, duration: time.Since(start)}
+}
+
+func (h *HealthHandler) readinessStatus(ctx context.Context, response *transport.HealthReadyResponse) int {
+	status := http.StatusOK
+	for _, check := range response.Checks {
+		if check.State != transport.TransportHealthReadyResponseChecksStateReady {
+			response.Status = transport.TransportHealthReadyResponseStatusNotReady
+			status = http.StatusServiceUnavailable
+			break
+		}
+	}
+	if ctx.Err() != nil || (h.ready != nil && !h.ready()) {
+		response.Status = transport.TransportHealthReadyResponseStatusNotReady
+		status = http.StatusServiceUnavailable
+	}
+	return status
 }

@@ -1,15 +1,18 @@
+// Package utils provides general serialization helpers.
 package utils
 
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
-func PrintJSON(v interface{}) {
-	json, err := json.MarshalIndent(v, "", "  ")
+// PrintJSON writes indented JSON to the process output for local inspection.
+func PrintJSON(v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling to JSON:", err)
-		return
+		return fmt.Errorf("marshal JSON: %w", err)
 	}
-	fmt.Println("JSON:", string(json))
+	_, err = fmt.Fprintln(os.Stdout, "JSON:", string(data))
+	return err
 }

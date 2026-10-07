@@ -1,3 +1,4 @@
+// Package main runs the migrator process entry point.
 package main
 
 import (
@@ -30,25 +31,38 @@ func run(ctx context.Context, output io.Writer) int {
 		return 1
 	}
 	return runConfigured(ctx, cfg, output, migratorFactories{
-		telemetry: func(ctx context.Context, settings observability.Settings, role string) (*observability.Telemetry, func(context.Context) error, error) {
-			owner, err := observability.New(ctx, settings, role)
-			if err != nil {
-				return nil, nil, err
+		telemetry: func(ctx context.Context,
+			settings observability.Settings,
+			role string) (*observability.Telemetry,
+			func(context.Context) error,
+			error) {
+			owner, err34 := observability.New(ctx, settings, role)
+			if err34 != nil {
+				return nil, nil, err34
 			}
 			return owner, owner.Shutdown, nil
 		},
-		migrate: func(ctx context.Context, cfg *config.Config, closeContext func() context.Context) (database.MigrationResult, error) {
+		migrate: func(ctx context.Context,
+			cfg *config.Config,
+			closeContext func() context.Context) (database.MigrationResult,
+			error) {
 			return database.MigrateWithResult(ctx, cfg, closeContext)
 		},
 	})
 }
 
 type migratorFactories struct {
-	telemetry func(context.Context, observability.Settings, string) (*observability.Telemetry, func(context.Context) error, error)
-	migrate   func(context.Context, *config.Config, func() context.Context) (database.MigrationResult, error)
+	telemetry func(context.Context,
+		observability.Settings,
+		string) (*observability.Telemetry,
+		func(context.Context) error,
+		error)
+	migrate func(context.Context, *config.Config, func() context.Context) (database.MigrationResult, error)
 }
 
 // PostgreSQL close and provider flush share one lazily started exit deadline.
+//
+//nolint:nonamedreturns // Provider-close failure must update the exit status after migration returns.
 func runConfigured(ctx context.Context, cfg *config.Config, output io.Writer, f migratorFactories) (code int) {
 	log := logger.NewLogger(cfg.Observability, output, nil)
 	var exitOnce sync.Once
@@ -56,7 +70,10 @@ func runConfigured(ctx context.Context, cfg *config.Config, output io.Writer, f 
 	var cancelExit context.CancelFunc
 	closeContext := func() context.Context {
 		exitOnce.Do(func() {
-			exitCtx, cancelExit = context.WithTimeout(context.Background(), cfg.Observability.HealthChecks.Timeout)
+			//nolint:gosec,fatcontext // The outer defer cancels this shared exit budget after all resource closes.
+			exitCtx,
+				cancelExit = context.WithTimeout(context.Background(),
+				cfg.Observability.HealthChecks.Timeout)
 		})
 		return exitCtx
 	}
@@ -68,8 +85,8 @@ func runConfigured(ctx context.Context, cfg *config.Config, output io.Writer, f 
 	owner, closeOwner, err := f.telemetry(ctx, cfg.Observability.TelemetrySettings(), string(config.RoleMigrator))
 	if closeOwner != nil {
 		defer func() {
-			if err := closeOwner(closeContext()); err != nil {
-				log.Error().Str("error", observability.SafeError(err)).Msg("telemetry.shutdown")
+			if err71 := closeOwner(closeContext()); err71 != nil {
+				log.Error().Str("error", observability.SafeError(err71)).Msg("telemetry.shutdown")
 				code = 1
 			}
 		}()
@@ -90,6 +107,13 @@ func runConfigured(ctx context.Context, cfg *config.Config, output io.Writer, f 
 		log.Error().Str("error", observability.SafeError(err)).Msg("database.query")
 		return 1
 	}
-	log.Info().Str("outcome", "success").Int32("start_version", result.StartVersion).Int32("end_version", result.EndVersion).Msg("database.query")
+	log.Info().
+		Str("outcome",
+			"success").
+		Int32("start_version",
+			result.StartVersion).
+		Int32("end_version",
+			result.EndVersion).
+		Msg("database.query")
 	return 0
 }

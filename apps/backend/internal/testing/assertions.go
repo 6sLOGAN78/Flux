@@ -1,9 +1,7 @@
 package testing
 
 import (
-	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +15,7 @@ func AssertTimestampsValid(t *testing.T, obj interface{}) {
 	t.Helper()
 
 	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
@@ -53,12 +51,12 @@ func AssertEqualExceptTime(t *testing.T, expected, actual interface{}) {
 	t.Helper()
 
 	expectedVal := reflect.ValueOf(expected)
-	if expectedVal.Kind() == reflect.Ptr {
+	if expectedVal.Kind() == reflect.Pointer {
 		expectedVal = expectedVal.Elem()
 	}
 
 	actualVal := reflect.ValueOf(actual)
-	if actualVal.Kind() == reflect.Ptr {
+	if actualVal.Kind() == reflect.Pointer {
 		actualVal = actualVal.Elem()
 	}
 
@@ -66,7 +64,7 @@ func AssertEqualExceptTime(t *testing.T, expected, actual interface{}) {
 	require.Equal(t, expectedVal.Type(), actualVal.Type(), "objects are not the same type")
 
 	// Check fields
-	for i := 0; i < expectedVal.NumField(); i++ {
+	for i := range expectedVal.NumField() {
 		field := expectedVal.Type().Field(i)
 
 		// Skip time fields
@@ -82,7 +80,7 @@ func AssertEqualExceptTime(t *testing.T, expected, actual interface{}) {
 			t,
 			expectedField.Interface(),
 			actualField.Interface(),
-			fmt.Sprintf("field %s should be equal", field.Name),
+			"field %s should be equal", field.Name,
 		)
 	}
 }
@@ -92,10 +90,10 @@ func AssertStringContains(t *testing.T, s string, substrings ...string) {
 	t.Helper()
 
 	for _, sub := range substrings {
-		assert.True(
+		assert.Contains(
 			t,
-			strings.Contains(s, sub),
-			fmt.Sprintf("expected string to contain '%s', but it didn't: %s", sub, s),
+			s, sub,
+			"expected string to contain '%s', but it didn't: %s", sub, s,
 		)
 	}
 }

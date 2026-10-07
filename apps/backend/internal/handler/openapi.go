@@ -10,16 +10,19 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// OpenAPIHandler serves embedded API documentation.
 type OpenAPIHandler struct {
 	Handler
 }
 
+// NewOpenAPIHandler constructs an embedded documentation handler.
 func NewOpenAPIHandler(s *server.Server) *OpenAPIHandler {
 	return &OpenAPIHandler{
 		Handler: NewHandler(s),
 	}
 }
 
+// ServeOpenAPIUI serves the embedded browser reference page.
 func (h *OpenAPIHandler) ServeOpenAPIUI(c echo.Context) error {
 	templateBytes, err := static.Assets.ReadFile("openapi.html")
 	c.Response().Header().Set("Cache-Control", "no-cache")
@@ -47,8 +50,8 @@ func (h *OpenAPIHandler) ServeOpenAPISpec(c echo.Context) error {
 	}
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
-	if err := c.Blob(http.StatusOK, "application/json", data); err != nil {
-		return fmt.Errorf("failed to write OpenAPI document: %w", err)
+	if err50 := c.Blob(http.StatusOK, "application/json", data); err50 != nil {
+		return fmt.Errorf("failed to write OpenAPI document: %w", err50)
 	}
 	return nil
 }

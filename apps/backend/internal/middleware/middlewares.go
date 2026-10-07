@@ -4,6 +4,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/server"
 )
 
+// Middlewares collects role-appropriate HTTP middleware.
 type Middlewares struct {
 	Global          *GlobalMiddlewares
 	Auth            *AuthMiddleware
@@ -12,6 +13,7 @@ type Middlewares struct {
 	RateLimit       *RateLimitMiddleware
 }
 
+// NewMiddlewares constructs middleware with explicit dependencies.
 func NewMiddlewares(s *server.Server) *Middlewares {
 	return &Middlewares{
 		Global:          NewGlobalMiddlewares(s),

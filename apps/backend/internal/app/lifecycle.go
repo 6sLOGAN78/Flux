@@ -20,24 +20,26 @@ func NotifyContext(ctx context.Context) (context.Context, context.CancelFunc) {
 // an uncooperative dependent is still draining: the serial pipeline continues
 // after the bounded caller returns, and the command decides the process exit.
 type Lifecycle struct {
-	unready atomic.Bool
-	once    sync.Once
 	err     error
 	cleanup *Cleanup
 	stop    func()
 	drain   func(context.Context) error
+	once    sync.Once
+	unready atomic.Bool
 }
 
+// Ready reports whether the role still accepts new work.
 func (l *Lifecycle) Ready() bool { return !l.unready.Load() }
 
 type shutdownError struct {
-	stage string
 	cause error
+	stage string
 }
 
 func (e *shutdownError) Error() string { return "shutdown failed: " + e.stage }
 func (e *shutdownError) Unwrap() error { return e.cause }
 
+// Shutdown stops intake and closes owned resources within the caller deadline.
 func (l *Lifecycle) Shutdown(ctx context.Context) error {
 	l.once.Do(func() {
 		l.unready.Store(true)

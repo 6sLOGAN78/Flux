@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package app
 
 import (
@@ -28,6 +29,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestPartialStartupRealLifecycleResources(t *testing.T) {
 	pg, closePG := backendTesting.SetupTestPostgres(t)
 	defer closePG()
@@ -36,18 +38,28 @@ func TestPartialStartupRealLifecycleResources(t *testing.T) {
 	for _, role := range []config.Role{config.RoleAPI, config.RoleWorker} {
 		t.Run(string(role), func(t *testing.T) {
 			cfg := roleTestConfig()
-			cfg.Database, cfg.Redis, cfg.Integration = pg.Config.Database, queue.Config, pg.Config.Integration
+			cfg.Database,
+				cfg.Redis,
+				cfg.Integration = pg.Config.Database,
+				queue.Config,
+				pg.Config.Integration
 			cfg.API.ProducerEnabled = true
 			f := defaultRoleFactories()
 			var db *database.Database
 			var client *redis.Client
 			openDB, openRedis := f.database, f.redis
-			f.database = func(ctx context.Context, srv *server.Server) (*database.Database, func(context.Context) error, error) {
+			f.database = func(ctx context.Context,
+				srv *server.Server) (*database.Database,
+				func(context.Context) error,
+				error) {
 				value, closer, err := openDB(ctx, srv)
 				db = value
 				return value, closer, err
 			}
-			f.redis = func(ctx context.Context, srv *server.Server) (*redis.Client, func(context.Context) error, error) {
+			f.redis = func(ctx context.Context,
+				srv *server.Server) (*redis.Client,
+				func(context.Context) error,
+				error) {
 				value, closer, err := openRedis(ctx, srv)
 				client = value
 				return value, closer, err
@@ -98,16 +110,16 @@ func TestSIGTERMActiveHTTPFixture(t *testing.T) {
 	}
 	f := defaultRoleFactories()
 	f.router = func(role config.Role, srv *server.Server) (*echo.Echo, error) {
-		e, err := defaultRoleRouter(role, srv)
+		e, err101 := defaultRoleRouter(role, srv)
 		e.GET("/active", func(c echo.Context) error {
 			c.Response().WriteHeader(200)
 			_, _ = io.WriteString(c.Response(), "started\n")
 			c.Response().Flush()
 			time.Sleep(200 * time.Millisecond)
-			_, err := io.WriteString(c.Response(), "completed\n")
-			return err
+			_, err107 := io.WriteString(c.Response(), "completed\n")
+			return err107
 		})
-		return e, err
+		return e, err101
 	}
 	ctx, stop := NotifyContext(context.Background())
 	defer stop()
@@ -115,11 +127,12 @@ func TestSIGTERMActiveHTTPFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Run(ctx); err != nil {
-		t.Fatal(err)
+	if err118 := r.Run(ctx); err118 != nil {
+		t.Fatal(err118)
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestSIGTERMActiveHTTPSubprocess(t *testing.T) {
 	pg, closePG := backendTesting.SetupTestPostgres(t)
 	defer closePG()
@@ -127,10 +140,18 @@ func TestSIGTERMActiveHTTPSubprocess(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			address := binaryTestAddress(t)
 			env := append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
-			env = append(env, "FLUX_LIFECYCLE_FIXTURE="+role, "GORACE=atexit_sleep_ms=0", "FLUX_"+strings.ToUpper(role)+".LISTEN_ADDRESS="+address, "FLUX_"+strings.ToUpper(role)+".DRAIN_TIMEOUT=1s")
+			env = append(env,
+				"FLUX_LIFECYCLE_FIXTURE="+role,
+				"GORACE=atexit_sleep_ms=0",
+				"FLUX_"+strings.ToUpper(role)+".LISTEN_ADDRESS="+address,
+				"FLUX_"+strings.ToUpper(role)+".DRAIN_TIMEOUT=1s")
 			// Launch our race-instrumented executable with only the fixture test.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			p := &roleBinaryProcess{done: make(chan error, 1), output: &bytes.Buffer{}, address: address, cancel: cancel}
+			p := &roleBinaryProcess{done: make(chan error,
+				1),
+				output:  &bytes.Buffer{},
+				address: address,
+				cancel:  cancel}
 			p.cmd = exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSIGTERMActiveHTTPFixture$")
 			p.cmd.Env = env
 			p.cmd.Stdout, p.cmd.Stderr = p.output, p.output
@@ -154,21 +175,22 @@ func TestSIGTERMActiveHTTPSubprocess(t *testing.T) {
 			}
 			defer response.Body.Close()
 			reader := bufio.NewReader(response.Body)
-			if line, err := reader.ReadString('\n'); err != nil || line != "started\n" {
-				t.Fatalf("handler not active: %q %v", line, err)
+			if line, err157 := reader.ReadString('\n'); err157 != nil || line != "started\n" {
+				t.Fatalf("handler not active: %q %v", line, err157)
 			}
 			started := time.Now()
-			if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-				t.Fatal(err)
+			if err161 := p.cmd.Process.Signal(syscall.SIGTERM); err161 != nil {
+				t.Fatal(err161)
 			}
-			if line, err := reader.ReadString('\n'); err != nil || line != "completed\n" {
-				t.Fatalf("active handler lost on SIGTERM: %q %v", line, err)
+			if line, err164 := reader.ReadString('\n'); err164 != nil || line != "completed\n" {
+				t.Fatalf("active handler lost on SIGTERM: %q %v", line, err164)
 			}
 			waitLifecycleExit(t, p, started, 0, 1200*time.Millisecond)
 		})
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestLifecycleActiveHTTPHandler(t *testing.T) {
 	for _, expire := range []bool{false, true} {
 		t.Run(map[bool]string{false: "drain", true: "deadline"}[expire], func(t *testing.T) {
@@ -213,8 +235,8 @@ func TestLifecycleActiveHTTPHandler(t *testing.T) {
 			}
 			if !expire {
 				select {
-				case err := <-done:
-					t.Fatalf("did not drain handler: %v", err)
+				case err216 := <-done:
+					t.Fatalf("did not drain handler: %v", err216)
 				default:
 				}
 				close(release)
@@ -223,9 +245,9 @@ func TestLifecycleActiveHTTPHandler(t *testing.T) {
 				}
 			}
 			select {
-			case err := <-done:
-				if expire != errors.Is(err, context.DeadlineExceeded) {
-					t.Fatalf("shutdown status %v", err)
+			case err226 := <-done:
+				if expire != errors.Is(err226, context.DeadlineExceeded) {
+					t.Fatalf("shutdown status %v", err226)
 				}
 			case <-time.After(time.Second):
 				t.Fatal("HTTP deadline exceeded")
@@ -254,7 +276,6 @@ func TestLifecycleOrderAndFailures(t *testing.T) {
 	defer cancel()
 	l := Lifecycle{cleanup: &cleanup}
 	for _, name := range []string{"shared", "dependent"} {
-		name := name
 		_ = cleanup.Push(name, func(got context.Context) error {
 			if got != ctx {
 				t.Error("cleanup received a fresh deadline")
@@ -283,18 +304,26 @@ func TestLifecycleOrderAndFailures(t *testing.T) {
 	if !reflect.DeepEqual(events, []string{"stop", "drain", "dependent", "shared"}) {
 		t.Fatalf("order: %v", events)
 	}
-	if !strings.Contains(err.Error(), "drain") || !strings.Contains(err.Error(), "dependent") || !strings.Contains(err.Error(), "shared") {
+	if !strings.Contains(err.Error(),
+		"drain") ||
+		!strings.Contains(err.Error(),
+			"dependent") ||
+		!strings.Contains(err.Error(),
+			"shared") {
 		t.Fatalf("missing stage: %v", err)
 	}
 	if l.Ready() {
 		t.Fatal("shutdown stayed ready")
 	}
+	//nolint:errorlint // Idempotent shutdown must return the identical error object, not a new wrapper.
 	if again := l.Shutdown(context.Background()); again != err {
 		t.Fatal("shutdown result changed")
 	}
 }
 
 // Build the actual commands, rather than a test-only lifecycle executable.
+//
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestSIGTERMRoleProcesses(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -304,8 +333,8 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 	for _, role := range []string{"api", "redirector", "worker"} {
 		cmd := exec.Command("go", "build", "-race", "-o", filepath.Join(binaries, role), "./cmd/"+role)
 		cmd.Dir = root
-		if output, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("build %s: %v: %s", role, err, output)
+		if output, err307 := cmd.CombinedOutput(); err307 != nil {
+			t.Fatalf("build %s: %v: %s", role, err307, output)
 		}
 	}
 	t.Run("http", func(t *testing.T) {
@@ -315,18 +344,23 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 			t.Run(role, func(t *testing.T) {
 				address := binaryTestAddress(t)
 				env := append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
-				env = append(env, "FLUX_"+strings.ToUpper(role)+".LISTEN_ADDRESS="+address, "FLUX_"+strings.ToUpper(role)+".DRAIN_TIMEOUT=2s")
+				env = append(env,
+					"FLUX_"+strings.ToUpper(role)+".LISTEN_ADDRESS="+address,
+					"FLUX_"+strings.ToUpper(role)+".DRAIN_TIMEOUT=2s")
 				p := startRoleBinary(t, filepath.Join(binaries, role), address, env)
 				assertLifecycleHTTP(t, address, "/ready", 200)
 				started := time.Now()
-				if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-					t.Fatal(err)
+				if err322 := p.cmd.Process.Signal(syscall.SIGTERM); err322 != nil {
+					t.Fatal(err322)
 				}
 				waitLifecycleExit(t, p, started, 0, 3*time.Second)
 				if role == "api" {
 					var count int
-					if err := pg.Pool.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid()").Scan(&count); err != nil || count != 0 {
-						t.Fatalf("pool leaked: %d %v", count, err)
+					if err328 := pg.Pool.QueryRow(context.Background(),
+						"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid()").
+						Scan(&count); err328 != nil ||
+						count != 0 {
+						t.Fatalf("pool leaked: %d %v", count, err328)
 					}
 				}
 			})
@@ -341,7 +375,7 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 			queue, closeQueue := backendTesting.SetupTestRedis(t)
 			defer closeQueue()
 			active, release := make(chan struct{}, 2), make(chan struct{})
-			transport := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			transport := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				active <- struct{}{}
 				<-release
 				w.Header().Set("Content-Type", "application/json")
@@ -354,17 +388,24 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 			if deadline {
 				budget = "300ms"
 			}
-			p := startRoleBinary(t, filepath.Join(binaries, "worker"), address, append(binaryTestEnv(), "GORACE=atexit_sleep_ms=0",
-				"FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT="+budget,
-				"FLUX_REDIS.ADDRESS="+queue.Config.Address, "FLUX_INTEGRATION.RESEND_API_KEY=local-test-key", "RESEND_BASE_URL="+transport.URL+"/"))
+			p := startRoleBinary(t,
+				filepath.Join(binaries,
+					"worker"),
+				address,
+				append(binaryTestEnv(),
+					"GORACE=atexit_sleep_ms=0",
+					"FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT="+budget,
+					"FLUX_REDIS.ADDRESS="+queue.Config.Address,
+					"FLUX_INTEGRATION.RESEND_API_KEY=local-test-key",
+					"RESEND_BASE_URL="+transport.URL+"/"))
 			assertLifecycleHTTP(t, address, "/ready", 200)
 			producer := asynq.NewClientFromRedisClient(queue.Client)
-			task, err := job.NewWelcomeEmailTask("drain@example.com", "Active")
-			if err != nil {
-				t.Fatal(err)
+			task, err362 := job.NewWelcomeEmailTask("drain@example.com", "Active")
+			if err362 != nil {
+				t.Fatal(err362)
 			}
-			if _, err := producer.Enqueue(task); err != nil {
-				t.Fatal(err)
+			if _, err366 := producer.Enqueue(task); err366 != nil {
+				t.Fatal(err366)
 			}
 			select {
 			case <-active:
@@ -372,8 +413,8 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 				t.Fatal("real worker job did not start")
 			}
 			started := time.Now()
-			if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-				t.Fatal(err)
+			if err375 := p.cmd.Process.Signal(syscall.SIGTERM); err375 != nil {
+				t.Fatal(err375)
 			}
 			// A queue worker remains observable while its accepted work drains.
 			limit := time.Now().Add(200 * time.Millisecond)
@@ -392,8 +433,8 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 				return
 			}
 			second, _ := job.NewWelcomeEmailTask("queued@example.com", "Queued")
-			if _, err := producer.Enqueue(second); err != nil {
-				t.Fatal(err)
+			if _, err395 := producer.Enqueue(second); err395 != nil {
+				t.Fatal(err395)
 			}
 			time.Sleep(100 * time.Millisecond)
 			select {
@@ -405,13 +446,13 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 			release <- struct{}{}
 			waitLifecycleExit(t, p, started, 0, 4*time.Second)
 			inspector := asynq.NewInspectorFromRedisClient(queue.Client)
-			info, err := inspector.GetQueueInfo("default")
-			if err != nil || info.Pending != 1 || info.Processed != 1 {
-				t.Fatalf("active/queued work lost: %+v %v", info, err)
+			info, err362 := inspector.GetQueueInfo("default")
+			if err362 != nil || info.Pending != 1 || info.Processed != 1 {
+				t.Fatalf("active/queued work lost: %+v %v", info, err362)
 			}
-			servers, err := inspector.Servers()
-			if err != nil || len(servers) != 0 {
-				t.Fatalf("consumer leaked: %v %v", servers, err)
+			servers, err362 := inspector.Servers()
+			if err362 != nil || len(servers) != 0 {
+				t.Fatalf("consumer leaked: %v %v", servers, err362)
 			}
 		})
 	}
@@ -489,11 +530,11 @@ func TestLifecycleReadinessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer role.Close(context.Background())
-	if err := role.Close(context.Background()); err != nil {
-		t.Fatal(err)
+	if err492 := role.Close(context.Background()); err492 != nil {
+		t.Fatal(err492)
 	}
 	response := httptest.NewRecorder()
-	role.HTTP.ServeHTTP(response, httptest.NewRequest("GET", "/ready", nil))
+	role.HTTP.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ready", nil))
 	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"not_ready"`) {
 		t.Fatalf("shutdown readiness %d: %s", response.Code, response.Body)
 	}

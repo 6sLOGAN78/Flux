@@ -65,6 +65,7 @@ func MapCode(code string) Code {
 // Severity defines the severity of a database error.
 type Severity string
 
+// SeverityError and the other severities classify PostgreSQL failures.
 const (
 	SeverityError   Severity = "ERROR"
 	SeverityFatal   Severity = "FATAL"
@@ -80,7 +81,7 @@ const (
 // to a Severity.
 func MapSeverity(severity string) Severity {
 	switch severity {
-	case "ERROR":
+	case string(SeverityError):
 		return SeverityError
 	case "FATAL":
 		return SeverityFatal
@@ -105,39 +106,16 @@ func MapSeverity(severity string) Severity {
 // It's not guaranteed all errors reported by database functions will be of this type;
 // it is only returned when the database reports an error.
 type Error struct {
-	// Code defines the general class of the error.
-	Code Code
-
-	// Severity is the severity of the error.
-	Severity Severity
-
-	// DatabaseCode is the database server-specific error code.
-	DatabaseCode string
-
-	// Message: the primary human-readable error message.
-	Message string
-
-	// SchemaName: if the error was associated with a specific database object,
-	// the name of the schema containing that object, if any.
-	SchemaName string
-
-	// TableName: if the error was associated with a specific table, the name of the table.
-	TableName string
-
-	// ColumnName: if the error was associated with a specific table column,
-	// the name of the column.
-	ColumnName string
-
-	// DataTypeName: if the error was associated with a specific data type,
-	// the name of the data type.
-	DataTypeName string
-
-	// ConstraintName: if the error was associated with a specific constraint,
-	// the name of the constraint.
+	driverErr      error
+	Code           Code
+	Severity       Severity
+	DatabaseCode   string
+	Message        string
+	SchemaName     string
+	TableName      string
+	ColumnName     string
+	DataTypeName   string
 	ConstraintName string
-
-	// driverErr is the underlying error from the driver.
-	driverErr error
 }
 
 func (pe *Error) Error() string {

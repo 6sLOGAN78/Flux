@@ -1,3 +1,4 @@
+// Package server owns shared HTTP runtime resources and shutdown operations.
 package server
 
 import (
@@ -19,7 +20,6 @@ import (
 // Server receives role-owned resources and adapts them for existing packages.
 // It never allocates infrastructure or starts background consumers.
 type Server struct {
-	Role       config.Role
 	Config     *config.Config
 	Logger     *zerolog.Logger
 	Telemetry  *observability.Telemetry
@@ -27,6 +27,7 @@ type Server struct {
 	Redis      *redis.Client
 	Job        *job.JobService
 	httpServer *http.Server
+	Role       config.Role
 }
 
 // Dependencies are allocated and closed by the composing app role.
@@ -53,6 +54,7 @@ func New(cfg *config.Config, log *zerolog.Logger, _ *loggerPkg.LoggerService, ow
 	return srv, nil
 }
 
+// SetupHTTPServer constructs HTTP transport with configured timeouts.
 func (s *Server) SetupHTTPServer(handler http.Handler) {
 	s.SetupHTTPServerAt(":"+s.Config.Server.Port, handler)
 }
@@ -68,6 +70,7 @@ func (s *Server) SetupHTTPServerAt(address string, handler http.Handler) {
 	}
 }
 
+// Start serves the configured HTTP listener.
 func (s *Server) Start() error {
 	if s.httpServer == nil {
 		return errors.New("HTTP server not initialized")

@@ -1,9 +1,11 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package app
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -30,21 +32,26 @@ func forbiddenVendor(path string) bool {
 	return false
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func inspectVendorGraph(data []byte) error {
 	d := json.NewDecoder(bytes.NewReader(data))
 	count := 0
 	for {
 		var entry struct {
-			ImportPath string
-			Path       string
-			Imports    []string
+			ImportPath string   `json:"ImportPath"`
+			Path       string   `json:"Path"`
+			Imports    []string `json:"Imports"`
 			Module     *struct {
-				Path    string
-				Replace *struct{ Path string }
-			}
-			Replace    *struct{ Path string }
-			Error      json.RawMessage
-			DepsErrors []json.RawMessage
+				Replace *struct {
+					Path string `json:"Path"`
+				} `json:"Replace"`
+				Path string `json:"Path"`
+			} `json:"Module"`
+			Replace *struct {
+				Path string `json:"Path"`
+			} `json:"Replace"`
+			Error      json.RawMessage   `json:"Error"`
+			DepsErrors []json.RawMessage `json:"DepsErrors"`
 		}
 		if err := d.Decode(&entry); err != nil {
 			if err == io.EOF && count > 0 {
@@ -54,9 +61,9 @@ func inspectVendorGraph(data []byte) error {
 		}
 		count++
 		if len(entry.Error) > 0 || len(entry.DepsErrors) > 0 {
-			return fmt.Errorf("dependency resolution failed")
+			return errors.New("dependency resolution failed")
 		}
-		paths := append(entry.Imports, entry.ImportPath, entry.Path)
+		paths := append([]string{entry.ImportPath, entry.Path}, entry.Imports...)
 		if entry.Module != nil {
 			paths = append(paths, entry.Module.Path)
 			if entry.Module.Replace != nil {
@@ -93,9 +100,9 @@ func inspectVendorSource(root string) error {
 			return err
 		}
 		for _, imp := range file.Imports {
-			name, err := strconv.Unquote(imp.Path.Value)
-			if err != nil {
-				return err
+			name, err99 := strconv.Unquote(imp.Path.Value)
+			if err99 != nil {
+				return err99
 			}
 			if forbiddenVendor(name) {
 				return fmt.Errorf("forbidden authored import: %s: %s", path, name)
@@ -120,16 +127,16 @@ func TestForbiddenVendorDependencies(t *testing.T) {
 		cmd.Dir = root
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
-		data, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("dependency tool failed: %v: %s", err, stderr.String())
+		data, err126 := cmd.Output()
+		if err126 != nil {
+			t.Fatalf("dependency tool failed: %v: %s", err126, stderr.String())
 		}
-		if err := inspectVendorGraph(data); err != nil {
-			t.Fatal(err)
+		if err130 := inspectVendorGraph(data); err130 != nil {
+			t.Fatal(err130)
 		}
 	}
-	if err := inspectVendorSource(root); err != nil {
-		t.Fatal(err)
+	if err134 := inspectVendorSource(root); err134 != nil {
+		t.Fatal(err134)
 	}
 }
 
@@ -152,7 +159,10 @@ func TestForbiddenVendorGraphRejectsHiddenDependencies(t *testing.T) {
 
 func TestForbiddenVendorSourceRejectsBuildTaggedImports(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "hidden.go"), []byte("//go:build vendor_hidden\n\npackage hidden\nimport _ \"github.com/newrelic/go-agent/v3/newrelic\"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root,
+		"hidden.go"),
+		[]byte("//go:build vendor_hidden\n\npackage hidden\nimport _ \"github.com/newrelic/go-agent/v3/newrelic\"\n"),
+		0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := inspectVendorSource(root); err == nil {

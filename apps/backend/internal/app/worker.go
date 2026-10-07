@@ -11,6 +11,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/server"
 )
 
+// Worker owns the worker role runtime.
 type Worker struct{ *RoleRuntime }
 
 // NewWorker constructs Redis, the email adapter and consumer processing, plus
@@ -29,8 +30,8 @@ func (r *RoleRuntime) constructWorker(f roleFactories) error {
 		return &StartupError{Role: r.Role, Stage: "email", cause: err}
 	}
 	consumer, closeConsumer, err := f.consumer(r.Server, adapter)
-	if err := r.own("consumer", closeConsumer, err); err != nil {
-		return err
+	if err32 := r.own("consumer", closeConsumer, err); err32 != nil {
+		return err32
 	}
 	r.Server.Job = consumer
 	if consumer != nil {
@@ -41,16 +42,20 @@ func (r *RoleRuntime) constructWorker(f roleFactories) error {
 }
 
 func workerReadinessChecks(srv *server.Server, adapter *email.Client) []handler.ReadinessCheck {
-	return []handler.ReadinessCheck{queueReadinessCheck(srv), {Name: "email", Check: func(ctx context.Context) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if adapter == nil || strings.TrimSpace(srv.Config.Integration.ResendAPIKey) == "" {
-			return errors.New("email adapter unconfigured")
-		}
-		// Exercise required embedded assets locally; never send email or ping
-		// the provider during queue-consumer readiness.
-		_, err := adapter.Render(email.TemplateWelcome, map[string]string{"UserFirstName": "Health"})
-		return err
-	}}}
+	return []handler.ReadinessCheck{queueReadinessCheck(srv),
+		{Name: "email",
+			Check: func(ctx context.Context) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if adapter == nil || strings.TrimSpace(srv.Config.Integration.ResendAPIKey) == "" {
+					return errors.New("email adapter unconfigured")
+				}
+				// Exercise required embedded assets locally; never send email or ping
+				// the provider during queue-consumer readiness.
+				_,
+					err := adapter.Render(email.TemplateWelcome,
+					map[string]string{"UserFirstName": "Health"})
+				return err
+			}}}
 }

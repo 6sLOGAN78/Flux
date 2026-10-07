@@ -3,8 +3,13 @@ package observability
 import (
 	"context"
 	"errors"
+
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+)
+
+const (
+	maxSafeAttributes = 16
 )
 
 // SafeError never formats an unrecognized provider or driver error.
@@ -36,7 +41,18 @@ func validUUID(value string) bool {
 
 // SafeOperation maps all uncontrolled text to a constant bounded operation name.
 func SafeOperation(value string) string {
-	if oneOf(value, "configuration.validate", "http.request", "database.query", "database.connect", "redis.command", "job.enqueue", "job.process", "email.send", "dependency.check", "telemetry.export", "telemetry.shutdown") {
+	if oneOf(value,
+		"configuration.validate",
+		"http.request",
+		"database.query",
+		"database.connect",
+		"redis.command",
+		"job.enqueue",
+		"job.process",
+		"email.send",
+		"dependency.check",
+		"telemetry.export",
+		"telemetry.shutdown") {
 		return value
 	}
 	return "operation"
@@ -45,7 +61,10 @@ func SafeOperation(value string) string {
 func safeAttribute(a attribute.KeyValue, metric bool) bool {
 	key := string(a.Key)
 	if key == "start_version" || key == "end_version" {
-		return !metric && a.Value.Type() == attribute.INT64 && a.Value.AsInt64() >= 0 && a.Value.AsInt64() <= 2147483647
+		return !metric &&
+			a.Value.Type() == attribute.INT64 &&
+			a.Value.AsInt64() >= 0 &&
+			a.Value.AsInt64() <= 2147483647
 	}
 	if key == "http.response.status_code" || key == "retry.count" {
 		return a.Value.Type() == attribute.INT64 && a.Value.AsInt64() >= 0 && a.Value.AsInt64() <= 999
@@ -72,7 +91,16 @@ func safeAttribute(a attribute.KeyValue, metric bool) bool {
 	case "error.category":
 		return oneOf(v, "unknown", "timeout", "canceled", "unavailable", "validation")
 	case "error.stage":
-		return oneOf(v, "connect", "query", "enqueue", "process", "send", "export", "shutdown", "deadline", "validate")
+		return oneOf(v,
+			"connect",
+			"query",
+			"enqueue",
+			"process",
+			"send",
+			"export",
+			"shutdown",
+			"deadline",
+			"validate")
 	case "job.type":
 		return v == "email:welcome"
 	case "db.system.name":
@@ -86,11 +114,11 @@ func safeAttribute(a attribute.KeyValue, metric bool) bool {
 
 // SanitizeAttributes applies a value-aware allowlist. Metric labels exclude IDs.
 func SanitizeAttributes(attrs []attribute.KeyValue, metric bool) []attribute.KeyValue {
-	out := make([]attribute.KeyValue, 0, 16)
+	out := make([]attribute.KeyValue, 0, maxSafeAttributes)
 	for _, a := range attrs {
 		if safeAttribute(a, metric) {
 			out = append(out, a)
-			if len(out) == 16 {
+			if len(out) == maxSafeAttributes {
 				break
 			}
 		}
@@ -98,16 +126,16 @@ func SanitizeAttributes(attrs []attribute.KeyValue, metric bool) []attribute.Key
 	return out
 }
 
-type safeFailure struct {
-	stage string
+type safeError struct {
 	cause error
+	stage string
 }
 
-func (e safeFailure) Error() string { return "telemetry " + e.stage + ": " + SafeError(e.cause) }
-func (e safeFailure) Unwrap() error { return e.cause }
-func safeFailureFor(stage string, err error) error {
+func (e safeError) Error() string { return "telemetry " + e.stage + ": " + SafeError(e.cause) }
+func (e safeError) Unwrap() error { return e.cause }
+func safeErrorFor(stage string, err error) error {
 	if err == nil {
 		return nil
 	}
-	return safeFailure{stage: stage, cause: err}
+	return safeError{stage: stage, cause: err}
 }

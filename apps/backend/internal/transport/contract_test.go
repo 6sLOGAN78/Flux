@@ -1,3 +1,4 @@
+//nolint:cyclop // The contract proof includes recursive schema validation and complete generator failure scenarios.
 package transport_test
 
 import (
@@ -24,14 +25,16 @@ func readJSON(t *testing.T, path string) map[string]any {
 		t.Fatal(err)
 	}
 	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatal(err)
+	if err27 := json.Unmarshal(data, &result); err27 != nil {
+		t.Fatal(err27)
 	}
 	return result
 }
 
 // Check the schema from the canonical document, rather than a second health schema.
 // Fail closed if this small fixture validator encounters an unsupported schema type.
+//
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func validateSchema(schema map[string]any, value any) error {
 	switch schema["type"] {
 	case "string":
@@ -99,16 +102,42 @@ func responseSchema(t *testing.T, document map[string]any, path, status, name st
 	return components["schemas"].(map[string]any)["transport."+name].(map[string]any)
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 	document := readJSON(t, "../../../../packages/openapi/openapi.json")
 	tests := []struct {
-		name, path, status, schema, fixture string
-		value                               any
+		value   any
+		name    string
+		path    string
+		status  string
+		schema  string
+		fixture string
 	}{
-		{"live", "/live", "200", "HealthLiveResponse", `{"status":"alive"}`, &transport.HealthLiveResponse{Status: "alive"}},
-		{"ready", "/ready", "200", "HealthReadyResponse", `{"status":"ready","checks":[{"name":"database","state":"ready"}]}`, &transport.HealthReadyResponse{}},
-		{"not_ready", "/ready", "503", "HealthReadyResponse", `{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},{"name":"redis","state":"ready"}]}`, &transport.HealthReadyResponse{}},
-		{"no_dependencies", "/ready", "200", "HealthReadyResponse", `{"status":"ready","checks":[]}`, &transport.HealthReadyResponse{}},
+		{name: "live",
+			path:    "/live",
+			status:  "200",
+			schema:  "HealthLiveResponse",
+			fixture: `{"status":"alive"}`,
+			value:   &transport.HealthLiveResponse{Status: "alive"}},
+		{name: "ready",
+			path:    "/ready",
+			status:  "200",
+			schema:  "HealthReadyResponse",
+			fixture: `{"status":"ready","checks":[{"name":"database","state":"ready"}]}`,
+			value:   &transport.HealthReadyResponse{}},
+		{name: "not_ready",
+			path:   "/ready",
+			status: "503",
+			schema: "HealthReadyResponse",
+			fixture: `{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},` +
+				`{"name":"redis","state":"ready"}]}`,
+			value: &transport.HealthReadyResponse{}},
+		{name: "no_dependencies",
+			path:    "/ready",
+			status:  "200",
+			schema:  "HealthReadyResponse",
+			fixture: `{"status":"ready","checks":[]}`,
+			value:   &transport.HealthReadyResponse{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,11 +172,11 @@ func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 				t.Fatal(err)
 			}
 			var encoded any
-			if err := json.Unmarshal(data, &encoded); err != nil {
-				t.Fatal(err)
+			if err173 := json.Unmarshal(data, &encoded); err173 != nil {
+				t.Fatal(err173)
 			}
-			if err := validateSchema(schema, encoded); err != nil {
-				t.Fatalf("generated encoding violates canonical schema: %v", err)
+			if err176 := validateSchema(schema, encoded); err176 != nil {
+				t.Fatalf("generated encoding violates canonical schema: %v", err176)
 			}
 			if !reflect.DeepEqual(encoded, fixture) {
 				t.Fatalf("JSON round trip = %s, want %s", data, tt.fixture)
@@ -159,13 +188,28 @@ func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 func TestInvalidStatesAndDiagnosticsFailCanonicalSchema(t *testing.T) {
 	document := readJSON(t, "../../../../packages/openapi/openapi.json")
 	for _, tt := range []struct{ path, status, name, fixture string }{
-		{"/live", "200", "HealthLiveResponse", `{"status":"ready"}`},
-		{"/live", "200", "HealthLiveResponse", `{"status":"alive","error":"private detail"}`},
-		{"/ready", "503", "HealthReadyResponse", `{"status":"failed","checks":[]}`},
-		{"/ready", "503", "HealthReadyResponse", `{"status":"not_ready"}`},
-		{"/ready", "503", "HealthReadyResponse", `{"status":"not_ready","checks":null}`},
-		{"/ready", "503", "HealthReadyResponse", `{"status":"not_ready","checks":[{"name":"database","state":"failed"}]}`},
-		{"/ready", "503", "HealthReadyResponse", `{"status":"not_ready","checks":[{"name":"database","state":"not_ready","error":"private detail"}]}`},
+		{path: "/live", status: "200", name: "HealthLiveResponse", fixture: `{"status":"ready"}`},
+		{path: "/live",
+			status:  "200",
+			name:    "HealthLiveResponse",
+			fixture: `{"status":"alive","error":"private detail"}`},
+		{path: "/ready",
+			status:  "503",
+			name:    "HealthReadyResponse",
+			fixture: `{"status":"failed","checks":[]}`},
+		{path: "/ready", status: "503", name: "HealthReadyResponse", fixture: `{"status":"not_ready"}`},
+		{path: "/ready",
+			status:  "503",
+			name:    "HealthReadyResponse",
+			fixture: `{"status":"not_ready","checks":null}`},
+		{path: "/ready",
+			status:  "503",
+			name:    "HealthReadyResponse",
+			fixture: `{"status":"not_ready","checks":[{"name":"database","state":"failed"}]}`},
+		{path: "/ready",
+			status:  "503",
+			name:    "HealthReadyResponse",
+			fixture: `{"status":"not_ready","checks":[{"name":"database","state":"not_ready","error":"private detail"}]}`},
 	} {
 		var value any
 		if err := json.Unmarshal([]byte(tt.fixture), &value); err != nil {
@@ -183,10 +227,15 @@ func TestInvalidStatesAndDiagnosticsFailCanonicalSchema(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestPinnedGenerationMatchesCheckedArtifact(t *testing.T) {
 	lock := readJSON(t, "../../../../tools.lock.json")["oapi-codegen"].(map[string]any)
 	module, version := lock["module"].(string), lock["version"].(string)
-	if module != "github.com/oapi-codegen/oapi-codegen/v2" || !strings.HasPrefix(version, "v2.") || strings.ContainsAny(version, "@/ ") {
+	if module != "github.com/oapi-codegen/oapi-codegen/v2" ||
+		!strings.HasPrefix(version,
+			"v2.") ||
+		strings.ContainsAny(version,
+			"@/ ") {
 		t.Fatalf("invalid official generator pin: %s@%s", module, version)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -196,10 +245,12 @@ func TestPinnedGenerationMatchesCheckedArtifact(t *testing.T) {
 		t.Fatalf("resolve pinned module: %v", err)
 	}
 	var download map[string]any
-	if err := json.Unmarshal(metadata, &download); err != nil {
-		t.Fatal(err)
+	if err246 := json.Unmarshal(metadata, &download); err246 != nil {
+		t.Fatal(err246)
 	}
-	if download["Sum"] != lock["sum"] || download["GoModSum"] != lock["goModSum"] || download["Version"] != version {
+	if download["Sum"] != lock["sum"] ||
+		download["GoModSum"] != lock["goModSum"] ||
+		download["Version"] != version {
 		t.Fatalf("generator checksum/version differs from verified lock: %s", metadata)
 	}
 	checked, err := os.ReadFile("health.gen.go")
@@ -212,36 +263,37 @@ func TestPinnedGenerationMatchesCheckedArtifact(t *testing.T) {
 	}
 	for i := range 2 {
 		output := filepath.Join(t.TempDir(), "health.gen.go")
-		configData, err := os.ReadFile("oapi-codegen.yaml")
-		if err != nil {
-			t.Fatal(err)
+		configData, err264 := os.ReadFile("oapi-codegen.yaml")
+		if err264 != nil {
+			t.Fatal(err264)
 		}
 		var config map[string]any
-		if err := yaml.Unmarshal(configData, &config); err != nil {
-			t.Fatal(err)
+		if err269 := yaml.Unmarshal(configData, &config); err269 != nil {
+			t.Fatal(err269)
 		}
 		// The generator gives the config's output precedence over the -o flag.
 		// Change only the temporary output destination, preserving all options.
 		config["output"] = output
-		configData, err = yaml.Marshal(config)
-		if err != nil {
-			t.Fatal(err)
+		configData, err264 = yaml.Marshal(config)
+		if err264 != nil {
+			t.Fatal(err264)
 		}
 		configPath := filepath.Join(t.TempDir(), "oapi-codegen.yaml")
-		if err := os.WriteFile(configPath, configData, 0o600); err != nil {
-			t.Fatal(err)
+		if err280 := os.WriteFile(configPath, configData, 0o600); err280 != nil {
+			t.Fatal(err280)
 		}
 		cmd := exec.CommandContext(ctx, "go", "run", module+"/cmd/oapi-codegen@"+version,
 			"-config", configPath, "../../../../packages/openapi/openapi.json")
-		if log, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("generation %d: %v\n%s", i+1, err, log)
+		if log, err285 := cmd.CombinedOutput(); err285 != nil {
+			t.Fatalf("generation %d: %v\n%s", i+1, err285, log)
 		}
-		generated, err := os.ReadFile(output)
-		if err != nil {
-			t.Fatal(err)
+		generated, err264 := os.ReadFile(output)
+		if err264 != nil {
+			t.Fatal(err264)
 		}
 		if !bytes.Equal(generated, checked) {
-			t.Fatalf("generation %d differs from checked health.gen.go; regenerate using the locked module", i+1)
+			t.Fatalf("generation %d differs from checked health.gen.go; regenerate using the locked module",
+				i+1)
 		}
 	}
 }

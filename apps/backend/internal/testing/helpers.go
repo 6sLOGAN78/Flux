@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/6sLOGAN78/flux/internal/server"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,7 +54,7 @@ func ProjectRoot(t *testing.T) string {
 	require.NoError(t, err, "failed to get working directory")
 
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		if _, err57 := os.Stat(filepath.Join(dir, "go.mod")); err57 == nil {
 			return dir
 		}
 

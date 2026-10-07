@@ -1,3 +1,4 @@
+// Package database owns PostgreSQL pools, safe query tracing, and explicit migrations.
 package database
 
 import (
@@ -17,6 +18,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	migrationCloseTimeout = 5 * time.Second
+)
+
 //go:embed migrations/*.sql
 var migrations embed.FS
 
@@ -28,8 +33,8 @@ type MigrationResult struct {
 
 // MigrationError exposes a stable operation while preserving its private cause.
 type MigrationError struct {
-	Operation string
 	cause     error
+	Operation string
 }
 
 func (e *MigrationError) Error() string { return "database migration " + e.Operation + " failed" }
@@ -39,18 +44,33 @@ func (e *MigrationError) Unwrap() error { return e.cause }
 func Migrate(ctx context.Context, logger *zerolog.Logger, cfg *config.Config) error {
 	result, err := MigrateWithResult(ctx, cfg)
 	if err == nil && logger != nil {
-		logger.Info().Int32("start_version", result.StartVersion).Int32("end_version", result.EndVersion).Msg("database migration completed")
+		logger.Info().
+			Int32("start_version",
+				result.StartVersion).
+			Int32("end_version",
+				result.EndVersion).
+			Msg("database migration completed")
 	}
 	return err
 }
 
 // MigrateWithResult applies all embedded migrations and closes its one-shot connection.
-func MigrateWithResult(ctx context.Context, cfg *config.Config, closeContexts ...func() context.Context) (result MigrationResult, err error) {
+//
+//nolint:nonamedreturns // Deferred connection cleanup joins errors into the returned migration result.
+func MigrateWithResult(ctx context.Context,
+	cfg *config.Config,
+	closeContexts ...func() context.Context) (result MigrationResult,
+	err error) {
 	if cfg == nil {
 		return result, &MigrationError{Operation: "config", cause: errors.New("configuration required")}
 	}
 	db := cfg.Database
-	dsn := &url.URL{Scheme: "postgres", User: url.UserPassword(db.User, db.Password), Host: net.JoinHostPort(db.Host, strconv.Itoa(db.Port)), Path: "/" + db.Name}
+	dsn := &url.URL{Scheme: "postgres",
+		User: url.UserPassword(db.User,
+			db.Password),
+		Host: net.JoinHostPort(db.Host,
+			strconv.Itoa(db.Port)),
+		Path: "/" + db.Name}
 	dsn.RawQuery = url.Values{"sslmode": []string{db.SSLMode}}.Encode()
 	conn, err := pgx.Connect(ctx, dsn.String())
 	if err != nil {
@@ -61,10 +81,10 @@ func MigrateWithResult(ctx context.Context, cfg *config.Config, closeContexts ..
 	if len(closeContexts) > 0 && closeContexts[0] != nil {
 		closeConnection = func(context.Context) error { return conn.Close(closeContexts[0]()) }
 	}
-	if err := cleanup.Push("migration_connection", closeConnection); err != nil {
-		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err64 := cleanup.Push("migration_connection", closeConnection); err64 != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), migrationCloseTimeout)
 		defer cancel()
-		return result, &MigrationError{Operation: "ownership", cause: errors.Join(err, conn.Close(closeCtx))}
+		return result, &MigrationError{Operation: "ownership", cause: errors.Join(err64, conn.Close(closeCtx))}
 	}
 	defer func() {
 		if len(closeContexts) > 0 && closeContexts[0] != nil {
@@ -84,7 +104,7 @@ func MigrateWithResult(ctx context.Context, cfg *config.Config, closeContexts ..
 
 func closeMigration(cleanup *lifecycle.Cleanup) error {
 	// A canceled migration still needs an independent bounded close attempt.
-	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	closeCtx, cancel := context.WithTimeout(context.Background(), migrationCloseTimeout)
 	defer cancel()
 	if err := cleanup.Close(closeCtx); err != nil {
 		return &MigrationError{Operation: "close", cause: err}
@@ -99,20 +119,21 @@ type migrationRunner interface {
 }
 
 // applyMigrations isolates fallible migration stages for failure injection.
-func applyMigrations(ctx context.Context, m migrationRunner) (result MigrationResult, err error) {
+func applyMigrations(ctx context.Context, m migrationRunner) (MigrationResult, error) {
+	var result MigrationResult
 	subtree, err := fs.Sub(migrations, "migrations")
 	if err != nil {
 		return result, &MigrationError{Operation: "subtree", cause: err}
 	}
-	if err := m.LoadMigrations(subtree); err != nil {
-		return result, &MigrationError{Operation: "load", cause: err}
+	if err107 := m.LoadMigrations(subtree); err107 != nil {
+		return result, &MigrationError{Operation: "load", cause: err107}
 	}
 	result.StartVersion, err = m.GetCurrentVersion(ctx)
 	if err != nil {
 		return result, &MigrationError{Operation: "start_version", cause: err}
 	}
-	if err := m.Migrate(ctx); err != nil {
-		return result, &MigrationError{Operation: "apply", cause: err}
+	if err114 := m.Migrate(ctx); err114 != nil {
+		return result, &MigrationError{Operation: "apply", cause: err114}
 	}
 	result.EndVersion, err = m.GetCurrentVersion(ctx)
 	if err != nil {

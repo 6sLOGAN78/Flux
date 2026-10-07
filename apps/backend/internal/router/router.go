@@ -1,3 +1,4 @@
+// Package router registers role-specific HTTP routes and middleware.
 package router
 
 import (
@@ -12,7 +13,12 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services) *echo.Echo {
+const (
+	requestsPerSecond = 20
+)
+
+// NewRouter installs middleware and registers the role-owned routes.
+func NewRouter(s *server.Server, h *handler.Handlers, _ *service.Services) *echo.Echo {
 	middlewares := middleware.NewMiddlewares(s)
 
 	router := echo.New()
@@ -30,9 +36,18 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 		middlewares.Global.Secure(),
 		echoMiddleware.RateLimiterWithConfig(echoMiddleware.RateLimiterConfig{
 			Skipper: func(c echo.Context) bool { return c.Path() == "/live" || c.Path() == "/ready" },
-			Store:   echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(20)),
+			Store:   echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(requestsPerSecond)),
 			DenyHandler: func(c echo.Context, _ string, _ error) error {
-				middleware.GetLogger(c).Warn().Str("operation", "http.request").Str("http.route", middleware.SafeRoute(c)).Str("http.request.method", middleware.SafeMethod(c.Request().Method)).Msg("http.request")
+				middleware.GetLogger(c).
+					Warn().
+					Str("operation",
+						"http.request").
+					Str("http.route",
+						middleware.SafeRoute(c)).
+					Str("http.request.method",
+						middleware.SafeMethod(c.Request().
+							Method)).
+					Msg("http.request")
 				return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded")
 			},
 		}),

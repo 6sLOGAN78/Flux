@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package job
 
 import (
@@ -9,17 +10,40 @@ import (
 	"github.com/rs/zerolog"
 )
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestJobStopClosesAll(t *testing.T) {
 	consumerCause := errors.New("SECRET-MARKER consumer")
 	producerCause := errors.New("SECRET-MARKER producer")
 	for _, test := range []struct {
-		name               string
-		consumer, producer error
-	}{{"consumer", consumerCause, nil}, {"producer", nil, producerCause}, {"both", consumerCause, producerCause}, {"success", nil, nil}} {
+		consumer error
+		producer error
+		name     string
+	}{{name: "consumer",
+		consumer: consumerCause,
+		producer: nil},
+		{name: "producer",
+			consumer: nil,
+			producer: producerCause},
+		{name: "both",
+			consumer: consumerCause,
+			producer: producerCause},
+		{name: "success",
+			consumer: nil,
+			producer: nil}} {
 		t.Run(test.name, func(t *testing.T) {
 			var order []string
 			log := zerolog.Nop()
-			j := &JobService{logger: &log, shutdown: func() error { order = append(order, "consumer"); return test.consumer }, closeClient: func() error { order = append(order, "producer"); return test.producer }}
+			j := &JobService{logger: &log,
+				shutdown: func() error {
+					order = append(order,
+						"consumer")
+					return test.consumer
+				},
+				closeClient: func() error {
+					order = append(order,
+						"producer")
+					return test.producer
+				}}
 			err := j.Stop()
 			if strings.Join(order, ",") != "consumer,producer" {
 				t.Fatalf("did not stop all dependents in order: %v", order)
@@ -35,6 +59,7 @@ func TestJobStopClosesAll(t *testing.T) {
 			if err != nil && strings.Contains(err.Error(), "SECRET-MARKER") {
 				t.Fatal("shutdown diagnostic leaked secret")
 			}
+			//nolint:errorlint // Idempotent stop must return the identical error object, including nil on success.
 			if again := j.Stop(); again != err || len(order) != 2 {
 				t.Fatal("Stop was not idempotent")
 			}

@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package logger
 
 import (
@@ -23,8 +24,8 @@ import (
 const sentinel = "SECRET-MARKER person@example.test postgres://user:password@db/private Bearer token"
 
 type logCapture struct {
-	mu      sync.Mutex
 	records []sdklog.Record
+	mu      sync.Mutex
 }
 
 func (e *logCapture) Export(_ context.Context, records []sdklog.Record) error {
@@ -40,7 +41,11 @@ func (*logCapture) Shutdown(context.Context) error   { return nil }
 
 func TestJSONAndBridgeShareSafeContext(t *testing.T) {
 	exporter := &logCapture{}
-	tel, err := observability.New(context.Background(), observability.Settings{Enabled: true, Exporters: observability.Exporters{Log: exporter}}, "api")
+	tel,
+		err := observability.New(context.Background(),
+		observability.Settings{Enabled: true,
+			Exporters: observability.Exporters{Log: exporter}},
+		"api")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,25 +53,41 @@ func TestJSONAndBridgeShareSafeContext(t *testing.T) {
 	cfg := config.DefaultObservabilityConfig()
 	log := NewLogger(cfg, &output, tel.Logger)
 	ts, _ := trace.ParseTraceState("vendor=SECRET-MARKER")
-	sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceState: ts, TraceFlags: trace.FlagsSampled})
+	sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1},
+		SpanID:     trace.SpanID{2},
+		TraceState: ts,
+		TraceFlags: trace.FlagsSampled})
 	requestID := "4c0f261c-7013-4c39-9b1e-8c7fd0203ec2"
 	correlationID := "c1c6e4de-3c0e-49ec-8091-6b267dce5602"
-	ctx := observability.WithCorrelation(trace.ContextWithSpanContext(context.Background(), sc), requestID, correlationID)
+	ctx := observability.WithCorrelation(trace.ContextWithSpanContext(context.Background(),
+		sc),
+		requestID,
+		correlationID)
 	log = WithContext(log, ctx)
 	log.Error().Stack().Err(errors.New(sentinel)).Str("token", sentinel).Str("sql", sentinel).
 		Str("request_id", sentinel).Str("trace_id", sentinel).Str("operation", "http.request").
 		Str("http.route", "/ready").Int("http.response.status_code", 503).Msg(sentinel)
-	if err := tel.Shutdown(context.Background()); err != nil {
-		t.Fatal(err)
+	if err59 := tel.Shutdown(context.Background()); err59 != nil {
+		t.Fatal(err59)
 	}
 	var stdout map[string]any
-	if err := json.Unmarshal(output.Bytes(), &stdout); err != nil {
-		t.Fatal(err)
+	if err63 := json.Unmarshal(output.Bytes(), &stdout); err63 != nil {
+		t.Fatal(err63)
 	}
-	if strings.Contains(output.String(), "SECRET-MARKER") || strings.Contains(output.String(), "person@example.test") || strings.Contains(output.String(), "password") {
+	if strings.Contains(output.String(),
+		"SECRET-MARKER") ||
+		strings.Contains(output.String(),
+			"person@example.test") ||
+		strings.Contains(output.String(),
+			"password") {
 		t.Fatal("stdout leaked private data")
 	}
-	for key, want := range map[string]string{"trace_id": sc.TraceID().String(), "span_id": sc.SpanID().String(), "request_id": requestID, "correlation_id": correlationID} {
+	for key, want := range map[string]string{"trace_id": sc.TraceID().
+		String(),
+		"span_id": sc.SpanID().
+			String(),
+		"request_id":     requestID,
+		"correlation_id": correlationID} {
 		if stdout[key] != want {
 			t.Fatalf("missing safe %s: %v", key, stdout)
 		}
@@ -80,7 +101,11 @@ func TestJSONAndBridgeShareSafeContext(t *testing.T) {
 	r := exporter.records[0]
 	attrs := map[string]any{}
 	r.WalkAttributes(func(a attribute.KeyValue) bool { attrs[string(a.Key)] = a.Value.AsInterface(); return true })
-	if r.TraceID() != sc.TraceID() || r.SpanID() != sc.SpanID() || attrs["request_id"] != requestID || attrs["correlation_id"] != correlationID || attrs["operation"] != "http.request" {
+	if r.TraceID() != sc.TraceID() ||
+		r.SpanID() != sc.SpanID() ||
+		attrs["request_id"] != requestID ||
+		attrs["correlation_id"] != correlationID ||
+		attrs["operation"] != "http.request" {
 		t.Fatalf("bridge lost shared context: %v", attrs)
 	}
 	if strings.Contains(fmt.Sprint(attrs, r.Body(), r.SeverityText()), "SECRET-MARKER") {
@@ -98,8 +123,28 @@ func TestLoggerRejectsUnvalidatedFieldsAndWarnsSafely(t *testing.T) {
 		t.Fatal("legacy adapter acquired a provider")
 	}
 	log := NewLogger(cfg, &output, nil)
-	log.Info().Str("request_id", sentinel).Str("correlation_id", sentinel).Str("trace_id", strings.Repeat("0", 32)).Str("span_id", strings.Repeat("0", 16)).Str("http.route", sentinel).Str("error.stage", sentinel).Str("stack", sentinel).Msg(sentinel)
-	if strings.Contains(output.String(), "SECRET-MARKER") || strings.Contains(output.String(), "person@example.test") {
+	log.Info().
+		Str("request_id",
+			sentinel).
+		Str("correlation_id",
+			sentinel).
+		Str("trace_id",
+			strings.Repeat("0",
+				32)).
+		Str("span_id",
+			strings.Repeat("0",
+				16)).
+		Str("http.route",
+			sentinel).
+		Str("error.stage",
+			sentinel).
+		Str("stack",
+			sentinel).
+		Msg(sentinel)
+	if strings.Contains(output.String(),
+		"SECRET-MARKER") ||
+		strings.Contains(output.String(),
+			"person@example.test") {
 		t.Fatal("private values leaked")
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
@@ -110,13 +155,20 @@ func TestLoggerRejectsUnvalidatedFieldsAndWarnsSafely(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &event); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"request_id", "correlation_id", "trace_id", "span_id", "http.route", "error.stage", "stack"} {
+	for _, key := range []string{"request_id",
+		"correlation_id",
+		"trace_id",
+		"span_id",
+		"http.route",
+		"error.stage",
+		"stack"} {
 		if _, ok := event[key]; ok {
 			t.Fatalf("unvalidated field retained: %s", key)
 		}
 	}
 }
 
+//nolint:reassign // This serial test captures the compatibility API stdout and restores it during cleanup.
 func TestPGXCompatibilityLoggerSanitizesOutput(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -128,8 +180,8 @@ func TestPGXCompatibilityLoggerSanitizesOutput(t *testing.T) {
 	log := NewPgxLogger(zerolog.DebugLevel)
 	log.Debug().Str("sql", sentinel).Interface("args", []string{sentinel}).Msg(sentinel)
 	log.Error().Err(errors.New(sentinel)).Str("sql", sentinel).Msg(sentinel)
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
+	if err131 := w.Close(); err131 != nil {
+		t.Fatal(err131)
 	}
 	output, err := io.ReadAll(r)
 	if err != nil {
@@ -147,9 +199,12 @@ func TestConcurrentContextLoggersKeepRecordsSeparate(t *testing.T) {
 	var output bytes.Buffer
 	base := NewLogger(config.DefaultObservabilityConfig(), &output, nil)
 	var workers sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		workers.Go(func() {
-			log := WithContext(base, observability.WithCorrelation(context.Background(), sentinel, sentinel))
+			log := WithContext(base,
+				observability.WithCorrelation(context.Background(),
+					sentinel,
+					sentinel))
 			log.Info().Str("operation", "job.process").Msg("job.process")
 		})
 	}

@@ -4,6 +4,11 @@ package observability
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -22,10 +27,14 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
-	"net/url"
-	"strings"
-	"sync"
-	"time"
+)
+
+const (
+	defaultExportTimeout    = 2 * time.Second
+	defaultExportInterval   = 5 * time.Second
+	metricCardinalityLimit  = 128
+	logAttributeLimit       = 16
+	logAttributeValueLength = 128
 )
 
 const scopeName = "github.com/6sLOGAN78/flux"
@@ -40,7 +49,7 @@ type Exporters struct {
 // Settings is independent of application configuration and SDK globals.
 // Endpoint is a base HTTP(S) OTLP collector URL; empty disables remote export.
 type Settings struct {
-	Enabled        bool
+	Exporters      Exporters
 	Endpoint       string
 	Environment    string
 	SampleRatio    float64
@@ -48,11 +57,11 @@ type Settings struct {
 	BatchSize      int
 	ExportTimeout  time.Duration
 	ExportInterval time.Duration
-	Exporters      Exporters
+	Enabled        bool
 }
 type namedCloser struct {
-	name  string
 	close func(context.Context) error
+	name  string
 }
 
 // Telemetry owns providers; instrumentation receives fixed-scope API objects.
@@ -61,14 +70,14 @@ type Telemetry struct {
 	Meter           metric.Meter
 	Logger          otellog.Logger
 	Propagator      propagation.TextMapPropagator
-	closers         []namedCloser
-	once            sync.Once
-	done            chan struct{}
 	shutdownErr     error
-	shutdownMu      sync.Mutex
+	shutdownContext context.Context
+	done            chan struct{}
+	closers         []namedCloser
 	shutdownErrors  []error
 	shutdownTimeout time.Duration
-	shutdownContext context.Context
+	once            sync.Once
+	shutdownMu      sync.Mutex
 }
 
 func normalize(s Settings) (Settings, error) {
@@ -79,12 +88,22 @@ func normalize(s Settings) (Settings, error) {
 		s.BatchSize = 64
 	}
 	if s.ExportTimeout == 0 {
-		s.ExportTimeout = 2 * time.Second
+		s.ExportTimeout = defaultExportTimeout
 	}
 	if s.ExportInterval == 0 {
-		s.ExportInterval = 5 * time.Second
+		s.ExportInterval = defaultExportInterval
 	}
-	if s.QueueSize < 1 || s.QueueSize > 4096 || s.BatchSize < 1 || s.BatchSize > s.QueueSize || s.SampleRatio < 0 || s.SampleRatio > 1 || s.SampleRatio != s.SampleRatio || s.ExportTimeout < time.Millisecond || s.ExportTimeout > 30*time.Second || s.ExportInterval < time.Millisecond || s.ExportInterval > time.Minute {
+	if s.QueueSize < 1 ||
+		s.QueueSize > 4096 ||
+		s.BatchSize < 1 ||
+		s.BatchSize > s.QueueSize ||
+		s.SampleRatio < 0 ||
+		s.SampleRatio > 1 ||
+		s.SampleRatio != s.SampleRatio ||
+		s.ExportTimeout < time.Millisecond ||
+		s.ExportTimeout > 30*time.Second ||
+		s.ExportInterval < time.Millisecond ||
+		s.ExportInterval > time.Minute {
 		return s, errors.New("invalid telemetry bounds")
 	}
 	if s.Environment == "" {
@@ -95,7 +114,14 @@ func normalize(s Settings) (Settings, error) {
 	}
 	if s.Endpoint != "" {
 		u, err := url.Parse(s.Endpoint)
-		if err != nil || !oneOf(u.Scheme, "http", "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		if err != nil ||
+			!oneOf(u.Scheme,
+				"http",
+				"https") ||
+			u.Host == "" ||
+			u.User != nil ||
+			u.RawQuery != "" ||
+			u.Fragment != "" {
 			return s, errors.New("invalid telemetry endpoint")
 		}
 	}
@@ -111,7 +137,14 @@ func New(ctx context.Context, settings Settings, role string) (*Telemetry, error
 	if !oneOf(role, "api", "redirector", "worker", "migrator") {
 		return nil, errors.New("invalid telemetry role")
 	}
-	t := &Telemetry{Tracer: tracenoop.NewTracerProvider().Tracer(scopeName), Meter: metricnoop.NewMeterProvider().Meter(scopeName), Logger: lognoop.NewLoggerProvider().Logger(scopeName), Propagator: TraceparentPropagator{}, shutdownTimeout: s.ExportTimeout}
+	t := &Telemetry{Tracer: tracenoop.NewTracerProvider().
+		Tracer(scopeName),
+		Meter: metricnoop.NewMeterProvider().
+			Meter(scopeName),
+		Logger: lognoop.NewLoggerProvider().
+			Logger(scopeName),
+		Propagator:      TraceparentPropagator{},
+		shutdownTimeout: s.ExportTimeout}
 	if !s.Enabled {
 		return t, nil
 	}
@@ -121,7 +154,12 @@ func New(ctx context.Context, settings Settings, role string) (*Telemetry, error
 			return nil, err
 		}
 	}
-	res := resource.NewSchemaless(attribute.String("service.name", "flux."+role), attribute.String("process.role", role), attribute.String("deployment.environment.name", s.Environment))
+	res := resource.NewSchemaless(attribute.String("service.name",
+		"flux."+role),
+		attribute.String("process.role",
+			role),
+		attribute.String("deployment.environment.name",
+			s.Environment))
 	if exp.Trace != nil {
 		limits := sdktrace.NewSpanLimits()
 		limits.AttributeCountLimit = 16
@@ -130,21 +168,51 @@ func New(ctx context.Context, settings Settings, role string) (*Telemetry, error
 		limits.LinkCountLimit = 16
 		limits.AttributePerEventCountLimit = 16
 		limits.AttributePerLinkCountLimit = 16
-		p := sdktrace.NewTracerProvider(sdktrace.WithResource(res), sdktrace.WithRawSpanLimits(limits), sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(s.SampleRatio))), sdktrace.WithBatcher(traceExporter{SpanExporter: exp.Trace, res: res, timeout: s.ExportTimeout}, sdktrace.WithMaxQueueSize(s.QueueSize), sdktrace.WithMaxExportBatchSize(s.BatchSize), sdktrace.WithBatchTimeout(s.ExportInterval), sdktrace.WithExportTimeout(s.ExportTimeout)))
+		p := sdktrace.NewTracerProvider(sdktrace.WithResource(res),
+			sdktrace.WithRawSpanLimits(limits),
+			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(s.SampleRatio))),
+			sdktrace.WithBatcher(traceExporter{SpanExporter: exp.Trace,
+				res:     res,
+				timeout: s.ExportTimeout},
+				sdktrace.WithMaxQueueSize(s.QueueSize),
+				sdktrace.WithMaxExportBatchSize(s.BatchSize),
+				sdktrace.WithBatchTimeout(s.ExportInterval),
+				sdktrace.WithExportTimeout(s.ExportTimeout)))
 		t.Tracer = p.Tracer(scopeName)
-		t.closers = append(t.closers, namedCloser{"trace", p.Shutdown})
+		t.closers = append(t.closers, namedCloser{name: "trace", close: p.Shutdown})
 	}
 	if exp.Metric != nil {
-		reader := sdkmetric.NewPeriodicReader(metricExporter{Exporter: exp.Metric, res: res, timeout: s.ExportTimeout}, sdkmetric.WithInterval(s.ExportInterval), sdkmetric.WithTimeout(s.ExportTimeout), sdkmetric.WithMaxExportBatchSize(s.BatchSize))
-		p := sdkmetric.NewMeterProvider(sdkmetric.WithResource(res), sdkmetric.WithReader(reader), sdkmetric.WithCardinalityLimit(128), sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter), sdkmetric.WithView(sdkmetric.NewView(sdkmetric.Instrument{Name: "*"}, sdkmetric.Stream{AttributeFilter: func(a attribute.KeyValue) bool { return safeAttribute(a, true) }})))
+		reader := sdkmetric.NewPeriodicReader(metricExporter{Exporter: exp.Metric,
+			res:     res,
+			timeout: s.ExportTimeout},
+			sdkmetric.WithInterval(s.ExportInterval),
+			sdkmetric.WithTimeout(s.ExportTimeout),
+			sdkmetric.WithMaxExportBatchSize(s.BatchSize))
+		p := sdkmetric.NewMeterProvider(sdkmetric.WithResource(res),
+			sdkmetric.WithReader(reader),
+			sdkmetric.WithCardinalityLimit(metricCardinalityLimit),
+			sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
+			sdkmetric.WithView(sdkmetric.NewView(sdkmetric.Instrument{Name: "*"},
+				sdkmetric.Stream{AttributeFilter: func(a attribute.KeyValue) bool {
+					return safeAttribute(a,
+						true)
+				}})))
 		t.Meter = p.Meter(scopeName)
-		t.closers = append(t.closers, namedCloser{"metric", p.Shutdown})
+		t.closers = append(t.closers, namedCloser{name: "metric", close: p.Shutdown})
 	}
 	if exp.Log != nil {
-		batch := sdklog.NewBatchProcessor(logExporter{Exporter: exp.Log, timeout: s.ExportTimeout}, sdklog.WithMaxQueueSize(s.QueueSize), sdklog.WithExportMaxBatchSize(s.BatchSize), sdklog.WithExportBufferSize(1), sdklog.WithExportInterval(s.ExportInterval), sdklog.WithExportTimeout(s.ExportTimeout))
-		p := sdklog.NewLoggerProvider(sdklog.WithResource(res), sdklog.WithAttributeCountLimit(16), sdklog.WithAttributeValueLengthLimit(128), sdklog.WithProcessor(batch))
+		batch := sdklog.NewBatchProcessor(logExporter{Exporter: exp.Log,
+			timeout: s.ExportTimeout},
+			sdklog.WithMaxQueueSize(s.QueueSize),
+			sdklog.WithExportMaxBatchSize(s.BatchSize),
+			sdklog.WithExportInterval(s.ExportInterval),
+			sdklog.WithExportTimeout(s.ExportTimeout))
+		p := sdklog.NewLoggerProvider(sdklog.WithResource(res),
+			sdklog.WithAttributeCountLimit(logAttributeLimit),
+			sdklog.WithAttributeValueLengthLimit(logAttributeValueLength),
+			sdklog.WithProcessor(batch))
 		t.Logger = p.Logger(scopeName)
-		t.closers = append(t.closers, namedCloser{"log", p.Shutdown})
+		t.closers = append(t.closers, namedCloser{name: "log", close: p.Shutdown})
 	}
 	return t, nil
 }
@@ -156,26 +224,38 @@ func createHTTPExporters(ctx context.Context, s Settings, e *Exporters) error {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), s.ExportTimeout)
 		defer cancel()
 		t := &Telemetry{closers: owned}
-		return errors.Join(safeFailureFor("initialize", err), t.Shutdown(cleanupCtx))
+		return errors.Join(safeErrorFor("initialize", err), t.Shutdown(cleanupCtx))
 	}
 	if e.Trace == nil {
-		v, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(base+"/v1/traces"), otlptracehttp.WithTimeout(s.ExportTimeout), otlptracehttp.WithRetry(otlptracehttp.RetryConfig{Enabled: false}))
+		v,
+			err := otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpointURL(base+"/v1/traces"),
+			otlptracehttp.WithTimeout(s.ExportTimeout),
+			otlptracehttp.WithRetry(otlptracehttp.RetryConfig{Enabled: false}))
 		if err != nil {
 			return fail(err)
 		}
 		e.Trace = v
-		owned = append(owned, namedCloser{"trace", v.Shutdown})
+		owned = append(owned, namedCloser{name: "trace", close: v.Shutdown})
 	}
 	if e.Metric == nil {
-		v, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(base+"/v1/metrics"), otlpmetrichttp.WithTimeout(s.ExportTimeout), otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}))
+		v,
+			err := otlpmetrichttp.New(ctx,
+			otlpmetrichttp.WithEndpointURL(base+"/v1/metrics"),
+			otlpmetrichttp.WithTimeout(s.ExportTimeout),
+			otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}))
 		if err != nil {
 			return fail(err)
 		}
 		e.Metric = v
-		owned = append(owned, namedCloser{"metric", v.Shutdown})
+		owned = append(owned, namedCloser{name: "metric", close: v.Shutdown})
 	}
 	if e.Log == nil {
-		v, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(base+"/v1/logs"), otlploghttp.WithTimeout(s.ExportTimeout), otlploghttp.WithRetry(otlploghttp.RetryConfig{Enabled: false}))
+		v,
+			err := otlploghttp.New(ctx,
+			otlploghttp.WithEndpointURL(base+"/v1/logs"),
+			otlploghttp.WithTimeout(s.ExportTimeout),
+			otlploghttp.WithRetry(otlploghttp.RetryConfig{Enabled: false}))
 		if err != nil {
 			return fail(err)
 		}
@@ -190,14 +270,17 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 	t.once.Do(func() {
 		timeout := t.shutdownTimeout
 		if timeout == 0 {
-			timeout = 2 * time.Second
+			timeout = defaultExportTimeout
 		}
 		shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 		t.shutdownContext = shutdownCtx
 		t.done = make(chan struct{})
 		results := make(chan error, len(t.closers))
 		for _, closer := range t.closers {
-			go func(c namedCloser) { results <- safeFailureFor(c.name+" shutdown", c.close(shutdownCtx)) }(closer)
+			go func(c namedCloser) {
+				results <- safeErrorFor(c.name+" shutdown",
+					c.close(shutdownCtx))
+			}(closer)
 		}
 		go func() {
 			defer cancel()
@@ -221,7 +304,7 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 		t.shutdownMu.Lock()
 		errs := append([]error(nil), t.shutdownErrors...)
 		t.shutdownMu.Unlock()
-		return errors.Join(append(errs, safeFailureFor("shutdown", ctx.Err()))...)
+		return errors.Join(append(errs, safeErrorFor("shutdown", ctx.Err()))...)
 	case <-t.shutdownContext.Done():
 		select {
 		case <-t.done:
@@ -231,7 +314,7 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 		t.shutdownMu.Lock()
 		errs := append([]error(nil), t.shutdownErrors...)
 		t.shutdownMu.Unlock()
-		return errors.Join(append(errs, safeFailureFor("shutdown", t.shutdownContext.Err()))...)
+		return errors.Join(append(errs, safeErrorFor("shutdown", t.shutdownContext.Err()))...)
 	}
 }
 
@@ -252,7 +335,7 @@ func (s safeSpan) Resource() *resource.Resource { return s.res }
 func (s safeSpan) InstrumentationScope() instrumentation.Scope {
 	return instrumentation.Scope{Name: scopeName}
 }
-func (s safeSpan) InstrumentationLibrary() instrumentation.Library { return s.InstrumentationScope() }
+func (s safeSpan) InstrumentationLibrary() instrumentation.Scope { return s.InstrumentationScope() }
 func (s safeSpan) Status() sdktrace.Status {
 	status := s.ReadOnlySpan.Status()
 	status.Description = ""
@@ -288,10 +371,10 @@ func (e traceExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnl
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
-	return safeFailureFor("export", e.SpanExporter.ExportSpans(ctx, safe))
+	return safeErrorFor("export", e.SpanExporter.ExportSpans(ctx, safe))
 }
 func (e traceExporter) Shutdown(ctx context.Context) error {
-	return safeFailureFor("shutdown", e.SpanExporter.Shutdown(ctx))
+	return safeErrorFor("shutdown", e.SpanExporter.Shutdown(ctx))
 }
 
 type logExporter struct {
@@ -313,13 +396,13 @@ func (e logExporter) Export(ctx context.Context, records []sdklog.Record) error 
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
-	return safeFailureFor("export", e.Exporter.Export(ctx, safe))
+	return safeErrorFor("export", e.Exporter.Export(ctx, safe))
 }
 func (e logExporter) Shutdown(ctx context.Context) error {
-	return safeFailureFor("shutdown", e.Exporter.Shutdown(ctx))
+	return safeErrorFor("shutdown", e.Exporter.Shutdown(ctx))
 }
 func (e logExporter) ForceFlush(ctx context.Context) error {
-	return safeFailureFor("flush", e.Exporter.ForceFlush(ctx))
+	return safeErrorFor("flush", e.Exporter.ForceFlush(ctx))
 }
 
 type metricExporter struct {
@@ -333,7 +416,15 @@ func (e metricExporter) Export(ctx context.Context, data *metricdata.ResourceMet
 	for _, scope := range data.ScopeMetrics {
 		out := metricdata.ScopeMetrics{Scope: instrumentation.Scope{Name: scopeName}}
 		for _, m := range scope.Metrics {
-			if !oneOf(m.Name, "flux.operations", "flux.duration", "flux.http.requests", "flux.http.duration", "flux.db.operations", "flux.db.duration", "flux.jobs", "flux.job.duration") {
+			if !oneOf(m.Name,
+				"flux.operations",
+				"flux.duration",
+				"flux.http.requests",
+				"flux.http.duration",
+				"flux.db.operations",
+				"flux.db.duration",
+				"flux.jobs",
+				"flux.job.duration") {
 				continue
 			}
 			m.Description = ""
@@ -349,13 +440,13 @@ func (e metricExporter) Export(ctx context.Context, data *metricdata.ResourceMet
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
-	return safeFailureFor("export", e.Exporter.Export(ctx, &safe))
+	return safeErrorFor("export", e.Exporter.Export(ctx, &safe))
 }
 func (e metricExporter) Shutdown(ctx context.Context) error {
-	return safeFailureFor("shutdown", e.Exporter.Shutdown(ctx))
+	return safeErrorFor("shutdown", e.Exporter.Shutdown(ctx))
 }
 func (e metricExporter) ForceFlush(ctx context.Context) error {
-	return safeFailureFor("flush", e.Exporter.ForceFlush(ctx))
+	return safeErrorFor("flush", e.Exporter.ForceFlush(ctx))
 }
 
 func sanitizePoints[N int64 | float64](points []metricdata.DataPoint[N]) []metricdata.DataPoint[N] {
@@ -366,7 +457,9 @@ func sanitizePoints[N int64 | float64](points []metricdata.DataPoint[N]) []metri
 	}
 	return out
 }
-func sanitizeHistogram[N int64 | float64](points []metricdata.HistogramDataPoint[N]) []metricdata.HistogramDataPoint[N] {
+func sanitizeHistogram[N int64 | float64](
+	points []metricdata.HistogramDataPoint[N],
+) []metricdata.HistogramDataPoint[N] {
 	out := append([]metricdata.HistogramDataPoint[N](nil), points...)
 	for i := range out {
 		out[i].Attributes = attribute.NewSet(SanitizeAttributes(out[i].Attributes.ToSlice(), true)...)
@@ -374,7 +467,9 @@ func sanitizeHistogram[N int64 | float64](points []metricdata.HistogramDataPoint
 	}
 	return out
 }
-func sanitizeExponential[N int64 | float64](points []metricdata.ExponentialHistogramDataPoint[N]) []metricdata.ExponentialHistogramDataPoint[N] {
+func sanitizeExponential[N int64 | float64](
+	points []metricdata.ExponentialHistogramDataPoint[N],
+) []metricdata.ExponentialHistogramDataPoint[N] {
 	out := append([]metricdata.ExponentialHistogramDataPoint[N](nil), points...)
 	for i := range out {
 		out[i].Attributes = attribute.NewSet(SanitizeAttributes(out[i].Attributes.ToSlice(), true)...)

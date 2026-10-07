@@ -12,21 +12,30 @@ import (
 )
 
 const (
+	traceparentLength   = 55
+	canonicalUUIDLength = 36
+	welcomeMaxRetries   = 3
+	welcomeTaskTimeout  = 30 * time.Second
+)
+
+// TaskWelcome identifies asynchronous welcome email jobs.
+const (
 	TaskWelcome = "email:welcome"
 )
 
+// WelcomeEmailPayload contains welcome email values and safe correlation metadata.
 type WelcomeEmailPayload struct {
+	Metadata  *Metadata `json:"metadata,omitempty"`
 	To        string    `json:"to"`
 	FirstName string    `json:"first_name"`
-	Metadata  *Metadata `json:"metadata,omitempty"`
 }
 
 // Metadata is the entire approved queue propagation envelope. No private state.
 type Metadata struct {
-	Version       int    `json:"version"`
 	Traceparent   string `json:"traceparent,omitempty"`
 	RequestID     string `json:"request_id,omitempty"`
 	CorrelationID string `json:"correlation_id,omitempty"`
+	Version       int    `json:"version"`
 }
 
 func cleanMetadata(m *Metadata) *Metadata {
@@ -34,17 +43,18 @@ func cleanMetadata(m *Metadata) *Metadata {
 		return nil
 	}
 	clean := &Metadata{Version: 1}
-	if len(m.Traceparent) == 55 {
-		ctx := observability.TraceparentPropagator{}.Extract(context.Background(), propagation.MapCarrier{"traceparent": m.Traceparent})
+	if len(m.Traceparent) == traceparentLength {
+		ctx := observability.TraceparentPropagator{}.Extract(context.Background(),
+			propagation.MapCarrier{"traceparent": m.Traceparent})
 		carrier := propagation.MapCarrier{}
 		observability.TraceparentPropagator{}.Inject(ctx, carrier)
 		clean.Traceparent = carrier["traceparent"]
 	}
 	for _, pair := range []struct {
-		input  string
 		output *string
-	}{{m.RequestID, &clean.RequestID}, {m.CorrelationID, &clean.CorrelationID}} {
-		if len(pair.input) != 36 {
+		input  string
+	}{{input: m.RequestID, output: &clean.RequestID}, {input: m.CorrelationID, output: &clean.CorrelationID}} {
+		if len(pair.input) != canonicalUUIDLength {
 			continue
 		}
 		id, err := uuid.Parse(pair.input)
@@ -58,6 +68,7 @@ func cleanMetadata(m *Metadata) *Metadata {
 	return clean
 }
 
+// NewWelcomeEmailTask validates and serializes a welcome email job.
 func NewWelcomeEmailTask(to, firstName string) (*asynq.Task, error) {
 	return NewWelcomeEmailTaskContext(context.Background(), to, firstName)
 }
@@ -70,14 +81,17 @@ func NewWelcomeEmailTaskContext(ctx context.Context, to, firstName string) (*asy
 	payload, err := json.Marshal(WelcomeEmailPayload{
 		To:        to,
 		FirstName: firstName,
-		Metadata:  cleanMetadata(&Metadata{Version: 1, Traceparent: carrier["traceparent"], RequestID: ids.RequestID, CorrelationID: ids.CorrelationID}),
+		Metadata: cleanMetadata(&Metadata{Version: 1,
+			Traceparent:   carrier["traceparent"],
+			RequestID:     ids.RequestID,
+			CorrelationID: ids.CorrelationID}),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return asynq.NewTask(TaskWelcome, payload,
-		asynq.MaxRetry(3),
+		asynq.MaxRetry(welcomeMaxRetries),
 		asynq.Queue("default"),
-		asynq.Timeout(30*time.Second)), nil
+		asynq.Timeout(welcomeTaskTimeout)), nil
 }

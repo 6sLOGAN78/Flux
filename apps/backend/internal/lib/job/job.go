@@ -17,21 +17,31 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+const (
+	workerConcurrency   = 10
+	criticalQueueWeight = 6
+	defaultQueueWeight  = 3
+	drainPollDivisor    = 10
+)
+
+// JobService owns asynchronous producers and worker resources.
+//
+//nolint:revive // Preserve the established service type used by constructors and role adapters.
 type JobService struct {
-	Client       *asynq.Client
-	server       *asynq.Server
-	logger       *zerolog.Logger
 	emailClient  WelcomeEmailSender
-	shutdown     func() error
-	closeClient  func() error
-	stopOnce     sync.Once
 	stopErr      error
 	drainErr     error
-	drainOnce    sync.Once
-	drainDone    chan struct{}
 	tracer       trace.Tracer
 	replacements *asynq.Client
+	server       *asynq.Server
+	logger       *zerolog.Logger
+	shutdown     func() error
+	closeClient  func() error
+	Client       *asynq.Client
 	inspector    *asynq.Inspector
+	drainDone    chan struct{}
+	stopOnce     sync.Once
+	drainOnce    sync.Once
 }
 
 // WelcomeEmailSender is the worker's narrow, injectable delivery boundary.
@@ -80,27 +90,44 @@ func jobTracer(telemetry []*observability.Telemetry) trace.Tracer {
 
 // NewConsumer owns only worker processing over the role's shared Redis client.
 // Sharing the connection lets partial startup close it even before Start runs.
-func NewConsumer(logger *zerolog.Logger, cfg *config.Config, client *redis.Client, emailClient WelcomeEmailSender, telemetry ...*observability.Telemetry) *JobService {
+func NewConsumer(logger *zerolog.Logger,
+	cfg *config.Config,
+	client *redis.Client,
+	emailClient WelcomeEmailSender,
+	telemetry ...*observability.Telemetry) *JobService {
 	var tel *observability.Telemetry
 	if len(telemetry) > 0 {
 		tel = telemetry[0]
 	}
 	return newConsumer(logger, client, emailClient, tel, asynq.Config{
-		Concurrency:     10,
-		Queues:          map[string]int{"critical": 6, "default": 3, "low": 1},
+		Concurrency: workerConcurrency,
+		Queues: map[string]int{"critical": criticalQueueWeight,
+			"default": defaultQueueWeight,
+			"low":     1},
 		ShutdownTimeout: cfg.Worker.DrainTimeout,
 		// Asynq Stop waits for its idle poll sleep (up to 1.5 intervals).
 		// Keep that intake delay inside short configured shutdown budgets.
-		TaskCheckInterval: min(time.Second, cfg.Worker.DrainTimeout/10),
+		TaskCheckInterval: min(time.Second, cfg.Worker.DrainTimeout/drainPollDivisor),
 	})
 }
 
-func newConsumer(logger *zerolog.Logger, client *redis.Client, emailClient WelcomeEmailSender, tel *observability.Telemetry, cfg asynq.Config) *JobService {
-	cfg.Logger = safeJobLogger{logger}
+func newConsumer(logger *zerolog.Logger,
+	client *redis.Client,
+	emailClient WelcomeEmailSender,
+	tel *observability.Telemetry,
+	cfg asynq.Config) *JobService {
+	cfg.Logger = safeJobLogger{log: logger}
 	server := asynq.NewServerFromRedisClient(client, cfg)
-	return &JobService{server: server, logger: logger, emailClient: emailClient, tracer: jobTracer([]*observability.Telemetry{tel}), replacements: asynq.NewClientFromRedisClient(client), inspector: asynq.NewInspectorFromRedisClient(client), shutdown: func() error { server.Shutdown(); return nil }}
+	return &JobService{server: server,
+		logger:       logger,
+		emailClient:  emailClient,
+		tracer:       jobTracer([]*observability.Telemetry{tel}),
+		replacements: asynq.NewClientFromRedisClient(client),
+		inspector:    asynq.NewInspectorFromRedisClient(client),
+		shutdown:     func() error { server.Shutdown(); return nil }}
 }
 
+// NewJobService constructs a compatibility job producer.
 func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 	redisAddr := cfg.Redis.Address
 
@@ -111,12 +138,12 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 	server := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{
-			Logger:      safeJobLogger{logger},
-			Concurrency: 10,
+			Logger:      safeJobLogger{log: logger},
+			Concurrency: workerConcurrency,
 			Queues: map[string]int{
-				"critical": 6, // Higher priority queue for important emails
-				"default":  3, // Default priority for most emails
-				"low":      1, // Lower priority for non-urgent emails
+				"critical": criticalQueueWeight, // Higher priority queue for important emails
+				"default":  defaultQueueWeight,  // Default priority for most emails
+				"low":      1,                   // Lower priority for non-urgent emails
 			},
 		},
 	)
@@ -149,6 +176,7 @@ func (l safeJobLogger) Warn(...interface{})  { l.log.Warn().Msg("job.process") }
 func (l safeJobLogger) Error(...interface{}) { l.log.Error().Msg("job.process") }
 func (l safeJobLogger) Fatal(...interface{}) { l.log.Error().Msg("job.process") }
 
+// Start starts the configured worker consumer.
 func (j *JobService) Start() error {
 	if j.server == nil {
 		return errors.New("job consumer not configured")
@@ -165,6 +193,7 @@ func (j *JobService) Start() error {
 	return nil
 }
 
+// Stop drains and closes all owned job resources.
 func (j *JobService) Stop() error {
 	j.stopOnce.Do(func() {
 		j.logger.Info().Msg("Stopping background job server")

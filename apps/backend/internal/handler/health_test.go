@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,13 +29,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type healthTestContextKey struct{}
+
 func healthRouter(log *zerolog.Logger, timeout time.Duration, checks ...handler.ReadinessCheck) *echo.Echo {
 	r := echo.New()
 	router.RegisterHealthRoutes(r, handler.NewReadinessHandler(log, timeout, checks))
 	return r
 }
 
-func healthRequest(r http.Handler, ctx context.Context, path string) *httptest.ResponseRecorder {
+func healthRequest(ctx context.Context, r http.Handler, path string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx))
 	return rec
@@ -42,11 +45,14 @@ func healthRequest(r http.Handler, ctx context.Context, path string) *httptest.R
 
 func TestLiveDoesNotProbeDependencies(t *testing.T) {
 	var calls atomic.Int32
-	r := healthRouter(nil, time.Second, handler.ReadinessCheck{Name: "database", Check: func(context.Context) error {
-		calls.Add(1)
-		return errors.New("offline")
-	}})
-	assertHealthContract(t, healthRequest(r, context.Background(), "/live"), "/live", 200, `{"status":"alive"}`)
+	r := healthRouter(nil,
+		time.Second,
+		handler.ReadinessCheck{Name: "database",
+			Check: func(context.Context) error {
+				calls.Add(1)
+				return errors.New("offline")
+			}})
+	assertHealthContract(t, healthRequest(context.Background(), r, "/live"), "/live", 200, `{"status":"alive"}`)
 	if calls.Load() != 0 {
 		t.Fatal("liveness probed dependencies")
 	}
@@ -57,17 +63,26 @@ func TestReadySanitizedFailuresAndSingleLog(t *testing.T) {
 	log := zerolog.New(&logs)
 	secret := "postgres://user:secret@private-host provider-payload STACK-MARKER"
 	r := healthRouter(&log, time.Second,
-		handler.ReadinessCheck{Name: "database", Check: func(context.Context) error { return errors.New(secret) }},
+		handler.ReadinessCheck{Name: "database",
+			Check: func(context.Context) error { return errors.New(secret) }},
 		handler.ReadinessCheck{Name: "redis", Check: func(context.Context) error { return nil }},
 	)
-	rec := healthRequest(r, context.Background(), "/ready")
-	assertHealthContract(t, rec, "/ready", 503, `{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},{"name":"redis","state":"ready"}]}`)
+	rec := healthRequest(context.Background(), r, "/ready")
+	assertHealthContract(t,
+		rec,
+		"/ready",
+		503,
+		`{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},`+
+			`{"name":"redis","state":"ready"}]}`)
 	for _, marker := range strings.Fields(secret) {
 		if strings.Contains(rec.Body.String(), marker) || strings.Contains(logs.String(), marker) {
 			t.Fatal("health diagnostic leaked private failure")
 		}
 	}
-	if strings.Count(logs.String(), "readiness check failed") != 1 || !strings.Contains(logs.String(), `"failure_kind":"dependency_error"`) {
+	if strings.Count(logs.String(),
+		"readiness check failed") != 1 ||
+		!strings.Contains(logs.String(),
+			`"failure_kind":"dependency_error"`) {
 		t.Fatalf("expected one classified failure log: %s", logs.String())
 	}
 }
@@ -82,7 +97,7 @@ func TestReadyConcurrentOneRequestDeadline(t *testing.T) {
 	started := make(chan struct{}, 2)
 	check := func(ctx context.Context) error {
 		deadline, _ := ctx.Deadline()
-		observed <- observation{deadline, ctx.Value("health-test")}
+		observed <- observation{deadline: deadline, value: ctx.Value(healthTestContextKey{})}
 		started <- struct{}{}
 		select {
 		case <-ctx.Done():
@@ -91,16 +106,29 @@ func TestReadyConcurrentOneRequestDeadline(t *testing.T) {
 			return errors.New("missing cancellation")
 		}
 	}
-	r := healthRouter(nil, budget, handler.ReadinessCheck{Name: "database", Check: check}, handler.ReadinessCheck{Name: "redis", Check: check})
-	ctx := context.WithValue(context.Background(), "health-test", "request-value")
+	r := healthRouter(nil,
+		budget,
+		handler.ReadinessCheck{Name: "database",
+			Check: check},
+		handler.ReadinessCheck{Name: "redis",
+			Check: check})
+	ctx := context.WithValue(context.Background(), healthTestContextKey{}, "request-value")
 	begin := time.Now()
-	rec := healthRequest(r, ctx, "/ready")
+	rec := healthRequest(ctx, r, "/ready")
 	if elapsed := time.Since(begin); elapsed > 260*time.Millisecond {
 		t.Fatalf("multiplied deadline: %s", elapsed)
 	}
-	assertHealthContract(t, rec, "/ready", 503, `{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},{"name":"redis","state":"not_ready"}]}`)
+	assertHealthContract(t,
+		rec,
+		"/ready",
+		503,
+		`{"status":"not_ready","checks":[{"name":"database","state":"not_ready"},`+
+			`{"name":"redis","state":"not_ready"}]}`)
 	a, b := <-observed, <-observed
-	if !a.deadline.Equal(b.deadline) || a.value != "request-value" || b.value != "request-value" || len(started) != 2 {
+	if !a.deadline.Equal(b.deadline) ||
+		a.value != "request-value" ||
+		b.value != "request-value" ||
+		len(started) != 2 {
 		t.Fatal("checks did not share request-derived context")
 	}
 }
@@ -108,17 +136,25 @@ func TestReadyConcurrentOneRequestDeadline(t *testing.T) {
 func TestReadyRequestCancellation(t *testing.T) {
 	started := make(chan struct{})
 	ended := make(chan struct{})
-	r := healthRouter(nil, time.Second, handler.ReadinessCheck{Name: "redis", Check: func(ctx context.Context) error {
-		close(started)
-		<-ctx.Done()
-		close(ended)
-		return ctx.Err()
-	}})
+	r := healthRouter(nil,
+		time.Second,
+		handler.ReadinessCheck{Name: "redis",
+			Check: func(ctx context.Context) error {
+				close(started)
+				<-ctx.Done()
+				close(ended)
+				return ctx.Err()
+			}})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { <-started; cancel() }()
 	begin := time.Now()
-	assertHealthContract(t, healthRequest(r, ctx, "/ready"), "/ready", 503, `{"status":"not_ready","checks":[{"name":"redis","state":"not_ready"}]}`)
+	assertHealthContract(t,
+		healthRequest(ctx, r,
+			"/ready"),
+		"/ready",
+		503,
+		`{"status":"not_ready","checks":[{"name":"redis","state":"not_ready"}]}`)
 	if time.Since(begin) > 200*time.Millisecond {
 		t.Fatal("request cancellation ignored")
 	}
@@ -133,36 +169,59 @@ func TestReadyBypassesCustomerLimiter(t *testing.T) {
 	log := zerolog.Nop()
 	cfg := healthRoleConfig()
 	srv := &server.Server{Config: cfg, Logger: &log}
-	h := &handler.Handlers{Health: handler.NewReadinessHandler(&log, time.Second, nil), OpenAPI: handler.NewOpenAPIHandler(srv)}
+	h := &handler.Handlers{Health: handler.NewReadinessHandler(&log,
+		time.Second,
+		nil),
+		OpenAPI: handler.NewOpenAPIHandler(srv)}
 	r := router.NewRouter(srv, h, nil)
 	limited := false
-	for i := 0; i < 60; i++ {
-		if healthRequest(r, context.Background(), "/docs").Code == 429 {
+	for range 60 {
+		if healthRequest(context.Background(), r, "/docs").Code == 429 {
 			limited = true
 		}
 	}
 	if !limited {
 		t.Fatal("test did not exhaust customer limiter")
 	}
-	for i := 0; i < 60; i++ {
-		assertHealthContract(t, healthRequest(r, context.Background(), "/live"), "/live", 200, `{"status":"alive"}`)
-		assertHealthContract(t, healthRequest(r, context.Background(), "/ready"), "/ready", 200, `{"status":"ready","checks":[]}`)
+	for range 60 {
+		assertHealthContract(t,
+			healthRequest(context.Background(), r,
+				"/live"),
+			"/live",
+			200,
+			`{"status":"alive"}`)
+		assertHealthContract(t,
+			healthRequest(context.Background(), r,
+				"/ready"),
+			"/ready",
+			200,
+			`{"status":"ready","checks":[]}`)
 	}
-	if healthRequest(r, context.Background(), "/status").Code == 200 {
+	if healthRequest(context.Background(), r, "/status").Code == 200 {
 		t.Fatal("legacy status still public")
 	}
 }
 
 func healthRoleConfig() *config.Config {
-	settings := config.RoleConfig{ListenAddress: "127.0.0.1:0", DrainTimeout: time.Second, ReadinessTimeout: 200 * time.Millisecond}
-	return &config.Config{Primary: config.Primary{Env: "test"}, Observability: config.DefaultObservabilityConfig(), API: settings, Redirector: settings, Worker: settings}
+	settings := config.RoleConfig{ListenAddress: "127.0.0.1:0",
+		DrainTimeout:     time.Second,
+		ReadinessTimeout: 200 * time.Millisecond}
+	return &config.Config{Primary: config.Primary{Env: "test"},
+		Observability: config.DefaultObservabilityConfig(),
+		API:           settings,
+		Redirector:    settings,
+		Worker:        settings}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestRoleHealthActualHTTP(t *testing.T) {
 	db, _ := backendTesting.SetupTestPostgres(t)
 	queue, _ := backendTesting.SetupTestRedis(t)
 	var providerCalls atomic.Int32
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { providerCalls.Add(1); w.WriteHeader(500) }))
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		providerCalls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
 	defer provider.Close()
 	t.Setenv("RESEND_BASE_URL", provider.URL)
 	for _, role := range []string{"api", "api-producer", "redirector", "worker"} {
@@ -216,9 +275,9 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 				defer res.Body.Close()
 				rec := httptest.NewRecorder()
 				rec.Code = res.StatusCode
-				rec.HeaderMap = res.Header
-				if _, err := rec.Body.ReadFrom(res.Body); err != nil {
-					t.Fatal(err)
+				maps.Copy(rec.Header(), res.Header)
+				if _, err277 := rec.Body.ReadFrom(res.Body); err277 != nil {
+					t.Fatal(err277)
 				}
 				return rec
 			}
@@ -228,7 +287,8 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 			case "api":
 				fixture = `{"status":"ready","checks":[{"name":"database","state":"ready"}]}`
 			case "api-producer":
-				fixture = `{"status":"ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"ready"}]}`
+				fixture = `{"status":"ready","checks":[{"name":"database","state":"ready"},` +
+					`{"name":"redis","state":"ready"}]}`
 			case "redirector":
 				fixture = `{"status":"ready","checks":[]}`
 			case "worker":
@@ -243,18 +303,26 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 				}
 				runtime.Server.Redis = failedQueue
 				t.Cleanup(func() { runtime.Server.Redis = activeQueue })
-				fixture = `{"status":"not_ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"not_ready"}]}`
+				fixture = `{"status":"not_ready","checks":[{"name":"database","state":"ready"},` +
+					`{"name":"redis","state":"not_ready"}]}`
 				assertHealthContract(t, request("/ready"), "/ready", 503, fixture)
 			}
 			if role == "worker" {
 				cfg.Integration.ResendAPIKey = ""
-				assertHealthContract(t, request("/ready"), "/ready", 503, `{"status":"not_ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"not_ready"}]}`)
+				assertHealthContract(t,
+					request("/ready"),
+					"/ready",
+					503,
+					`{"status":"not_ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"not_ready"}]}`)
 				cfg.Integration.ResendAPIKey = "provider-secret"
 			}
 			if role == "api" || role == "api-producer" {
 				runtime.Server.DB.Pool.Close()
 				fixture = strings.Replace(fixture, `"status":"ready"`, `"status":"not_ready"`, 1)
-				fixture = strings.Replace(fixture, `"name":"database","state":"ready"`, `"name":"database","state":"not_ready"`, 1)
+				fixture = strings.Replace(fixture,
+					`"name":"database","state":"ready"`,
+					`"name":"database","state":"not_ready"`,
+					1)
 			}
 			if role == "worker" {
 				// Inject probe failure without closing the active consumer's shared
@@ -273,7 +341,10 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 				assertHealthContract(t, request("/live"), "/live", 200, `{"status":"alive"}`)
 			}
 			if role == "worker" || role == "redirector" {
-				for _, path := range []string{"/docs", "/api/v1/links", "/static/openapi.json", "/status"} {
+				for _, path := range []string{"/docs",
+					"/api/v1/links",
+					"/static/openapi.json",
+					"/status"} {
 					if request(path).Code != 404 {
 						t.Fatalf("management role exposed %s", path)
 					}
@@ -318,8 +389,8 @@ func assertHealthContract(t *testing.T, rec *httptest.ResponseRecorder, path str
 		t.Fatal(err)
 	}
 	var roundTrip any
-	if err := json.Unmarshal(data, &roundTrip); err != nil {
-		t.Fatal(err)
+	if err388 := json.Unmarshal(data, &roundTrip); err388 != nil {
+		t.Fatal(err388)
 	}
 	if !reflect.DeepEqual(roundTrip, actual) {
 		t.Fatal("payload differs from generated transport")
@@ -329,8 +400,8 @@ func assertHealthContract(t *testing.T, rec *httptest.ResponseRecorder, path str
 		t.Fatal(err)
 	}
 	var doc map[string]any
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatal(err)
+	if err399 := json.Unmarshal(data, &doc); err399 != nil {
+		t.Fatal(err399)
 	}
 	operation := doc["paths"].(map[string]any)[path].(map[string]any)["get"].(map[string]any)
 	response := operation["responses"].(map[string]any)[strconv.Itoa(status)].(map[string]any)
@@ -339,16 +410,17 @@ func assertHealthContract(t *testing.T, rec *httptest.ResponseRecorder, path str
 		t.Fatalf("unexpected canonical response ref %v", ref)
 	}
 	schema := doc["components"].(map[string]any)["schemas"].(map[string]any)["transport."+name].(map[string]any)
-	if err := validateHealthSchema(schema, actual); err != nil {
-		t.Fatal(err)
+	if err409 := validateHealthSchema(schema, actual); err409 != nil {
+		t.Fatal(err409)
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func validateHealthSchema(schema map[string]any, value any) error {
 	switch schema["type"] {
 	case "string":
 		if _, ok := value.(string); !ok {
-			return fmt.Errorf("expected string")
+			return errors.New("expected string")
 		}
 		if values, ok := schema["enum"].([]any); ok {
 			for _, allowed := range values {
@@ -356,22 +428,22 @@ func validateHealthSchema(schema map[string]any, value any) error {
 					return nil
 				}
 			}
-			return fmt.Errorf("outside canonical enum")
+			return errors.New("outside canonical enum")
 		}
 	case "object":
 		object, ok := value.(map[string]any)
 		if !ok {
-			return fmt.Errorf("expected object")
+			return errors.New("expected object")
 		}
 		properties := schema["properties"].(map[string]any)
 		for _, name := range schema["required"].([]any) {
-			if _, ok := object[name.(string)]; !ok {
+			if _, ok436 := object[name.(string)]; !ok436 {
 				return fmt.Errorf("missing %s", name)
 			}
 		}
 		for name, field := range object {
-			property, ok := properties[name]
-			if !ok {
+			property, ok441 := properties[name]
+			if !ok441 {
 				return fmt.Errorf("undocumented %s", name)
 			}
 			if err := validateHealthSchema(property.(map[string]any), field); err != nil {
@@ -381,7 +453,7 @@ func validateHealthSchema(schema map[string]any, value any) error {
 	case "array":
 		items, ok := value.([]any)
 		if !ok {
-			return fmt.Errorf("expected array")
+			return errors.New("expected array")
 		}
 		for _, item := range items {
 			if err := validateHealthSchema(schema["items"].(map[string]any), item); err != nil {
@@ -389,7 +461,7 @@ func validateHealthSchema(schema map[string]any, value any) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unsupported canonical schema type")
+		return errors.New("unsupported canonical schema type")
 	}
 	return nil
 }

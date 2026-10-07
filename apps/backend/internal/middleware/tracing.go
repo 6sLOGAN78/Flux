@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/observability"
@@ -15,6 +16,12 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
+const (
+	maxSpanLinks         = 16
+	httpStatusClassWidth = 100
+)
+
+// TracingMiddleware records safe request traces and metrics.
 type TracingMiddleware struct {
 	tracer   trace.Tracer
 	requests metric.Int64Counter
@@ -38,12 +45,22 @@ func NewTracingMiddleware(s *server.Server, injected any, links ...trace.Link) *
 	}
 	requests, err := meter.Int64Counter("flux.http.requests")
 	if err != nil {
-		s.Logger.Warn().Str("operation", "http.request").Str("error.category", "unavailable").Msg("http.request")
+		s.Logger.Warn().
+			Str("operation",
+				"http.request").
+			Str("error.category",
+				"unavailable").
+			Msg("http.request")
 		requests, _ = metricnoop.NewMeterProvider().Meter("flux.http").Int64Counter("flux.http.requests")
 	}
 	duration, err := meter.Float64Histogram("flux.http.duration", metric.WithUnit("s"))
 	if err != nil {
-		s.Logger.Warn().Str("operation", "http.request").Str("error.category", "unavailable").Msg("http.request")
+		s.Logger.Warn().
+			Str("operation",
+				"http.request").
+			Str("error.category",
+				"unavailable").
+			Msg("http.request")
 		duration, _ = metricnoop.NewMeterProvider().Meter("flux.http").Float64Histogram("flux.http.duration")
 	}
 	role := string(s.Role)
@@ -52,14 +69,17 @@ func NewTracingMiddleware(s *server.Server, injected any, links ...trace.Link) *
 	default:
 		role = "api"
 	}
-	cleanLinks := make([]trace.Link, 0, min(len(links), 16))
+	cleanLinks := make([]trace.Link, 0, min(len(links), maxSpanLinks))
 	for _, link := range links {
-		if len(cleanLinks) == 16 {
+		if len(cleanLinks) == maxSpanLinks {
 			break
 		}
 		sc := observability.CleanSpanContext(link.SpanContext)
 		if sc.IsValid() {
-			cleanLinks = append(cleanLinks, trace.Link{SpanContext: sc, Attributes: observability.SanitizeAttributes(link.Attributes, false)})
+			cleanLinks = append(cleanLinks,
+				trace.Link{SpanContext: sc,
+					Attributes: observability.SanitizeAttributes(link.Attributes,
+						false)})
 		}
 	}
 	return &TracingMiddleware{tracer: tracer, requests: requests, duration: duration, role: role, links: cleanLinks}
@@ -76,9 +96,18 @@ func (tm *TracingMiddleware) EnhanceTracing() echo.MiddlewareFunc {
 					delete(req.Header, key)
 				}
 			}
-			ctx := observability.TraceparentPropagator{}.Extract(req.Context(), propagation.HeaderCarrier(req.Header))
+			ctx := observability.TraceparentPropagator{}.Extract(req.Context(),
+				propagation.HeaderCarrier(req.Header))
 			ids := observability.CorrelationFromContext(ctx)
-			ctx, span := tm.tracer.Start(ctx, "http.request", trace.WithSpanKind(trace.SpanKindServer), trace.WithLinks(tm.links...), trace.WithAttributes(attribute.String("request_id", ids.RequestID), attribute.String("correlation_id", ids.CorrelationID)))
+			ctx,
+				span := tm.tracer.Start(ctx,
+				"http.request",
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithLinks(tm.links...),
+				trace.WithAttributes(attribute.String("request_id",
+					ids.RequestID),
+					attribute.String("correlation_id",
+						ids.CorrelationID)))
 			defer span.End()
 			c.SetRequest(req.WithContext(ctx))
 			err := next(c)
@@ -86,14 +115,22 @@ func (tm *TracingMiddleware) EnhanceTracing() echo.MiddlewareFunc {
 				c.Error(err)
 			}
 			status := c.Response().Status
-			attrs := []attribute.KeyValue{attribute.String("http.request.method", SafeMethod(req.Method)), attribute.String("http.route", SafeRoute(c)), attribute.String("process.role", tm.role), attribute.Int("http.response.status_code", status)}
+			attrs := []attribute.KeyValue{attribute.String("http.request.method",
+				SafeMethod(req.Method)),
+				attribute.String("http.route",
+					SafeRoute(c)),
+				attribute.String("process.role",
+					tm.role),
+				attribute.Int("http.response.status_code",
+					status)}
 			span.SetAttributes(attrs...)
-			if status >= 500 {
+			if status >= http.StatusInternalServerError {
 				span.SetStatus(codes.Error, "")
 				span.SetAttributes(attribute.String("error.category", "unknown"))
 			}
 			// Status classes prevent individually chosen response codes expanding labels.
-			attrs[3] = attribute.Int("http.response.status_code", status/100*100)
+			attrs[3] = attribute.Int("http.response.status_code",
+				status/httpStatusClassWidth*httpStatusClassWidth)
 			tm.requests.Add(ctx, 1, metric.WithAttributes(attrs...))
 			tm.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attrs...))
 			return nil
@@ -110,6 +147,8 @@ func SafeRoute(c echo.Context) string {
 	}
 	return route
 }
+
+// SafeMethod maps arbitrary methods to a bounded HTTP method vocabulary.
 func SafeMethod(method string) string {
 	switch method {
 	case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":

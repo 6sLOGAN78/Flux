@@ -36,13 +36,20 @@ func TestRenderAlternateDirectory(t *testing.T) {
 func TestTemplateUnknownRejectedBeforeSend(t *testing.T) {
 	// No transport is configured: invalid names must fail before touching it.
 	client := &email.Client{}
-	for _, name := range []email.Template{"", "unknown", "../welcome", "../../static/openapi", "/tmp/welcome", "welcome.html", "emails/welcome", "WELCOME"} {
+	for _, name := range []email.Template{"",
+		"unknown",
+		"../welcome",
+		"../../static/openapi",
+		"/tmp/welcome",
+		"welcome.html",
+		"emails/welcome",
+		"WELCOME"} {
 		t.Run(string(name), func(t *testing.T) {
 			body, err := client.Render(name, nil)
 			if err == nil || body != "" {
 				t.Fatal("unknown template rendered successfully")
 			}
-			if err := client.SendEmail("visitor@example.com", "Welcome", name, nil); err == nil {
+			if err45 := client.SendEmail("visitor@example.com", "Welcome", name, nil); err45 == nil {
 				t.Fatal("unknown template reached transport")
 			}
 		})

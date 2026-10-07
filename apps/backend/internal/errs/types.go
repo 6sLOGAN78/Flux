@@ -1,8 +1,10 @@
-package errs 
+package errs
+
 import (
 	"net/http"
 )
 
+// NewUnauthorizedError constructs an authentication failure.
 func NewUnauthorizedError(message string, override bool) *HTTPError {
 	return &HTTPError{
 		Code:     MakeUpperCaseWithUnderscores(http.StatusText(http.StatusUnauthorized)),
@@ -12,6 +14,7 @@ func NewUnauthorizedError(message string, override bool) *HTTPError {
 	}
 }
 
+// NewForbiddenError constructs an authorization failure.
 func NewForbiddenError(message string, override bool) *HTTPError {
 	return &HTTPError{
 		Code:     MakeUpperCaseWithUnderscores(http.StatusText(http.StatusForbidden)),
@@ -21,6 +24,7 @@ func NewForbiddenError(message string, override bool) *HTTPError {
 	}
 }
 
+// NewBadRequestError constructs an invalid request failure.
 func NewBadRequestError(message string, override bool, code *string, errors []FieldError, action *Action) *HTTPError {
 	formattedCode := MakeUpperCaseWithUnderscores(http.StatusText(http.StatusBadRequest))
 
@@ -38,6 +42,7 @@ func NewBadRequestError(message string, override bool, code *string, errors []Fi
 	}
 }
 
+// NewNotFoundError constructs a missing resource failure.
 func NewNotFoundError(message string, override bool, code *string) *HTTPError {
 	formattedCode := MakeUpperCaseWithUnderscores(http.StatusText(http.StatusNotFound))
 
@@ -53,6 +58,7 @@ func NewNotFoundError(message string, override bool, code *string) *HTTPError {
 	}
 }
 
+// NewInternalServerError constructs a safe internal failure.
 func NewInternalServerError() *HTTPError {
 	return &HTTPError{
 		Code:     MakeUpperCaseWithUnderscores(http.StatusText(http.StatusInternalServerError)),
@@ -62,6 +68,7 @@ func NewInternalServerError() *HTTPError {
 	}
 }
 
+// ValidationError constructs a request validation failure with field details.
 func ValidationError(err error) *HTTPError {
 	return NewBadRequestError("Validation failed: "+err.Error(), false, nil, nil, nil)
 }

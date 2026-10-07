@@ -1,11 +1,13 @@
 package middleware
 
 import (
+	"strings"
+
 	"github.com/6sLOGAN78/flux/internal/observability"
 	"github.com/labstack/echo/v4"
-	"strings"
 )
 
+// RequestIDHeader and the correlation header name the supported public identity headers.
 const (
 	RequestIDHeader     = "X-Request-ID"
 	RequestIDKey        = "request_id"
@@ -13,6 +15,7 @@ const (
 	CorrelationIDKey    = "correlation_id"
 )
 
+// RequestID normalizes public request identifiers before handler execution.
 func RequestID() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -29,7 +32,10 @@ func RequestID() echo.MiddlewareFunc {
 			ids := observability.CorrelationFromContext(ctx)
 			c.Set(RequestIDKey, ids.RequestID)
 			c.Set(CorrelationIDKey, ids.CorrelationID)
-			for _, pair := range [][2]string{{RequestIDHeader, ids.RequestID}, {CorrelationIDHeader, ids.CorrelationID}} {
+			for _, pair := range [][2]string{{RequestIDHeader,
+				ids.RequestID},
+				{CorrelationIDHeader,
+					ids.CorrelationID}} {
 				req.Header.Set(pair[0], pair[1])
 				c.Response().Header().Set(pair[0], pair[1])
 			}
@@ -38,10 +44,14 @@ func RequestID() echo.MiddlewareFunc {
 		}
 	}
 }
+
+// GetRequestID returns the normalized request identifier.
 func GetRequestID(c echo.Context) string {
 	value, _ := c.Get(RequestIDKey).(string)
 	return value
 }
+
+// GetCorrelationID returns the normalized correlation identifier.
 func GetCorrelationID(c echo.Context) string {
 	value, _ := c.Get(CorrelationIDKey).(string)
 	return value

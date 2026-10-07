@@ -23,6 +23,15 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+const (
+	postgresReadyLogOccurrences   = 2
+	containerStartupTimeout       = 60 * time.Second
+	testPoolSize                  = 25
+	testConnectionLifetimeSeconds = 300
+	testHTTPTimeoutSeconds        = 30
+	containerProbeTimeout         = 5 * time.Second
+)
+
 // Keep these immutable references identical to compose.yaml.
 const (
 	PostgresImage = "postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
@@ -38,6 +47,7 @@ func loopbackPort(port string) func(*container.HostConfig) {
 	}
 }
 
+// TestDB owns the pool and container used by integration tests.
 type TestDB struct {
 	Pool      *pgxpool.Pool
 	Container testcontainers.Container
@@ -73,9 +83,10 @@ func SetupTestPostgres(t *testing.T) (*TestDB, func()) {
 			"POSTGRES_PASSWORD": dbPassword,
 		},
 		WaitingFor: wait.ForAll(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(postgresReadyLogOccurrences),
 			wait.ForListeningPort("5432/tcp"),
-		).WithStartupTimeout(60 * time.Second),
+		).WithDeadline(containerStartupTimeout),
 		HostConfigModifier: loopbackPort("5432/tcp"),
 	}
 
@@ -103,19 +114,19 @@ func SetupTestPostgres(t *testing.T) (*TestDB, func()) {
 			Password:        dbPassword,
 			Name:            dbName,
 			SSLMode:         "disable",
-			MaxOpenConns:    25,
-			MaxIdleConns:    25,
-			ConnMaxLifetime: 300,
-			ConnMaxIdleTime: 300,
+			MaxOpenConns:    testPoolSize,
+			MaxIdleConns:    testPoolSize,
+			ConnMaxLifetime: testConnectionLifetimeSeconds,
+			ConnMaxIdleTime: testConnectionLifetimeSeconds,
 		},
 		Primary: config.Primary{
 			Env: "test",
 		},
 		Server: config.ServerConfig{
 			Port:               "8080",
-			ReadTimeout:        30,
-			WriteTimeout:       30,
-			IdleTimeout:        30,
+			ReadTimeout:        testHTTPTimeoutSeconds,
+			WriteTimeout:       testHTTPTimeoutSeconds,
+			IdleTimeout:        testHTTPTimeoutSeconds,
 			CORSAllowedOrigins: []string{"*"},
 		},
 		Integration: config.IntegrationConfig{
@@ -165,9 +176,10 @@ func SetupTestRedis(t *testing.T) (*TestRedis, func()) {
 	ctx := context.Background()
 	redisContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:              RedisImage,
-			ExposedPorts:       []string{"6379/tcp"},
-			WaitingFor:         wait.ForListeningPort("6379/tcp").WithStartupTimeout(60 * time.Second),
+			Image:        RedisImage,
+			ExposedPorts: []string{"6379/tcp"},
+			WaitingFor: wait.ForListeningPort("6379/tcp").
+				WithStartupTimeout(containerStartupTimeout),
 			HostConfigModifier: loopbackPort("6379/tcp"),
 		},
 		Started: true,
@@ -184,13 +196,13 @@ func SetupTestRedis(t *testing.T) (*TestRedis, func()) {
 	var once sync.Once
 	cleanup := func() {
 		once.Do(func() {
-			if err := client.Close(); err != nil {
-				t.Errorf("failed to close test redis client: %v", err)
+			if err187 := client.Close(); err187 != nil {
+				t.Errorf("failed to close test redis client: %v", err187)
 			}
 		})
 	}
 	t.Cleanup(cleanup)
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, containerProbeTimeout)
 	defer cancel()
 	require.NoError(t, client.Ping(pingCtx).Err(), "failed to ping test redis")
 	return &TestRedis{

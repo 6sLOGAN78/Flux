@@ -5,27 +5,31 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/6sLOGAN78/flux/internal/errs"
+	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/labstack/echo/v4"
-	"github.com/6sLOGAN78/flux/internal/errs"
-	"github.com/6sLOGAN78/flux/internal/server"
 )
 
+// AuthMiddleware validates authentication headers before protected handlers.
 type AuthMiddleware struct {
 	server *server.Server
 }
 
+// NewAuthMiddleware constructs authentication middleware with explicit dependencies.
 func NewAuthMiddleware(s *server.Server) *AuthMiddleware {
 	return &AuthMiddleware{
 		server: s,
 	}
 }
 
+// RequireAuth requires a valid authenticated user.
 func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	return echo.WrapMiddleware(
 		clerkhttp.WithHeaderAuthorization(
-			clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(func(w http.ResponseWriter,
+				_ *http.Request) {
 				start := time.Now()
 
 				w.Header().Set("Content-Type", "application/json")
@@ -42,8 +46,13 @@ func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc 
 					auth.server.Logger.Error().Err(err).Str("function", "RequireAuth").Dur(
 						"duration", time.Since(start)).Msg("failed to write JSON response")
 				} else {
-					auth.server.Logger.Error().Str("function", "RequireAuth").Dur("duration", time.Since(start)).Msg(
-						"could not get session claims from context")
+					auth.server.Logger.Error().
+						Str("function",
+							"RequireAuth").
+						Dur("duration",
+							time.Since(start)).
+						Msg(
+							"could not get session claims from context")
 				}
 			}))))(func(c echo.Context) error {
 		start := time.Now()
@@ -60,7 +69,7 @@ func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc 
 
 		c.Set("user_id", claims.Subject)
 		c.Set("user_role", claims.ActiveOrganizationRole)
-		c.Set("permissions", claims.Claims.ActiveOrganizationPermissions)
+		c.Set("permissions", claims.ActiveOrganizationPermissions)
 
 		auth.server.Logger.Info().
 			Str("function", "RequireAuth").

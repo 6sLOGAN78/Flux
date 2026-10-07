@@ -1,6 +1,9 @@
+// Package handler adapts validated requests and serves health and embedded documentation.
 package handler
 
 import (
+	"errors"
+
 	"github.com/6sLOGAN78/flux/internal/middleware"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/validation"
@@ -18,9 +21,13 @@ func NewHandler(s *server.Server) Handler {
 }
 
 // HandlerFunc represents a typed handler function that processes a request and returns a response
+//
+//nolint:revive // Preserve the established exported type name for existing callers.
 type HandlerFunc[Req validation.Validatable, Res any] func(c echo.Context, req Req) (Res, error)
 
 // HandlerFuncNoContent represents a typed handler function that processes a request without returning content
+//
+//nolint:revive // Preserve the established exported type name for existing callers.
 type HandlerFuncNoContent[Req validation.Validatable] func(c echo.Context, req Req) error
 
 // ResponseHandler defines the interface for handling different response types
@@ -33,6 +40,8 @@ type JSONResponseHandler struct {
 	status int
 }
 
+// Handle serializes the response through Echo.
+// Handle serializes the response through Echo.
 func (h JSONResponseHandler) Handle(c echo.Context, result interface{}) error {
 	return c.JSON(h.status, result)
 }
@@ -42,19 +51,24 @@ type NoContentResponseHandler struct {
 	status int
 }
 
-func (h NoContentResponseHandler) Handle(c echo.Context, result interface{}) error {
+// Handle sends the configured status with no response body.
+func (h NoContentResponseHandler) Handle(c echo.Context, _ interface{}) error {
 	return c.NoContent(h.status)
 }
 
 // FileResponseHandler handles file responses
 type FileResponseHandler struct {
-	status      int
 	filename    string
 	contentType string
+	status      int
 }
 
+// Handle writes byte responses as an attachment and rejects unexpected result types.
 func (h FileResponseHandler) Handle(c echo.Context, result interface{}) error {
-	data := result.([]byte)
+	data, ok := result.([]byte)
+	if !ok {
+		return errors.New("file handler response must contain bytes")
+	}
 	c.Response().Header().Set("Content-Disposition", "attachment; filename="+h.filename)
 	return c.Blob(h.status, h.contentType, data)
 }
@@ -83,7 +97,7 @@ func handleRequest[Req validation.Validatable](
 // Handle wraps a handler with validation, error handling, logging, metrics, and tracing.
 // newRequest must return a fresh request value for every invocation.
 func Handle[Req validation.Validatable, Res any](
-	h Handler,
+	_ Handler,
 	handler HandlerFunc[Req, Res],
 	status int,
 	newRequest func() Req,
@@ -97,7 +111,7 @@ func Handle[Req validation.Validatable, Res any](
 
 // HandleFile wraps a file handler; newRequest must return a fresh request per invocation.
 func HandleFile[Req validation.Validatable](
-	h Handler,
+	_ Handler,
 	handler HandlerFunc[Req, []byte],
 	status int,
 	newRequest func() Req,
@@ -115,10 +129,11 @@ func HandleFile[Req validation.Validatable](
 	}
 }
 
-// HandleNoContent wraps a handler with validation, error handling, logging, metrics, and tracing for endpoints that don't return content
+// HandleNoContent wraps a handler with validation, error handling, logging, metrics, and tracing for
+// endpoints that don't return content
 // newRequest must return a fresh request value for every invocation.
 func HandleNoContent[Req validation.Validatable](
-	h Handler,
+	_ Handler,
 	handler HandlerFuncNoContent[Req],
 	status int,
 	newRequest func() Req,

@@ -1,3 +1,4 @@
+// Package app composes independently owned process resources and lifecycle operations.
 package app
 
 import (
@@ -25,9 +26,9 @@ import (
 
 // StartupError exposes the failed role stage without provider diagnostics.
 type StartupError struct {
+	cause error
 	Role  config.Role
 	Stage string
-	cause error
 }
 
 func (e *StartupError) Error() string { return string(e.Role) + " startup " + e.Stage + " failed" }
@@ -36,16 +37,17 @@ func (e *StartupError) Unwrap() error { return e.cause }
 // RoleRuntime owns a bounded resource graph and its HTTP transport.
 // The worker's HTTP transport is exclusively a management listener.
 type RoleRuntime struct {
-	Role      config.Role
+	listener  net.Listener
 	Server    *server.Server
 	HTTP      *echo.Echo
-	cleanup   Cleanup
-	listener  net.Listener
-	settings  config.RoleConfig
-	readiness []handler.ReadinessCheck
+	Role      config.Role
 	lifecycle Lifecycle
+	readiness []handler.ReadinessCheck
+	settings  config.RoleConfig
+	cleanup   Cleanup
 }
 
+// API owns the API role runtime.
 type API struct{ *RoleRuntime }
 
 // NewAPI constructs PostgreSQL and explicitly enabled producers only.
@@ -59,8 +61,15 @@ func NewAPI(ctx context.Context, cfg *config.Config) (*API, error) {
 }
 
 type roleFactories struct {
-	telemetry     func(context.Context, *config.Config, config.Role) (*observability.Telemetry, func(context.Context) error, error)
-	logger        func(*config.Config, *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error)
+	telemetry func(context.Context,
+		*config.Config,
+		config.Role) (*observability.Telemetry,
+		func(context.Context) error,
+		error)
+	logger func(*config.Config,
+		*observability.Telemetry) (*zerolog.Logger,
+		func(context.Context) error,
+		error)
 	database      func(context.Context, *server.Server) (*database.Database, func(context.Context) error, error)
 	redis         func(context.Context, *server.Server) (*redis.Client, func(context.Context) error, error)
 	producer      func(*server.Server) (*job.JobService, func(context.Context) error, error)
@@ -73,25 +82,38 @@ type roleFactories struct {
 
 func defaultRoleFactories() roleFactories {
 	return roleFactories{
-		logger: func(cfg *config.Config, owner *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error) {
+		logger: func(cfg *config.Config,
+			owner *observability.Telemetry) (*zerolog.Logger,
+			func(context.Context) error,
+			error) {
 			log := loggerPkg.NewLogger(cfg.Observability, os.Stdout, owner.Logger)
 			return &log, nil, nil
 		},
-		telemetry: func(ctx context.Context, cfg *config.Config, role config.Role) (*observability.Telemetry, func(context.Context) error, error) {
+		telemetry: func(ctx context.Context,
+			cfg *config.Config,
+			role config.Role) (*observability.Telemetry,
+			func(context.Context) error,
+			error) {
 			owner, err := observability.New(ctx, cfg.Observability.TelemetrySettings(), string(role))
 			if err != nil {
 				return nil, nil, err
 			}
 			return owner, owner.Shutdown, nil
 		},
-		database: func(_ context.Context, srv *server.Server) (*database.Database, func(context.Context) error, error) {
+		database: func(_ context.Context,
+			srv *server.Server) (*database.Database,
+			func(context.Context) error,
+			error) {
 			db, err := database.New(srv.Config, srv.Logger, nil, srv.Telemetry)
 			if err != nil {
 				return nil, nil, err
 			}
 			return db, func(context.Context) error { return db.Close() }, nil
 		},
-		redis: func(ctx context.Context, srv *server.Server) (*redis.Client, func(context.Context) error, error) {
+		redis: func(ctx context.Context,
+			srv *server.Server) (*redis.Client,
+			func(context.Context) error,
+			error) {
 			client := redis.NewClient(&redis.Options{Addr: srv.Config.Redis.Address})
 			probeCtx, cancel := context.WithTimeout(ctx, srv.Config.ForRole(srv.Role).ReadinessTimeout)
 			defer cancel()
@@ -104,25 +126,46 @@ func defaultRoleFactories() roleFactories {
 			producer := job.NewProducer(srv.Logger, srv.Redis, srv.Telemetry)
 			return producer, func(context.Context) error { return producer.Stop() }, nil
 		},
-		email: func(srv *server.Server) (*email.Client, error) { return email.NewClient(srv.Config, srv.Logger), nil },
-		consumer: func(srv *server.Server, adapter *email.Client) (*job.JobService, func(context.Context) error, error) {
+		email: func(srv *server.Server) (*email.Client,
+			error) {
+			return email.NewClient(srv.Config,
+					srv.Logger),
+				nil
+		},
+		consumer: func(srv *server.Server,
+			adapter *email.Client) (*job.JobService,
+			func(context.Context) error,
+			error) {
 			consumer := job.NewConsumer(srv.Logger, srv.Config, srv.Redis, adapter, srv.Telemetry)
 			return consumer, func(context.Context) error { return consumer.Stop() }, nil
 		},
 		startConsumer: func(consumer *job.JobService) error { return consumer.Start() },
 		router:        defaultRoleRouter,
-		listen:        func(address string) (net.Listener, error) { return net.Listen("tcp", address) },
+		listen: func(address string) (net.Listener, error) {
+			var listenerConfig net.ListenConfig
+			return listenerConfig.Listen(context.Background(), "tcp", address)
+		},
 	}
 }
 
-func newRole(ctx context.Context, role config.Role, cfg *config.Config, factories roleFactories) (runtime *RoleRuntime, err error) {
+//nolint:nonamedreturns // Partial startup cleanup joins errors and clears the returned runtime in a defer.
+func newRole(ctx context.Context,
+	role config.Role,
+	cfg *config.Config,
+	factories roleFactories) (runtime *RoleRuntime,
+	err error) {
 	if cfg == nil || cfg.Observability == nil {
 		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("configuration required")}
 	}
 	runtime = &RoleRuntime{Role: role, settings: cfg.ForRole(role)}
 	runtime.lifecycle.cleanup = &runtime.cleanup
-	if runtime.settings.DrainTimeout <= 0 || runtime.settings.ReadinessTimeout <= 0 || runtime.settings.ListenAddress == "" {
-		return nil, &StartupError{Role: role, Stage: "config", cause: errors.New("normalized role configuration required")}
+	if runtime.settings.DrainTimeout <= 0 ||
+		runtime.settings.ReadinessTimeout <= 0 ||
+		runtime.settings.ListenAddress == "" {
+		return nil,
+			&StartupError{Role: role,
+				Stage: "config",
+				cause: errors.New("normalized role configuration required")}
 	}
 	defer func() {
 		if err != nil {
@@ -145,8 +188,8 @@ func newRole(ctx context.Context, role config.Role, cfg *config.Config, factorie
 		if runtime.Server.Job != nil {
 			runtime.lifecycle.drain = func(ctx context.Context) error {
 				// Management stays reachable and unready while active jobs finish.
-				if err := runtime.Server.Job.Drain(ctx); err != nil {
-					return err
+				if err148 := runtime.Server.Job.Drain(ctx); err148 != nil {
+					return err148
 				}
 				return runtime.Server.Shutdown(ctx)
 			}
@@ -157,15 +200,15 @@ func newRole(ctx context.Context, role config.Role, cfg *config.Config, factorie
 
 func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config, f roleFactories) error {
 	owner, closeTelemetry, err := f.telemetry(ctx, cfg, r.Role)
-	if err := r.own("telemetry", closeTelemetry, err); err != nil {
-		return err
+	if err160 := r.own("telemetry", closeTelemetry, err); err160 != nil {
+		return err160
 	}
 	if owner == nil {
 		return &StartupError{Role: r.Role, Stage: "telemetry", cause: errors.New("provider required")}
 	}
 	log, closeLogger, cause := f.logger(cfg, owner)
-	if err := r.own("logger", closeLogger, cause); err != nil {
-		return err
+	if err167 := r.own("logger", closeLogger, cause); err167 != nil {
+		return err167
 	}
 	r.Server, err = server.New(cfg, log, nil)
 	if err != nil {
@@ -177,24 +220,24 @@ func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config
 		r.readiness = redirectorReadinessChecks()
 	}
 	if r.Role == config.RoleAPI {
-		db, closeDB, err := f.database(ctx, r.Server)
-		if err := r.own("database", closeDB, err); err != nil {
-			return err
+		db, closeDB, err180 := f.database(ctx, r.Server)
+		if err181 := r.own("database", closeDB, err180); err181 != nil {
+			return err181
 		}
 		r.Server.DB = db
 		r.readiness = apiReadinessChecks(r.Server, r.settings.ProducerEnabled)
 	}
 	if r.Role == config.RoleWorker || (r.Role == config.RoleAPI && r.settings.ProducerEnabled) {
-		client, closeRedis, err := f.redis(ctx, r.Server)
-		if err := r.own("redis", closeRedis, err); err != nil {
-			return err
+		client, closeRedis, err188 := f.redis(ctx, r.Server)
+		if err189 := r.own("redis", closeRedis, err188); err189 != nil {
+			return err189
 		}
 		r.Server.Redis = client
 	}
 	if r.Role == config.RoleAPI && r.settings.ProducerEnabled {
-		producer, closeProducer, err := f.producer(r.Server)
-		if err := r.own("producer", closeProducer, err); err != nil {
-			return err
+		producer, closeProducer, err195 := f.producer(r.Server)
+		if err196 := r.own("producer", closeProducer, err195); err196 != nil {
+			return err196
 		}
 		r.Server.Job = producer
 	}
@@ -204,9 +247,9 @@ func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config
 	return nil
 }
 
-func (r *RoleRuntime) own(stage string, close func(context.Context) error, cause error) error {
-	if close != nil {
-		if err := r.cleanup.Push(stage, close); err != nil {
+func (r *RoleRuntime) own(stage string, cleanup func(context.Context) error, cause error) error {
+	if cleanup != nil {
+		if err := r.cleanup.Push(stage, cleanup); err != nil {
 			return err
 		}
 	}
@@ -231,14 +274,14 @@ func (r *RoleRuntime) constructHTTP(f roleFactories) error {
 		return &StartupError{Role: r.Role, Stage: "listener", cause: err}
 	}
 	r.listener = listener
-	if err := r.cleanup.Push("listener", func(context.Context) error {
-		err := listener.Close()
-		if errors.Is(err, net.ErrClosed) {
+	if err234 := r.cleanup.Push("listener", func(context.Context) error {
+		err235 := listener.Close()
+		if errors.Is(err235, net.ErrClosed) {
 			return nil
 		}
-		return err
-	}); err != nil {
-		return err
+		return err235
+	}); err234 != nil {
+		return err234
 	}
 	r.lifecycle.drain = r.Server.Shutdown
 	// Also attempt HTTP shutdown after a worker drain failure or partial startup.

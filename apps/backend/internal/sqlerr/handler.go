@@ -1,3 +1,4 @@
+// Package sqlerr maps PostgreSQL error classifications to safe HTTP errors.
 package sqlerr
 
 import (
@@ -13,6 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+)
+
+const (
+	uniqueConstraintParts = 3
 )
 
 // ErrCode reports the error code for a given error.
@@ -53,7 +58,7 @@ func generateErrorCode(tableName string, errType Code) string {
 		domain = domain[:len(domain)-1]
 	}
 
-	action := "ERROR"
+	action := string(SeverityError)
 	switch errType {
 	case ForeignKeyViolation:
 		action = "NOT_FOUND"
@@ -63,6 +68,8 @@ func generateErrorCode(tableName string, errType Code) string {
 		action = "REQUIRED"
 	case CheckViolation:
 		action = "INVALID"
+	case Other, ExcludeViolation, TransactionFailed, DeadlockDetected, TooManyConnections:
+		action = string(SeverityError)
 	}
 
 	return fmt.Sprintf("%s_%s", domain, action)
@@ -89,6 +96,8 @@ func formatUserFriendlyMessage(sqlErr *Error) string {
 			return fmt.Sprintf("The %s value does not meet required conditions", fieldName)
 		}
 		return "One or more values do not meet required conditions"
+	case Other, ExcludeViolation, TransactionFailed, DeadlockDetected, TooManyConnections:
+		return "An error occurred while processing your request"
 	default:
 		return "An error occurred while processing your request"
 	}
@@ -133,7 +142,7 @@ func extractColumnForUniqueViolation(constraintName string) string {
 	// Try standard naming convention first (unique_table_column)
 	if strings.HasPrefix(constraintName, "unique_") {
 		parts := strings.Split(constraintName, "_")
-		if len(parts) >= 3 {
+		if len(parts) >= uniqueConstraintParts {
 			return parts[len(parts)-1]
 		}
 	}
@@ -188,6 +197,8 @@ func HandleError(err error) error {
 		case CheckViolation:
 			return errs.NewBadRequestError(userMessage, true, &errorCode, nil, nil)
 
+		case Other, ExcludeViolation, TransactionFailed, DeadlockDetected, TooManyConnections:
+			return errs.NewInternalServerError()
 		default:
 			return errs.NewInternalServerError()
 		}

@@ -59,7 +59,10 @@ func assertBadRequest(t *testing.T, err error, message string, fields []errs.Fie
 
 func TestBindErrorsAreSanitized(t *testing.T) {
 	t.Parallel()
-	for _, err := range []error{errors.New("secret-marker"), errors.New("code=400, message=secret-marker"), echo.NewHTTPError(400, "secret-marker")} {
+	for _, err := range []error{errors.New("secret-marker"),
+		errors.New("code=400, message=secret-marker"),
+		echo.NewHTTPError(400,
+			"secret-marker")} {
 		t.Run(err.Error(), func(t *testing.T) {
 			t.Parallel()
 			e := echo.New()
@@ -88,23 +91,43 @@ func TestValidationErrorShapes(t *testing.T) {
 		err    error
 		fields []errs.FieldError
 	}{
-		{"ordinary", errors.New("secret-marker"), nil},
-		{"invalid_validator_input", v.Struct(42), nil},
-		{"validator", validationErr, []errs.FieldError{{Field: "email", Error: "is required"}}},
-		{"wrapped_validator", fmt.Errorf("secret-marker: %w", validationErr), []errs.FieldError{{Field: "email", Error: "is required"}}},
-		{"custom", custom, []errs.FieldError{{Field: "destination", Error: "is invalid"}}},
-		{"wrapped_custom", fmt.Errorf("secret-marker: %w", custom), []errs.FieldError{{Field: "destination", Error: "is invalid"}}},
-		{"custom_pointer", &custom, []errs.FieldError{{Field: "destination", Error: "is invalid"}}},
-		{"nil_custom_slice", validation.CustomValidationErrors(nil), nil},
-		{"empty_custom_slice", validation.CustomValidationErrors{}, nil},
-		{"nil_custom_pointer", (*validation.CustomValidationErrors)(nil), nil},
-		{"nil_validator_slice", validator.ValidationErrors(nil), nil},
-		{"nil_validator_field", validator.ValidationErrors{nil}, nil},
+		{name: "ordinary", err: errors.New("secret-marker"), fields: nil},
+		{name: "invalid_validator_input", err: v.Struct(42), fields: nil},
+		{name: "validator",
+			err: validationErr,
+			fields: []errs.FieldError{{Field: "email",
+				Error: "is required"}}},
+		{name: "wrapped_validator",
+			err: fmt.Errorf("secret-marker: %w",
+				validationErr),
+			fields: []errs.FieldError{{Field: "email",
+				Error: "is required"}}},
+		{name: "custom", err: custom, fields: []errs.FieldError{{Field: "destination", Error: "is invalid"}}},
+		{name: "wrapped_custom",
+			err: fmt.Errorf("secret-marker: %w",
+				custom),
+			fields: []errs.FieldError{{Field: "destination",
+				Error: "is invalid"}}},
+		{name: "custom_pointer",
+			err: &custom,
+			fields: []errs.FieldError{{Field: "destination",
+				Error: "is invalid"}}},
+		{name: "nil_custom_slice", err: validation.CustomValidationErrors(nil), fields: nil},
+		{name: "empty_custom_slice", err: validation.CustomValidationErrors{}, fields: nil},
+		{name: "nil_custom_pointer", err: (*validation.CustomValidationErrors)(nil), fields: nil},
+		{name: "nil_validator_slice", err: validator.ValidationErrors(nil), fields: nil},
+		{name: "nil_validator_field", err: validator.ValidationErrors{nil}, fields: nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assertBadRequest(t, bindSafely(t, echo.New(), &validationRequest{err: tc.err}, "{}"), "Validation failed", tc.fields)
+			assertBadRequest(t,
+				bindSafely(t,
+					echo.New(),
+					&validationRequest{err: tc.err},
+					"{}"),
+				"Validation failed",
+				tc.fields)
 		})
 	}
 }

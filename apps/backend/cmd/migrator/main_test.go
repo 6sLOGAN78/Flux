@@ -14,6 +14,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/observability"
 )
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestRoleMigratorProviderOwnership(t *testing.T) {
 	for _, stage := range []string{"success", "telemetry", "migration", "close"} {
 		t.Run(stage, func(t *testing.T) {
@@ -23,7 +24,11 @@ func TestRoleMigratorProviderOwnership(t *testing.T) {
 			var exit context.Context
 			cause := errors.New("SECRET-MARKER")
 			f := migratorFactories{
-				telemetry: func(ctx context.Context, settings observability.Settings, role string) (*observability.Telemetry, func(context.Context) error, error) {
+				telemetry: func(ctx context.Context,
+					settings observability.Settings,
+					role string) (*observability.Telemetry,
+					func(context.Context) error,
+					error) {
 					events = append(events, "telemetry")
 					if role != "migrator" || settings != cfg.Observability.TelemetrySettings() {
 						t.Error("incorrect provider settings")
@@ -43,8 +48,12 @@ func TestRoleMigratorProviderOwnership(t *testing.T) {
 						return owner.Shutdown(ctx)
 					}, err
 				},
-				migrate: func(ctx context.Context, cfg *config.Config, closeContext func() context.Context) (database.MigrationResult, error) {
+				migrate: func(_ context.Context,
+					cfg *config.Config,
+					closeContext func() context.Context) (database.MigrationResult,
+					error) {
 					events = append(events, "migration", "postgres_close")
+					//nolint:fatcontext // The telemetry closer later verifies this captured shared exit budget.
 					exit = closeContext()
 					deadline, ok := exit.Deadline()
 					if !ok || time.Until(deadline) > cfg.Observability.HealthChecks.Timeout {

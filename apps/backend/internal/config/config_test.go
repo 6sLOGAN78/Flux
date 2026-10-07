@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package config
 
 import (
@@ -41,7 +42,11 @@ func TestObservabilityCompatibleKeysAndSettings(t *testing.T) {
 		t.Fatal("legacy keys no longer bind")
 	}
 	s := cfg.Observability.TelemetrySettings()
-	if !s.Enabled || s.Endpoint != "http://localhost:4318" || s.ExportTimeout != 750*time.Millisecond || s.SampleRatio != .25 || s.Environment != "test" {
+	if !s.Enabled ||
+		s.Endpoint != "http://localhost:4318" ||
+		s.ExportTimeout != 750*time.Millisecond ||
+		s.SampleRatio != .25 ||
+		s.Environment != "test" {
 		t.Fatalf("mapping changed: %+v", s)
 	}
 }
@@ -88,15 +93,29 @@ func (p configProvider) ReadBytes() ([]byte, error)    { return nil, p.err }
 
 func configValues() map[string]any {
 	return map[string]any{
-		"primary":     map[string]any{"env": "test"},
-		"server":      map[string]any{"port": "8080", "read_timeout": 5, "write_timeout": 5, "idle_timeout": 5, "cors_allowed_origins": []string{"https://example.test"}},
-		"database":    map[string]any{"host": "db.test", "port": 5432, "user": "flux", "password": "SECRET-MARKER", "name": "flux", "ssl_mode": "disable", "max_open_conns": 5, "max_idle_conns": 1, "conn_max_lifetime": 60, "conn_max_idle_time": 30},
+		"primary": map[string]any{"env": "test"},
+		"server": map[string]any{"port": "8080",
+			"read_timeout":         5,
+			"write_timeout":        5,
+			"idle_timeout":         5,
+			"cors_allowed_origins": []string{"https://example.test"}},
+		"database": map[string]any{"host": "db.test",
+			"port":               5432,
+			"user":               "flux",
+			"password":           "SECRET-MARKER",
+			"name":               "flux",
+			"ssl_mode":           "disable",
+			"max_open_conns":     5,
+			"max_idle_conns":     1,
+			"conn_max_lifetime":  60,
+			"conn_max_idle_time": 30},
 		"auth":        map[string]any{"secret_key": "SECRET-MARKER"},
 		"redis":       map[string]any{"address": "localhost:6379"},
 		"integration": map[string]any{"resend_api_key": "SECRET-MARKER"},
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestConfigStages(t *testing.T) {
 	loadCause := errors.New("SECRET-MARKER load error")
 	for _, stage := range []string{"load", "unmarshal", "validate", "observability"} {
@@ -162,7 +181,9 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("existing keys did not bind: %v (%v)", err, errors.Unwrap(err))
 	}
-	if cfg.Database.Host != "db.test" || cfg.Server.ReadTimeout != 5 || cfg.Integration.ResendAPIKey != "SECRET-MARKER" {
+	if cfg.Database.Host != "db.test" ||
+		cfg.Server.ReadTimeout != 5 ||
+		cfg.Integration.ResendAPIKey != "SECRET-MARKER" {
 		t.Fatalf("existing keys changed: %v", cfg.Database.Host)
 	}
 	if cfg.Observability.Environment != "test" || cfg.Observability.ServiceName != "flux" {
@@ -184,7 +205,7 @@ func TestConfigMigratorRole(t *testing.T) {
 		t.Fatal("unused services were configured")
 	}
 	for _, role := range []Role{RoleWorker, Role("unknown")} {
-		if _, err := loadConfigForRole(configProvider{values: values}, role); err == nil {
+		if _, err187 := loadConfigForRole(configProvider{values: values}, role); err187 == nil {
 			t.Fatalf("incomplete/unknown role %q accepted", role)
 		}
 	}
@@ -194,11 +215,15 @@ func TestConfigMigratorRole(t *testing.T) {
 			original := fields[field]
 			delete(fields, field)
 			defer func() { fields[field] = original }()
-			_, err := loadConfigForRole(configProvider{values: values}, RoleMigrator)
+			_, err197 := loadConfigForRole(configProvider{values: values}, RoleMigrator)
 			var typed *ConfigError
 			var validationErrors validator.ValidationErrors
-			if !errors.As(err, &typed) || typed.Stage != "validate" || !errors.As(err, &validationErrors) {
-				t.Fatalf("missing database field did not retain typed cause: %v", err)
+			if !errors.As(err197,
+				&typed) ||
+				typed.Stage != "validate" ||
+				!errors.As(err197,
+					&validationErrors) {
+				t.Fatalf("missing database field did not retain typed cause: %v", err197)
 			}
 		})
 	}
@@ -243,7 +268,10 @@ func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
 				t.Fatalf("unused secrets blocked %s: %v (%v)", role, err, errors.Unwrap(err))
 			}
 			settings := cfg.ForRole(role)
-			if settings.ListenAddress == "" || settings.DrainTimeout <= 0 || settings.ReadinessTimeout <= 0 || cfg.Server.ReadTimeout != 5 {
+			if settings.ListenAddress == "" ||
+				settings.DrainTimeout <= 0 ||
+				settings.ReadinessTimeout <= 0 ||
+				cfg.Server.ReadTimeout != 5 {
 				t.Fatalf("role settings missing or legacy fallback changed: %+v", settings)
 			}
 		})
@@ -253,12 +281,16 @@ func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
 func TestRoleConfigOverridesAndValidation(t *testing.T) {
 	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
 		values := configValues()
-		values[string(role)] = map[string]any{"listen_address": "127.0.0.1:9099", "drain_timeout": "3s", "readiness_timeout": "500ms"}
+		values[string(role)] = map[string]any{"listen_address": "127.0.0.1:9099",
+			"drain_timeout":     "3s",
+			"readiness_timeout": "500ms"}
 		cfg, err := loadConfigForRole(configProvider{values: values}, role)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if settings := cfg.ForRole(role); settings.ListenAddress != "127.0.0.1:9099" || settings.DrainTimeout.String() != "3s" || settings.ReadinessTimeout.String() != "500ms" {
+		if settings := cfg.ForRole(role); settings.ListenAddress != "127.0.0.1:9099" ||
+			settings.DrainTimeout.String() != "3s" ||
+			settings.ReadinessTimeout.String() != "500ms" {
 			t.Fatalf("role overrides lost: %+v", settings)
 		}
 		for _, key := range []string{"listen_address", "drain_timeout", "readiness_timeout"} {
@@ -269,9 +301,9 @@ func TestRoleConfigOverridesAndValidation(t *testing.T) {
 			} else {
 				fields[key] = "-1s"
 			}
-			_, err := loadConfigForRole(configProvider{values: values}, role)
-			if err == nil || strings.Contains(err.Error(), "SECRET-MARKER") {
-				t.Fatalf("invalid %s accepted or leaked: %v", key, err)
+			_, err272 := loadConfigForRole(configProvider{values: values}, role)
+			if err272 == nil || strings.Contains(err272.Error(), "SECRET-MARKER") {
+				t.Fatalf("invalid %s accepted or leaked: %v", key, err272)
 			}
 			fields[key] = old
 		}
@@ -309,10 +341,15 @@ func TestRoleEnvironmentSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Redirector.ListenAddress != "127.0.0.1:9191" || cfg.Redirector.DrainTimeout.String() != "2s" || cfg.Redirector.ReadinessTimeout.String() != "250ms" || cfg.Server.ReadTimeout != 7 {
+	if cfg.Redirector.ListenAddress != "127.0.0.1:9191" ||
+		cfg.Redirector.DrainTimeout.String() != "2s" ||
+		cfg.Redirector.ReadinessTimeout.String() != "250ms" ||
+		cfg.Server.ReadTimeout != 7 {
 		t.Fatalf("environment overrides changed: %+v", cfg.Redirector)
 	}
-	values := map[string]any{"primary": map[string]any{"env": "test"}, "redis": map[string]any{"address": "localhost:6379"}, "integration": map[string]any{"resend_api_key": "test-key"}}
+	values := map[string]any{"primary": map[string]any{"env": "test"},
+		"redis":       map[string]any{"address": "localhost:6379"},
+		"integration": map[string]any{"resend_api_key": "test-key"}}
 	worker, err := loadConfigForRole(configProvider{values: values}, RoleWorker)
 	if err != nil || worker.Worker.ListenAddress != "127.0.0.1:8082" {
 		t.Fatalf("worker management default changed: %v", err)

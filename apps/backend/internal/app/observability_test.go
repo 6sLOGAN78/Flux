@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests verify package-private lifecycle and failure-injection seams.
 package app
 
 import (
@@ -71,8 +72,8 @@ func proofClean(t *testing.T, data []byte, markers ...string) {
 }
 
 type proofBuffer struct {
-	sync.Mutex
 	data bytes.Buffer
+	sync.Mutex
 }
 
 func (b *proofBuffer) Write(p []byte) (int, error) {
@@ -87,8 +88,8 @@ type proofWire struct {
 	body []byte
 }
 type proofCapture struct {
+	wires []proofWire
 	sync.Mutex
-	wires  []proofWire
 	failed bool
 }
 
@@ -101,16 +102,20 @@ func (c *proofCapture) handler(forward string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		if err != nil {
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		c.Lock()
-		c.wires = append(c.wires, proofWire{r.URL.Path, body})
+		c.wires = append(c.wires, proofWire{path: r.URL.Path, body: body})
 		c.Unlock()
 		if forward != "" {
-			req, e := http.NewRequestWithContext(r.Context(), "POST", forward+r.URL.Path, bytes.NewReader(body))
+			req,
+				e := http.NewRequestWithContext(r.Context(),
+				http.MethodPost,
+				forward+r.URL.Path,
+				bytes.NewReader(body))
 			if e != nil {
-				w.WriteHeader(500)
+				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 			req.Header.Set("Content-Type", "application/x-protobuf")
@@ -119,7 +124,7 @@ func (c *proofCapture) handler(forward string) http.HandlerFunc {
 				c.Lock()
 				c.failed = true
 				c.Unlock()
-				w.WriteHeader(502)
+				w.WriteHeader(http.StatusBadGateway)
 				return
 			}
 			defer response.Body.Close()
@@ -159,7 +164,11 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 		Image  string `json:"image"`
 		Digest string `json:"digest"`
 	}
-	if json.Unmarshal(lock["otel-collector"], &pin) != nil || pin.Image == "" || !strings.HasPrefix(pin.Digest, "sha256:") {
+	if json.Unmarshal(lock["otel-collector"],
+		&pin) != nil ||
+		pin.Image == "" ||
+		!strings.HasPrefix(pin.Digest,
+			"sha256:") {
 		t.Fatal("collector immutable pin is required")
 	}
 	data, err = os.ReadFile(filepath.Join(root, "deploy/otel-collector.yaml"))
@@ -167,7 +176,13 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 		t.Fatal("collector configuration is required")
 	}
 	compose, err := os.ReadFile(filepath.Join(root, "compose.yaml"))
-	if err != nil || !bytes.Contains(compose, []byte(pin.Image+"@"+pin.Digest)) || !bytes.Contains(compose, []byte(`profiles: ["observability"]`)) || !bytes.Contains(compose, []byte("127.0.0.1:${FLUX_LOCAL_OTLP_HTTP_PORT")) {
+	if err != nil ||
+		!bytes.Contains(compose,
+			[]byte(pin.Image+"@"+pin.Digest)) ||
+		!bytes.Contains(compose,
+			[]byte(`profiles: ["observability"]`)) ||
+		!bytes.Contains(compose,
+			[]byte("127.0.0.1:${FLUX_LOCAL_OTLP_HTTP_PORT")) {
 		t.Fatal("collector compose pin/profile/loopback drift")
 	}
 	for _, signal := range []string{"traces", "metrics", "logs"} {
@@ -184,7 +199,12 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 	grpcAddress := binaryTestAddress(t)
 	text := strings.ReplaceAll(string(data), "0.0.0.0:4318", address)
 	text = strings.ReplaceAll(text, "0.0.0.0:4317", grpcAddress)
-	text = strings.Replace(text, "exporters:\n", "exporters:\n  otlphttp/proof:\n    endpoint: "+postServer.URL+"\n    compression: none\n    encoding: proto\n    retry_on_failure:\n      enabled: false\n", 1)
+	text = strings.Replace(text,
+		"exporters:\n",
+		"exporters:\n  otlphttp/proof:\n    endpoint: "+postServer.URL+
+			"\n    compression: none\n    encoding: proto\n"+
+			"    retry_on_failure:\n      enabled: false\n",
+		1)
 	text = strings.ReplaceAll(text, "exporters: [debug]", "exporters: [debug, otlphttp/proof]")
 	path := filepath.Join(t.TempDir(), "collector.yaml")
 	if os.WriteFile(path, []byte(text), 0644) != nil {
@@ -194,16 +214,30 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 	// Validate the exact test configuration with the exact immutable binary.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "--mount", "type=bind,src="+path+",dst=/etc/otelcol-contrib/config.yaml,readonly", image, "validate", "--config=/etc/otelcol-contrib/config.yaml")
-	if output, err := cmd.CombinedOutput(); err != nil {
+	cmd := exec.CommandContext(ctx,
+		"docker",
+		"run",
+		"--rm",
+		"--network",
+		"host",
+		"--mount",
+		"type=bind,src="+path+",dst=/etc/otelcol-contrib/config.yaml,readonly",
+		image,
+		"validate",
+		"--config=/etc/otelcol-contrib/config.yaml")
+	if output, err198 := cmd.CombinedOutput(); err198 != nil {
 		t.Fatalf("exact collector binary rejected configuration: %s", output)
 	}
-	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{
-		Image: image, Cmd: []string{"--config=/etc/otelcol-contrib/config.yaml"},
-		Mounts:             testcontainers.Mounts(testcontainers.BindMount(path, "/etc/otelcol-contrib/config.yaml")),
-		HostConfigModifier: func(c *containerconfig.HostConfig) { c.NetworkMode = "host" },
-		WaitingFor:         wait.ForLog("Everything is ready").WithStartupTimeout(20 * time.Second),
-	}, Started: true})
+	c,
+		err := testcontainers.GenericContainer(context.Background(),
+		testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{
+			Image: image, Cmd: []string{"--config=/etc/otelcol-contrib/config.yaml"},
+			Files: []testcontainers.ContainerFile{{HostFilePath: path,
+				ContainerFilePath: "/etc/otelcol-contrib/config.yaml",
+				FileMode:          0o644}},
+			HostConfigModifier: func(c *containerconfig.HostConfig) { c.NetworkMode = "host" },
+			WaitingFor:         wait.ForLog("Everything is ready").WithStartupTimeout(20 * time.Second),
+		}, Started: true})
 	testcontainers.CleanupContainer(t, c)
 	if err != nil {
 		t.Fatal("start pinned collector")
@@ -211,6 +245,7 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 	return "http://" + address, post, c
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func proofSignals(t *testing.T, wires []proofWire, markers ...string) []*tracepb.Span {
 	t.Helper()
 	var spans []*tracepb.Span
@@ -223,14 +258,14 @@ func proofSignals(t *testing.T, wires []proofWire, markers ...string) []*tracepb
 			if proto.Unmarshal(wire.body, &request) != nil {
 				t.Fatal("decode actual OTLP trace protobuf")
 			}
-			for _, r := range request.ResourceSpans {
-				for _, scope := range r.ScopeSpans {
-					for _, s := range scope.Spans {
-						if s.TraceState != "" {
+			for _, r := range request.GetResourceSpans() {
+				for _, scope := range r.GetScopeSpans() {
+					for _, s := range scope.GetSpans() {
+						if s.GetTraceState() != "" {
 							t.Fatal("OTLP Span.trace_state must be empty")
 						}
-						for _, link := range s.Links {
-							if link.TraceState != "" {
+						for _, link := range s.GetLinks() {
+							if link.GetTraceState() != "" {
 								t.Fatal("OTLP Link.trace_state must be empty")
 							}
 						}
@@ -244,9 +279,9 @@ func proofSignals(t *testing.T, wires []proofWire, markers ...string) []*tracepb
 			if proto.Unmarshal(wire.body, &request) != nil {
 				t.Fatal("decode actual OTLP logs protobuf")
 			}
-			for _, r := range request.ResourceLogs {
-				for _, scope := range r.ScopeLogs {
-					counts[wire.path] += len(scope.LogRecords)
+			for _, r := range request.GetResourceLogs() {
+				for _, scope := range r.GetScopeLogs() {
+					counts[wire.path] += len(scope.GetLogRecords())
 				}
 			}
 		case "/v1/metrics":
@@ -254,9 +289,9 @@ func proofSignals(t *testing.T, wires []proofWire, markers ...string) []*tracepb
 			if proto.Unmarshal(wire.body, &request) != nil {
 				t.Fatal("decode actual OTLP metrics protobuf")
 			}
-			for _, r := range request.ResourceMetrics {
-				for _, scope := range r.ScopeMetrics {
-					counts[wire.path] += len(scope.Metrics)
+			for _, r := range request.GetResourceMetrics() {
+				for _, scope := range r.GetScopeMetrics() {
+					counts[wire.path] += len(scope.GetMetrics())
 				}
 			}
 		default:
@@ -275,7 +310,11 @@ type proofEmailSender struct{ endpoint string }
 
 func (s proofEmailSender) SendWelcomeEmail(to, name string) error {
 	data, _ := json.Marshal(map[string]string{"to": to, "name": name})
-	response, err := (&http.Client{Timeout: time.Second}).Post(s.endpoint, "application/json", bytes.NewReader(data))
+	response,
+		err := (&http.Client{Timeout: time.Second}).
+		Post(s.endpoint,
+			"application/json",
+			bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -289,7 +328,10 @@ func (s proofEmailSender) SendWelcomeEmail(to, name string) error {
 
 func proofFactories(output *proofBuffer) roleFactories {
 	f := defaultRoleFactories()
-	f.logger = func(cfg *config.Config, tel *observability.Telemetry) (*zerolog.Logger, func(context.Context) error, error) {
+	f.logger = func(cfg *config.Config,
+		tel *observability.Telemetry) (*zerolog.Logger,
+		func(context.Context) error,
+		error) {
 		log := loggerpkg.NewLogger(cfg.Observability, output, tel.Logger)
 		return &log, nil, nil
 	}
@@ -302,7 +344,7 @@ func proofRun(t *testing.T, r *RoleRuntime) func() {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 	var once sync.Once
-	close := func() {
+	cleanup := func() {
 		once.Do(func() {
 			cancel()
 			select {
@@ -315,10 +357,11 @@ func proofRun(t *testing.T, r *RoleRuntime) func() {
 			}
 		})
 	}
-	t.Cleanup(close)
-	return close
+	t.Cleanup(cleanup)
+	return cleanup
 }
 
+//nolint:gocognit,gocyclo,cyclop // Keep this complete integration protocol and its ordered failure assertions together.
 func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	collector, post, container := proofCollector(t)
 	pre := &proofCapture{}
@@ -330,7 +373,11 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	defer closeRedis()
 	secret := "private" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	vendorState := "vendor=" + secret
-	markers := []string{secret, vendorState, "proof-recipient@example.test", "ProofPrivateName", "proof-provider-private"}
+	markers := []string{secret,
+		vendorState,
+		"proof-recipient@example.test",
+		"ProofPrivateName",
+		"proof-provider-private"}
 	state, err := trace.ParseTraceState(vendorState)
 	if err != nil {
 		t.Fatal("syntactically valid W3C test state required")
@@ -340,7 +387,8 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		t.Fatal("syntactically valid test baggage required")
 	}
 	bag, _ := baggage.New(member)
-	parentCtx := observability.TraceparentPropagator{}.Extract(context.Background(), mapCarrier{"traceparent": proofParent})
+	parentCtx := observability.TraceparentPropagator{}.Extract(context.Background(),
+		mapCarrier{"traceparent": proofParent})
 	linkSC := trace.SpanContextFromContext(parentCtx).WithTraceState(state)
 	var output proofBuffer
 	cfg := roleTestConfig()
@@ -362,20 +410,38 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		e := echo.New()
 		global := middleware.NewGlobalMiddlewares(srv)
 		e.HTTPErrorHandler = global.GlobalErrorHandler
-		e.Use(middleware.RequestID(), middleware.NewTracingMiddleware(srv, srv.Telemetry, trace.Link{SpanContext: linkSC, Attributes: []attribute.KeyValue{attribute.String("private", secret)}}).EnhanceTracing(), middleware.NewContextEnhancer(srv).EnhanceContext(), global.RequestLogger(), global.Recover())
+		e.Use(middleware.RequestID(),
+			middleware.NewTracingMiddleware(srv,
+				srv.Telemetry,
+				trace.Link{SpanContext: linkSC,
+					Attributes: []attribute.KeyValue{attribute.String("private",
+						secret)}}).
+				EnhanceTracing(),
+			middleware.NewContextEnhancer(srv).
+				EnhanceContext(),
+			global.RequestLogger(),
+			global.Recover())
 		e.POST("/proof/:id", func(c echo.Context) error {
 			ctx := c.Request().Context()
-			if c.Request().Header.Get("tracestate") != "" || c.Request().Header.Get("baggage") != "" || baggage.FromContext(ctx).Len() != 0 || trace.SpanContextFromContext(ctx).TraceState().String() != "" {
+			if c.Request().
+				Header.Get("Tracestate") != "" ||
+				c.Request().
+					Header.Get("Baggage") != "" ||
+				baggage.FromContext(ctx).
+					Len() != 0 ||
+				trace.SpanContextFromContext(ctx).
+					TraceState().
+					String() != "" {
 				return errors.New("unsafe ingress context")
 			}
 			httpSpanID = trace.SpanContextFromContext(ctx).SpanID().String()
-			task, err := job.NewWelcomeEmailTaskContext(ctx, markers[2], markers[3])
-			if err != nil {
-				return err
+			task, err372 := job.NewWelcomeEmailTaskContext(ctx, markers[2], markers[3])
+			if err372 != nil {
+				return err372
 			}
-			info, err := srv.Job.Client.EnqueueContext(ctx, task)
-			if err != nil {
-				return err
+			info, err372 := srv.Job.Client.EnqueueContext(ctx, task)
+			if err372 != nil {
+				return err372
 			}
 			queuedID = info.ID
 			enqueued <- struct{}{}
@@ -388,11 +454,11 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		t.Fatal("construct real API graph")
 	}
 	closeAPI := proofRun(t, api)
-	req, _ := http.NewRequest("POST", "http://"+api.Address()+"/proof/"+secret+"?token="+secret, nil)
+	req, _ := http.NewRequest(http.MethodPost, "http://"+api.Address()+"/proof/"+secret+"?token="+secret, nil)
 	req = req.WithContext(baggage.ContextWithBaggage(context.Background(), bag))
-	req.Header.Set("traceparent", proofParent)
-	req.Header.Set("tracestate", vendorState)
-	req.Header.Set("baggage", "private="+secret)
+	req.Header.Set("Traceparent", proofParent)
+	req.Header.Set("Tracestate", vendorState)
+	req.Header.Set("Baggage", "private="+secret)
 	req.Header.Set("X-Request-ID", proofRequestID)
 	req.Header.Set("X-Correlation-ID", proofCorrelationID)
 	req.Header.Set("Authorization", secret)
@@ -401,7 +467,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		t.Fatal("send real HTTP ingress")
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != 202 {
+	if response.StatusCode != http.StatusAccepted {
 		t.Fatal("real HTTP enqueue failed")
 	}
 	<-enqueued
@@ -413,8 +479,25 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	proofClean(t, queued.Payload, secret, vendorState)
 	assertProofMetadata(t, queued, httpSpanID)
 	legacyID := "legacy-proof"
-	payload, _ := json.Marshal(map[string]any{"to": markers[2], "first_name": markers[3], "metadata": map[string]any{"version": 1, "traceparent": proofParent, "request_id": proofRequestID, "correlation_id": proofCorrelationID, "tracestate": vendorState, "baggage": "private=" + secret, "unknown": secret}})
-	legacy := asynq.NewTaskWithHeaders(job.TaskWelcome, payload, map[string]string{"tracestate": vendorState, "baggage": "private=" + secret}, asynq.TaskID(legacyID), asynq.Queue("low"), asynq.MaxRetry(1), asynq.Timeout(7*time.Second), asynq.Retention(time.Minute))
+	payload,
+		_ := json.Marshal(map[string]any{"to": markers[2],
+		"first_name": markers[3],
+		"metadata": map[string]any{"version": 1,
+			"traceparent":    proofParent,
+			"request_id":     proofRequestID,
+			"correlation_id": proofCorrelationID,
+			"tracestate":     vendorState,
+			"baggage":        "private=" + secret,
+			"unknown":        secret}})
+	legacy := asynq.NewTaskWithHeaders(job.TaskWelcome,
+		payload,
+		map[string]string{"tracestate": vendorState,
+			"baggage": "private=" + secret},
+		asynq.TaskID(legacyID),
+		asynq.Queue("low"),
+		asynq.MaxRetry(1),
+		asynq.Timeout(7*time.Second),
+		asynq.Retention(time.Minute))
 	if _, err = api.Server.Job.Client.Enqueue(legacy); err != nil {
 		t.Fatal("enqueue legacy ingress")
 	}
@@ -432,16 +515,23 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		n := attempts
 		attemptsMu.Unlock()
 		if n <= 2 {
-			w.WriteHeader(503)
+			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = io.WriteString(w, markers[4])
 			return
 		}
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer emailServer.Close()
 	workerFactory := proofFactories(&output)
-	workerFactory.consumer = func(srv *server.Server, _ *email.Client) (*job.JobService, func(context.Context) error, error) {
-		j := job.NewConsumer(srv.Logger, cfg, srv.Redis, proofEmailSender{emailServer.URL}, srv.Telemetry)
+	workerFactory.consumer = func(srv *server.Server,
+		_ *email.Client) (*job.JobService,
+		func(context.Context) error,
+		error) {
+		j := job.NewConsumer(srv.Logger,
+			cfg,
+			srv.Redis,
+			proofEmailSender{endpoint: emailServer.URL},
+			srv.Telemetry)
 		return j, func(context.Context) error { return j.Stop() }, nil
 	}
 	worker, err := newRole(context.Background(), config.RoleWorker, cfg, workerFactory)
@@ -449,7 +539,16 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 		t.Fatal("construct real worker graph")
 	}
 	closeWorker := proofRun(t, worker)
-	for _, pair := range []struct{ queue, id, parent string }{{"default", queuedID, httpSpanID}, {"low", "safe:" + legacyID, "00f067aa0ba902b7"}} {
+	for _, pair := range []struct {
+		queue,
+		id,
+		parent string
+	}{{queue: "default",
+		id:     queuedID,
+		parent: httpSpanID},
+		{queue: "low",
+			id:     "safe:" + legacyID,
+			parent: "00f067aa0ba902b7"}} {
 		var retry *asynq.TaskInfo
 		proofEventually(t, func() bool {
 			retry, err = inspector.GetTaskInfo(pair.queue, pair.id)
@@ -472,7 +571,13 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	}
 	// Public inspector acceleration retains actual Asynq retry execution while
 	// avoiding the production backoff delay in this integration proof.
-	for _, pair := range []struct{ queue, id string }{{"default", queuedID}, {"low", "safe:" + legacyID}} {
+	for _, pair := range []struct {
+		queue,
+		id string
+	}{{queue: "default",
+		id: queuedID},
+		{queue: "low",
+			id: "safe:" + legacyID}} {
 		if err = inspector.RunTask(pair.queue, pair.id); err != nil {
 			t.Fatal("release real retry")
 		}
@@ -515,9 +620,11 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	if !bytes.Contains(debug, []byte("job.process")) || !bytes.Contains(debug, []byte("http.request")) {
 		t.Fatal("debug exporter did not receive redacted work")
 	}
-	for _, path := range []string{"../../static/openapi.json", "../../templates/emails/welcome.html", "../../../../packages/openapi/openapi.json"} {
-		data, err := os.ReadFile(path)
-		if err != nil {
+	for _, path := range []string{"../../static/openapi.json",
+		"../../templates/emails/welcome.html",
+		"../../../../packages/openapi/openapi.json"} {
+		data, err519 := os.ReadFile(path)
+		if err519 != nil {
 			t.Fatal("read generated sentinel scan artifact")
 		}
 		proofClean(t, data, markers...)
@@ -539,56 +646,70 @@ func (c mapCarrier) Keys() []string {
 func assertProofMetadata(t *testing.T, info *asynq.TaskInfo, parent string) {
 	t.Helper()
 	var p job.WelcomeEmailPayload
-	if json.Unmarshal(info.Payload, &p) != nil || p.Metadata == nil || p.Metadata.Version != 1 || p.Metadata.RequestID != proofRequestID || p.Metadata.CorrelationID != proofCorrelationID || p.Metadata.Traceparent != "00-4bf92f3577b34da6a3ce929d0e0e4736-"+parent+"-01" {
+	if json.Unmarshal(info.Payload,
+		&p) != nil ||
+		p.Metadata == nil ||
+		p.Metadata.Version != 1 ||
+		p.Metadata.RequestID != proofRequestID ||
+		p.Metadata.CorrelationID != proofCorrelationID ||
+		p.Metadata.Traceparent != "00-4bf92f3577b34da6a3ce929d0e0e4736-"+parent+"-01" {
 		t.Fatal("queue/retry lost safe identity or sampled flags")
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func checkProofLineage(t *testing.T, spans []*tracepb.Span, httpSpan string, linksRequired bool) {
 	t.Helper()
 	jobs := 0
 	httpSeen := false
 	retries := map[int64]int{}
 	for _, s := range spans {
-		if s.Name != "http.request" && s.Name != "job.process" {
+		if s.GetName() != "http.request" && s.GetName() != "job.process" {
 			continue
 		}
-		if hex.EncodeToString(s.TraceId) != "4bf92f3577b34da6a3ce929d0e0e4736" || s.Flags&1 != 1 {
+		if hex.EncodeToString(s.GetTraceId()) != "4bf92f3577b34da6a3ce929d0e0e4736" || s.GetFlags()&1 != 1 {
 			t.Fatal("trace identity or sampled flag lost")
 		}
 		ids := map[string]string{}
-		for _, a := range s.Attributes {
-			ids[a.Key] = a.Value.GetStringValue()
-			if a.Key == "retry.count" {
-				retries[a.Value.GetIntValue()]++
+		for _, a := range s.GetAttributes() {
+			ids[a.GetKey()] = a.GetValue().GetStringValue()
+			if a.GetKey() == "retry.count" {
+				retries[a.GetValue().GetIntValue()]++
 			}
 		}
 		if ids["request_id"] != proofRequestID || ids["correlation_id"] != proofCorrelationID {
 			t.Fatal("export lost UUID lineage")
 		}
-		if s.Name == "http.request" {
+		if s.GetName() == "http.request" {
 			httpSeen = true
-			if hex.EncodeToString(s.ParentSpanId) != "00f067aa0ba902b7" || hex.EncodeToString(s.SpanId) != httpSpan {
+			if hex.EncodeToString(s.GetParentSpanId()) != "00f067aa0ba902b7" ||
+				hex.EncodeToString(s.GetSpanId()) != httpSpan {
 				t.Fatal("HTTP trace parent lost")
 			}
 		}
-		if s.Name == "job.process" {
+		if s.GetName() == "job.process" {
 			jobs++
-			parent := hex.EncodeToString(s.ParentSpanId)
+			parent := hex.EncodeToString(s.GetParentSpanId())
 			if parent != httpSpan && parent != "00f067aa0ba902b7" {
 				t.Fatal("worker queue parent lost")
 			}
 		}
 		if linksRequired {
-			if len(s.Links) == 0 {
+			if len(s.GetLinks()) == 0 {
 				t.Fatal("required injected/worker Link was not exported")
 			}
-			for _, l := range s.Links {
-				if l.TraceState != "" || hex.EncodeToString(l.TraceId) != "4bf92f3577b34da6a3ce929d0e0e4736" || len(l.SpanId) != 8 || bytes.Equal(l.SpanId, make([]byte, 8)) || l.Flags&1 != 1 {
+			for _, l := range s.GetLinks() {
+				if l.GetTraceState() != "" ||
+					hex.EncodeToString(l.GetTraceId()) != "4bf92f3577b34da6a3ce929d0e0e4736" ||
+					len(l.GetSpanId()) != 8 ||
+					bytes.Equal(l.GetSpanId(),
+						make([]byte,
+							8)) ||
+					l.GetFlags()&1 != 1 {
 					t.Fatal("Link trace identity/flags/state violated")
 				}
 			}
-		} else if len(s.Links) != 0 {
+		} else if len(s.GetLinks()) != 0 {
 			t.Fatal("collector did not clear link collections")
 		}
 	}
@@ -597,41 +718,116 @@ func checkProofLineage(t *testing.T, spans []*tracepb.Span, httpSpan string, lin
 	}
 }
 
+//nolint:gocognit,gocyclo,cyclop // Keep this complete integration protocol and its ordered failure assertions together.
 func TestCollectorRedactsAllSignals(t *testing.T) {
 	endpoint, post, c := proofCollector(t)
 	secret := "dirty" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	kv := func(k, v string) *commonpb.KeyValue {
-		return &commonpb.KeyValue{Key: k, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: v}}}
+		return &commonpb.KeyValue{Key: k,
+			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: v}}}
 	}
-	resource := &resourcepb.Resource{Attributes: []*commonpb.KeyValue{kv("service.name", "flux.api"), kv("private", secret)}}
-	resource.Attributes = append(resource.Attributes, kv("process.role", secret), kv("deployment.environment.name", secret))
-	scope := &commonpb.InstrumentationScope{Name: secret, Version: secret, Attributes: []*commonpb.KeyValue{kv("private", secret)}}
+	resource := &resourcepb.Resource{Attributes: []*commonpb.KeyValue{kv("service.name",
+		"flux.api"),
+		kv("private",
+			secret)}}
+	resource.Attributes = append(resource.Attributes,
+		kv("process.role",
+			secret),
+		kv("deployment.environment.name",
+			secret))
+	scope := &commonpb.InstrumentationScope{Name: secret,
+		Version: secret,
+		Attributes: []*commonpb.KeyValue{kv("private",
+			secret)}}
 	traceID, _ := hex.DecodeString("4bf92f3577b34da6a3ce929d0e0e4736")
 	spanID, _ := hex.DecodeString("00f067aa0ba902b7")
 	messages := map[string]proto.Message{
-		"/v1/traces":  &tracecollector.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{Resource: resource, ScopeSpans: []*tracepb.ScopeSpans{{Scope: scope, Spans: []*tracepb.Span{{TraceId: traceID, SpanId: spanID, Name: secret, TraceState: "vendor=" + secret, Attributes: []*commonpb.KeyValue{kv("private", secret), kv("request_id", proofRequestID)}, Status: &tracepb.Status{Message: secret}, Events: []*tracepb.Span_Event{{Name: secret}}, Links: []*tracepb.Span_Link{{TraceId: traceID, SpanId: spanID, TraceState: "vendor=" + secret, Attributes: []*commonpb.KeyValue{kv("private", secret)}}}}}}}}}},
-		"/v1/logs":    &logcollector.ExportLogsServiceRequest{ResourceLogs: []*logpb.ResourceLogs{{Resource: resource, ScopeLogs: []*logpb.ScopeLogs{{Scope: scope, LogRecords: []*logpb.LogRecord{{Body: kv("", secret).Value, SeverityText: secret, EventName: secret, Attributes: []*commonpb.KeyValue{kv("private", secret), kv("request_id", proofRequestID)}}}}}}}},
-		"/v1/metrics": &metriccollector.ExportMetricsServiceRequest{ResourceMetrics: []*metricpb.ResourceMetrics{{Resource: resource, ScopeMetrics: []*metricpb.ScopeMetrics{{Scope: scope, Metrics: []*metricpb.Metric{{Name: "flux.http.requests", Description: secret, Unit: secret, Data: &metricpb.Metric_Sum{Sum: &metricpb.Sum{AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE, DataPoints: []*metricpb.NumberDataPoint{{Attributes: []*commonpb.KeyValue{kv("private", secret), kv("request_id", proofRequestID), kv("http.route", "/live")}, Value: &metricpb.NumberDataPoint_AsInt{AsInt: 1}}}}}}}}}}}},
+		"/v1/traces": &tracecollector.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{Resource: resource,
+			ScopeSpans: []*tracepb.ScopeSpans{{Scope: scope,
+				Spans: []*tracepb.Span{{TraceId: traceID,
+					SpanId:     spanID,
+					Name:       secret,
+					TraceState: "vendor=" + secret,
+					Attributes: []*commonpb.KeyValue{kv("private",
+						secret),
+						kv("request_id",
+							proofRequestID)},
+					Status: &tracepb.Status{Message: secret},
+					Events: []*tracepb.Span_Event{{Name: secret}},
+					Links: []*tracepb.Span_Link{{TraceId: traceID,
+						SpanId:     spanID,
+						TraceState: "vendor=" + secret,
+						Attributes: []*commonpb.KeyValue{kv("private",
+							secret)}}}}}}}}}},
+		"/v1/logs": &logcollector.ExportLogsServiceRequest{ResourceLogs: []*logpb.ResourceLogs{{Resource: resource,
+			ScopeLogs: []*logpb.ScopeLogs{{Scope: scope,
+				LogRecords: []*logpb.LogRecord{{Body: kv("",
+					secret).
+					GetValue(),
+					SeverityText: secret,
+					EventName:    secret,
+					Attributes: []*commonpb.KeyValue{kv("private",
+						secret),
+						kv("request_id",
+							proofRequestID)}}}}}}}},
+		"/v1/metrics": &metriccollector.ExportMetricsServiceRequest{ResourceMetrics: []*metricpb.ResourceMetrics{
+			{Resource: resource,
+				ScopeMetrics: []*metricpb.ScopeMetrics{{Scope: scope,
+					Metrics: []*metricpb.Metric{{Name: "flux.http.requests",
+						Description: secret,
+						Unit:        secret,
+						Data: &metricpb.Metric_Sum{Sum: &metricpb.Sum{
+							AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
+							DataPoints: []*metricpb.NumberDataPoint{{Attributes: []*commonpb.KeyValue{kv("private",
+								secret),
+								kv("request_id",
+									proofRequestID),
+								kv("http.route",
+									"/live")},
+								Value: &metricpb.NumberDataPoint_AsInt{AsInt: 1}}}}}}}}}}}},
 	}
 	// Challenge values under allowed keys independently of the SDK sanitizer.
 	// A key-only collector allowlist would let every one of these values leak.
 	unsafeValues := func() []*commonpb.KeyValue {
 		var attrs []*commonpb.KeyValue
-		for _, key := range []string{"operation", "process.role", "http.request.method", "http.route", "outcome", "dependency", "error.category", "error.stage", "job.type", "db.system.name", "db.operation.name", "correlation_id", "http.response.status_code", "retry.count", "start_version", "end_version"} {
+		for _, key := range []string{"operation",
+			"process.role",
+			"http.request.method",
+			"http.route",
+			"outcome",
+			"dependency",
+			"error.category",
+			"error.stage",
+			"job.type",
+			"db.system.name",
+			"db.operation.name",
+			"correlation_id",
+			"http.response.status_code",
+			"retry.count",
+			"start_version",
+			"end_version"} {
 			attrs = append(attrs, kv(key, secret))
 		}
 		return attrs
 	}
-	dirtySpan := messages["/v1/traces"].(*tracecollector.ExportTraceServiceRequest).ResourceSpans[0].ScopeSpans[0].Spans[0]
+	dirtySpan := messages["/v1/traces"].(*tracecollector.ExportTraceServiceRequest).
+		GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()[0]
 	dirtySpan.Attributes = append(dirtySpan.Attributes, unsafeValues()...)
-	dirtyLog := messages["/v1/logs"].(*logcollector.ExportLogsServiceRequest).ResourceLogs[0].ScopeLogs[0].LogRecords[0]
+	dirtyLog := messages["/v1/logs"].(*logcollector.ExportLogsServiceRequest).
+		GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()[0]
 	dirtyLog.Attributes = append(dirtyLog.Attributes, unsafeValues()...)
-	dirtyPoint := messages["/v1/metrics"].(*metriccollector.ExportMetricsServiceRequest).ResourceMetrics[0].ScopeMetrics[0].Metrics[0].GetSum().DataPoints[0]
+	dirtyPoint := messages["/v1/metrics"].(*metriccollector.ExportMetricsServiceRequest).
+		GetResourceMetrics()[0].GetScopeMetrics()[0].GetMetrics()[0].GetSum().
+		GetDataPoints()[0]
 	// OTLP requires attribute keys to be unique. Replace the original route,
 	// rather than append a second key whose map lookup would be undefined.
-	dirtyPoint.Attributes = dirtyPoint.Attributes[:2]
+	dirtyPoint.Attributes = dirtyPoint.GetAttributes()[:2]
 	dirtyPoint.Attributes = append(dirtyPoint.Attributes, unsafeValues()...)
-	dirtyPoint.Exemplars = []*metricpb.Exemplar{{FilteredAttributes: []*commonpb.KeyValue{kv("private", secret)}, TraceId: traceID, SpanId: spanID, Value: &metricpb.Exemplar_AsInt{AsInt: 1}}}
+	dirtyPoint.Exemplars = []*metricpb.Exemplar{{FilteredAttributes: []*commonpb.KeyValue{kv("private",
+		secret)},
+		TraceId: traceID,
+		SpanId:  spanID,
+		Value:   &metricpb.Exemplar_AsInt{AsInt: 1}}}
 	for path, message := range messages {
 		data, err := proto.Marshal(message)
 		if err != nil {
@@ -642,7 +838,7 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 			t.Fatal("send dirty collector probe")
 		}
 		_ = r.Body.Close()
-		if r.StatusCode != 200 {
+		if r.StatusCode != http.StatusOK {
 			t.Fatal("collector rejected dirty test transport")
 		}
 	}
@@ -653,10 +849,13 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 		}
 	}
 	spans := proofSignals(t, post.snapshot(), secret)
-	if len(spans) != 1 || len(spans[0].Links) != 0 || len(spans[0].Events) != 0 {
+	if len(spans) != 1 || len(spans[0].GetLinks()) != 0 || len(spans[0].GetEvents()) != 0 {
 		t.Fatal("collector failed to remove private nested fields")
 	}
-	if len(spans[0].Attributes) != 1 || spans[0].Attributes[0].Key != "request_id" || spans[0].Attributes[0].Value.GetStringValue() != proofRequestID {
+	if len(spans[0].GetAttributes()) != 1 ||
+		spans[0].GetAttributes()[0].GetKey() != "request_id" ||
+		spans[0].GetAttributes()[0].GetValue().
+			GetStringValue() != proofRequestID {
 		t.Fatal("collector did not preserve only valid trace correlation")
 	}
 	for _, wire := range post.snapshot() {
@@ -666,10 +865,13 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 			if proto.Unmarshal(wire.body, &request) != nil {
 				t.Fatal("decode dirty probe log output")
 			}
-			for _, r := range request.ResourceLogs {
-				for _, scope := range r.ScopeLogs {
-					for _, record := range scope.LogRecords {
-						if len(record.Attributes) != 1 || record.Attributes[0].Key != "request_id" || record.Attributes[0].Value.GetStringValue() != proofRequestID {
+			for _, r := range request.GetResourceLogs() {
+				for _, scope := range r.GetScopeLogs() {
+					for _, record := range scope.GetLogRecords() {
+						if len(record.GetAttributes()) != 1 ||
+							record.GetAttributes()[0].GetKey() != "request_id" ||
+							record.GetAttributes()[0].GetValue().
+								GetStringValue() != proofRequestID {
 							t.Fatal("collector did not preserve only valid log correlation")
 						}
 					}
@@ -680,11 +882,13 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 			if proto.Unmarshal(wire.body, &request) != nil {
 				t.Fatal("decode dirty probe metric output")
 			}
-			for _, r := range request.ResourceMetrics {
-				for _, scope := range r.ScopeMetrics {
-					for _, metric := range scope.Metrics {
-						for _, point := range metric.GetSum().DataPoints {
-							if len(point.Attributes) != 0 || len(point.Exemplars) != 0 || point.GetAsInt() != 1 {
+			for _, r := range request.GetResourceMetrics() {
+				for _, scope := range r.GetScopeMetrics() {
+					for _, metric := range scope.GetMetrics() {
+						for _, point := range metric.GetSum().GetDataPoints() {
+							if len(point.GetAttributes()) != 0 ||
+								len(point.GetExemplars()) != 0 ||
+								point.GetAsInt() != 1 {
 								t.Fatal("collector retained unsafe metric identity or lost its value")
 							}
 						}
@@ -705,6 +909,7 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 	proofClean(t, data, secret)
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestCardinalityVariedHTTPInputs(t *testing.T) {
 	collector, post, _ := proofCollector(t)
 	var output proofBuffer
@@ -719,8 +924,8 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 	closeRole := proofRun(t, r)
 	client := &http.Client{Timeout: time.Second}
 	for i := range 200 {
-		response, err := client.Get(fmt.Sprintf("http://%s/visitor/%d?token=unique%d", r.Address(), i, i))
-		if err != nil {
+		response, err722 := client.Get(fmt.Sprintf("http://%s/visitor/%d?token=unique%d", r.Address(), i, i))
+		if err722 != nil {
 			t.Fatal("varied HTTP request failed")
 		}
 		_ = response.Body.Close()
@@ -733,11 +938,11 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 				if proto.Unmarshal(w.body, &req) != nil {
 					t.Fatal("decode final HTTP metrics")
 				}
-				for _, r := range req.ResourceMetrics {
-					for _, s := range r.ScopeMetrics {
-						for _, m := range s.Metrics {
-							if m.Name == "flux.http.requests" {
-								for _, p := range m.GetSum().DataPoints {
+				for _, r := range req.GetResourceMetrics() {
+					for _, s := range r.GetScopeMetrics() {
+						for _, m := range s.GetMetrics() {
+							if m.GetName() == "flux.http.requests" {
+								for _, p := range m.GetSum().GetDataPoints() {
 									if p.GetAsInt() == 200 {
 										return true
 									}
@@ -760,22 +965,29 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 		if proto.Unmarshal(w.body, &req) != nil {
 			t.Fatal("decode cardinality metrics")
 		}
-		for _, r := range req.ResourceMetrics {
-			for _, s := range r.ScopeMetrics {
-				for _, m := range s.Metrics {
-					if m.Name != "flux.http.requests" {
+		for _, r := range req.GetResourceMetrics() {
+			for _, s := range r.GetScopeMetrics() {
+				for _, m := range s.GetMetrics() {
+					if m.GetName() != "flux.http.requests" {
 						continue
 					}
-					for _, p := range m.GetSum().DataPoints {
-						sort.Slice(p.Attributes, func(i, j int) bool { return p.Attributes[i].Key < p.Attributes[j].Key })
-						data, _ := json.Marshal(p.Attributes)
+					for _, p := range m.GetSum().GetDataPoints() {
+						sort.Slice(p.GetAttributes(),
+							func(i,
+								j int) bool {
+								return p.GetAttributes()[i].GetKey() < p.GetAttributes()[j].GetKey()
+							})
+						data, _ := json.Marshal(p.GetAttributes())
 						series[string(data)] = true
 						count = max(count, p.GetAsInt())
-						for _, a := range p.Attributes {
-							if a.Key == "http.route" && a.Value.GetStringValue() != "unmatched" {
+						for _, a := range p.GetAttributes() {
+							if a.GetKey() == "http.route" &&
+								a.GetValue().
+									GetStringValue() != "unmatched" {
 								t.Fatal("metric route cardinality expanded")
 							}
-							if a.Key == "request_id" || a.Key == "correlation_id" {
+							if a.GetKey() == "request_id" ||
+								a.GetKey() == "correlation_id" {
 								t.Fatal("UUID entered metric label")
 							}
 						}
@@ -789,6 +1001,7 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 	pg, closePG := backendtesting.SetupTestPostgres(t)
 	defer closePG()
@@ -798,7 +1011,7 @@ func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			endpoint := "http://" + binaryTestAddress(t)
 			if mode == "slow" {
-				s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				s := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 					select {
 					case <-r.Context().Done():
 					case <-time.After(time.Second):
@@ -822,36 +1035,61 @@ func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 					f := proofFactories(&output)
 					closed := map[string]bool{}
 					baseTelemetry := f.telemetry
-					f.telemetry = func(ctx context.Context, cfg *config.Config, role config.Role) (*observability.Telemetry, func(context.Context) error, error) {
-						owner, close, err := baseTelemetry(ctx, cfg, role)
-						return owner, func(ctx context.Context) error { closed["telemetry"] = true; return close(ctx) }, err
+					f.telemetry = func(ctx context.Context,
+						cfg *config.Config,
+						role config.Role) (*observability.Telemetry,
+						func(context.Context) error,
+						error) {
+						owner, cleanup, err := baseTelemetry(ctx, cfg, role)
+						return owner,
+							func(ctx context.Context) error { closed["telemetry"] = true; return cleanup(ctx) },
+							err
 					}
 					baseDB := f.database
-					f.database = func(ctx context.Context, s *server.Server) (*database.Database, func(context.Context) error, error) {
-						db, close, err := baseDB(ctx, s)
-						return db, func(ctx context.Context) error { closed["database"] = true; return close(ctx) }, err
+					f.database = func(ctx context.Context,
+						s *server.Server) (*database.Database,
+						func(context.Context) error,
+						error) {
+						db, cleanup, err := baseDB(ctx, s)
+						return db,
+							func(ctx context.Context) error { closed["database"] = true; return cleanup(ctx) },
+							err
 					}
 					baseRedis := f.redis
-					f.redis = func(ctx context.Context, s *server.Server) (*redis.Client, func(context.Context) error, error) {
-						db, close, err := baseRedis(ctx, s)
-						return db, func(ctx context.Context) error { closed["redis"] = true; return close(ctx) }, err
+					f.redis = func(ctx context.Context,
+						s *server.Server) (*redis.Client,
+						func(context.Context) error,
+						error) {
+						db, cleanup, err := baseRedis(ctx, s)
+						return db,
+							func(ctx context.Context) error { closed["redis"] = true; return cleanup(ctx) },
+							err
 					}
 					baseProducer := f.producer
-					f.producer = func(s *server.Server) (*job.JobService, func(context.Context) error, error) {
-						j, close, err := baseProducer(s)
-						return j, func(ctx context.Context) error { closed["producer"] = true; return close(ctx) }, err
+					f.producer = func(s *server.Server) (*job.JobService,
+						func(context.Context) error,
+						error) {
+						j, cleanup, err := baseProducer(s)
+						return j,
+							func(ctx context.Context) error { closed["producer"] = true; return cleanup(ctx) },
+							err
 					}
 					baseConsumer := f.consumer
-					f.consumer = func(s *server.Server, e *email.Client) (*job.JobService, func(context.Context) error, error) {
-						j, close, err := baseConsumer(s, e)
-						return j, func(ctx context.Context) error { closed["consumer"] = true; return close(ctx) }, err
+					f.consumer = func(s *server.Server,
+						e *email.Client) (*job.JobService,
+						func(context.Context) error,
+						error) {
+						j, cleanup, err := baseConsumer(s, e)
+						return j,
+							func(ctx context.Context) error { closed["consumer"] = true; return cleanup(ctx) },
+							err
 					}
 					r, err := newRole(context.Background(), role, cfg, f)
 					if err != nil {
 						t.Fatal("collector outage prevented role construction")
 					}
 					rec := httptest.NewRecorder()
-					r.HTTP.ServeHTTP(rec, httptest.NewRequest("GET", "/ready", nil))
+					r.HTTP.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
 					if rec.Code != 200 {
 						t.Fatal("collector outage changed required-dependency readiness")
 					}
@@ -862,8 +1100,19 @@ func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 					if time.Since(start) > 750*time.Millisecond {
 						t.Fatal("collector outage exceeded shared shutdown deadline")
 					}
-					for _, name := range []string{"telemetry", "database", "redis", "producer", "consumer"} {
-						want := name == "telemetry" || (role == config.RoleAPI && (name == "database" || name == "redis" || name == "producer")) || (role == config.RoleWorker && (name == "redis" || name == "consumer"))
+					for _, name := range []string{"telemetry",
+						"database",
+						"redis",
+						"producer",
+						"consumer"} {
+						want := name == "telemetry" ||
+							(role == config.RoleAPI &&
+								(name == "database" ||
+									name == "redis" ||
+									name == "producer")) ||
+							(role == config.RoleWorker &&
+								(name == "redis" ||
+									name == "consumer"))
 						if want && !closed[name] {
 							t.Fatal("collector outage skipped owned resource closer")
 						}
@@ -878,6 +1127,8 @@ func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 // The migrator has no readiness listener: its required operation is the actual
 // one-shot PostgreSQL migration. Monitoring failures may report an exit failure
 // after a successful migration, but cannot block that required operation.
+//
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestTelemetryOutageMigrator(t *testing.T) {
 	pg, closePG := backendtesting.SetupTestPostgres(t)
 	defer closePG()
@@ -894,7 +1145,8 @@ func TestTelemetryOutageMigrator(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			endpoint := "http://" + binaryTestAddress(t)
 			if mode == "slow" {
-				collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				collector := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter,
+					r *http.Request) {
 					select {
 					case <-r.Context().Done():
 					case <-time.After(time.Second):
@@ -904,11 +1156,15 @@ func TestTelemetryOutageMigrator(t *testing.T) {
 				endpoint = collector.URL
 			}
 			env := append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
-			env = append(env, "FLUX_OBSERVABILITY.OTLP.ENABLED=true", "FLUX_OBSERVABILITY.OTLP.ENDPOINT="+endpoint,
-				"FLUX_OBSERVABILITY.OTLP.EXPORT_TIMEOUT=80ms", "FLUX_OBSERVABILITY.OTLP.EXPORT_INTERVAL=10ms", "FLUX_OBSERVABILITY.HEALTH_CHECKS.TIMEOUT=1s")
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, binary)
+			env = append(env,
+				"FLUX_OBSERVABILITY.OTLP.ENABLED=true",
+				"FLUX_OBSERVABILITY.OTLP.ENDPOINT="+endpoint,
+				"FLUX_OBSERVABILITY.OTLP.EXPORT_TIMEOUT=80ms",
+				"FLUX_OBSERVABILITY.OTLP.EXPORT_INTERVAL=10ms",
+				"FLUX_OBSERVABILITY.HEALTH_CHECKS.TIMEOUT=1s")
+			ctx909, cancel1160 := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel1160()
+			cmd := exec.CommandContext(ctx909, binary)
 			cmd.Dir = t.TempDir()
 			cmd.Env = env
 			start := time.Now()
@@ -917,14 +1173,20 @@ func TestTelemetryOutageMigrator(t *testing.T) {
 			if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
 				t.Fatal("migrator outage prevented bounded execution")
 			}
-			if ctx.Err() != nil || time.Since(start) > 1500*time.Millisecond {
+			if ctx909.Err() != nil || time.Since(start) > 1500*time.Millisecond {
 				t.Fatal("migrator outage exceeded overall exit budget")
 			}
-			if !bytes.Contains(output, []byte(`"outcome":"success"`)) || !bytes.Contains(output, []byte(`"end_version":1`)) {
+			if !bytes.Contains(output,
+				[]byte(`"outcome":"success"`)) ||
+				!bytes.Contains(output,
+					[]byte(`"end_version":1`)) {
 				t.Fatal("collector outage prevented required PostgreSQL migration")
 			}
 			var version int
-			if pg.Pool.QueryRow(context.Background(), "SELECT version FROM schema_version").Scan(&version) != nil || version != 1 {
+			if pg.Pool.QueryRow(context.Background(),
+				"SELECT version FROM schema_version").
+				Scan(&version) != nil ||
+				version != 1 {
 				t.Fatal("migrator outage lost authoritative PostgreSQL result")
 			}
 		})
@@ -992,9 +1254,20 @@ func (proofFaultMetric) ForceFlush(context.Context) error { return nil }
 
 func TestObservabilityFaultExportersBoundedCleanup(t *testing.T) {
 	var shutdown, deadline atomic.Int32
-	owner, err := observability.New(context.Background(), observability.Settings{Enabled: true, SampleRatio: 1, ExportTimeout: 80 * time.Millisecond, ExportInterval: time.Minute, Exporters: observability.Exporters{
-		Trace: proofFaultTrace{&shutdown, &deadline}, Metric: proofFaultMetric{&shutdown, &deadline}, Log: proofFaultLog{&shutdown, &deadline},
-	}}, "api")
+	owner,
+		err := observability.New(context.Background(),
+		observability.Settings{Enabled: true,
+			SampleRatio:    1,
+			ExportTimeout:  80 * time.Millisecond,
+			ExportInterval: time.Minute,
+			Exporters: observability.Exporters{
+				Trace: proofFaultTrace{shutdown: &shutdown,
+					deadline: &deadline},
+				Metric: proofFaultMetric{shutdown: &shutdown,
+					deadline: &deadline},
+				Log: proofFaultLog{shutdown: &shutdown,
+					deadline: &deadline},
+			}}, "api")
 	if err != nil {
 		t.Fatal("construct fault exporters")
 	}

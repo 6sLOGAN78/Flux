@@ -1,3 +1,4 @@
+// Package main runs the api process entry point.
 package main
 
 import (
@@ -32,9 +33,9 @@ func run(ctx context.Context, output io.Writer) int {
 		log.Error().Str("error", observability.SafeError(err)).Msg("database.connect")
 		return 1
 	}
-	if err := role.Run(ctx); err != nil {
-		event := log.Error().Str("error", observability.SafeError(err))
-		if errors.Is(err, context.DeadlineExceeded) {
+	if err35 := role.Run(ctx); err35 != nil {
+		event := log.Error().Str("error", observability.SafeError(err35))
+		if errors.Is(err35, context.DeadlineExceeded) {
 			event.Str("error.stage", "deadline")
 		}
 		event.Msg("telemetry.shutdown")

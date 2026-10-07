@@ -1,7 +1,9 @@
+// Package email renders embedded templates and delivers transactional email.
 package email
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 
@@ -11,11 +13,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Client renders templates and sends transactional emails.
 type Client struct {
 	client *resend.Client
 	logger *zerolog.Logger
 }
 
+// NewClient constructs the configured transactional email transport.
 func NewClient(cfg *config.Config, logger *zerolog.Logger) *Client {
 	return &Client{
 		client: resend.NewClient(cfg.Integration.ResendAPIKey),
@@ -30,7 +34,7 @@ func (c *Client) Render(templateName Template, data map[string]string) (string, 
 	case TemplateWelcome:
 		tmplPath = "emails/welcome.html"
 	default:
-		return "", fmt.Errorf("unsupported email template")
+		return "", errors.New("unsupported email template")
 	}
 
 	tmpl, err := template.New("welcome.html").Option("missingkey=error").ParseFS(templates.Assets, tmplPath)
@@ -39,19 +43,20 @@ func (c *Client) Render(templateName Template, data map[string]string) (string, 
 	}
 
 	var body bytes.Buffer
-	if err := tmpl.Execute(&body, data); err != nil {
-		return "", fmt.Errorf("failed to execute email template %s: %w", templateName, err)
+	if err46 := tmpl.Execute(&body, data); err46 != nil {
+		return "", fmt.Errorf("failed to execute email template %s: %w", templateName, err46)
 	}
 	return body.String(), nil
 }
 
+// SendEmail delivers an email through the configured transport.
 func (c *Client) SendEmail(to, subject string, templateName Template, data map[string]string) error {
 	body, err := c.Render(templateName, data)
 	if err != nil {
 		return err
 	}
 	if c == nil || c.client == nil {
-		return fmt.Errorf("email transport is not configured")
+		return errors.New("email transport is not configured")
 	}
 
 	params := &resend.SendEmailRequest{

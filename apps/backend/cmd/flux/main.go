@@ -1,3 +1,4 @@
+// Package main runs the flux process entry point.
 package main
 
 import (
@@ -34,9 +35,9 @@ func run(ctx context.Context, output io.Writer) int {
 		log.Error().Str("error", observability.SafeError(err)).Msg("database.connect")
 		return 1
 	}
-	if err := role.Run(ctx); err != nil {
-		event := log.Error().Str("error", observability.SafeError(err))
-		if errors.Is(err, context.DeadlineExceeded) {
+	if err37 := role.Run(ctx); err37 != nil {
+		event := log.Error().Str("error", observability.SafeError(err37))
+		if errors.Is(err37, context.DeadlineExceeded) {
 			event.Str("error.stage", "deadline")
 		}
 		event.Msg("telemetry.shutdown")

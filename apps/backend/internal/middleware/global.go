@@ -1,3 +1,4 @@
+// Package middleware applies request identity, authentication, tracing, and HTTP safeguards.
 package middleware
 
 import (
@@ -12,22 +13,26 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// GlobalMiddlewares collects HTTP boundary middleware.
 type GlobalMiddlewares struct {
 	server *server.Server
 }
 
+// NewGlobalMiddlewares constructs HTTP middleware from server settings.
 func NewGlobalMiddlewares(s *server.Server) *GlobalMiddlewares {
 	return &GlobalMiddlewares{
 		server: s,
 	}
 }
 
+// CORS applies the configured cross-origin policy.
 func (global *GlobalMiddlewares) CORS() echo.MiddlewareFunc {
 	return middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: global.server.Config.Server.CORSAllowedOrigins,
 	})
 }
 
+// RequestLogger logs safe request metadata after handler execution.
 func (global *GlobalMiddlewares) RequestLogger() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -39,33 +44,45 @@ func (global *GlobalMiddlewares) RequestLogger() echo.MiddlewareFunc {
 			log := GetLogger(c)
 			var event *zerolog.Event
 			switch {
-			case status >= 500:
+			case status >= http.StatusInternalServerError:
 				event = log.Error()
-			case status >= 400:
+			case status >= http.StatusBadRequest:
 				event = log.Warn()
 			default:
 				event = log.Info()
 			}
-			event.Str("operation", "http.request").Str("http.request.method", SafeMethod(c.Request().Method)).Str("http.route", SafeRoute(c)).Int("http.response.status_code", status).Msg("http.request")
+			event.Str("operation",
+				"http.request").
+				Str("http.request.method",
+					SafeMethod(c.Request().
+						Method)).
+				Str("http.route",
+					SafeRoute(c)).
+				Int("http.response.status_code",
+					status).
+				Msg("http.request")
 			return nil
 		}
 	}
 }
 
+// Recover converts panics to the HTTP error boundary.
 func (global *GlobalMiddlewares) Recover() echo.MiddlewareFunc {
 	return middleware.RecoverWithConfig(middleware.RecoverConfig{
 		DisablePrintStack:   true,
 		DisableErrorHandler: true,
-		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+		LogErrorFunc: func(_ echo.Context, _ error, _ []byte) error {
 			return errors.New("operation failed")
 		},
 	})
 }
 
+// Secure applies secure HTTP response headers.
 func (global *GlobalMiddlewares) Secure() echo.MiddlewareFunc {
 	return middleware.Secure()
 }
 
+// GlobalErrorHandler serializes safe public errors and logs their category.
 func (global *GlobalMiddlewares) GlobalErrorHandler(err error, c echo.Context) {
 	// First try to handle database errors and convert them to appropriate HTTP errors
 
@@ -117,7 +134,15 @@ func (global *GlobalMiddlewares) GlobalErrorHandler(err error, c echo.Context) {
 	}
 
 	// Telemetry records fixed operational fields. Public typed validation stays intact.
-	GetLogger(c).Error().Str("operation", "http.request").Str("error.category", "unknown").Int("http.response.status_code", status).Msg("http.request")
+	GetLogger(c).
+		Error().
+		Str("operation",
+			"http.request").
+		Str("error.category",
+			"unknown").
+		Int("http.response.status_code",
+			status).
+		Msg("http.request")
 
 	if !c.Response().Committed {
 		_ = c.JSON(status, errs.HTTPError{

@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestOpenAPIAlternateDirectory(t *testing.T) {
 	canonical, err := os.ReadFile("../../../../packages/openapi/openapi.json")
 	if err != nil {
@@ -35,7 +36,9 @@ func TestOpenAPIAlternateDirectory(t *testing.T) {
 				t.Fatal("documentation must revalidate its version")
 			}
 			if path == "/static/openapi.json" {
-				if !bytes.Equal(response.Body.Bytes(), canonical) || !json.Valid(response.Body.Bytes()) {
+				if !bytes.Equal(response.Body.Bytes(),
+					canonical) ||
+					!json.Valid(response.Body.Bytes()) {
 					t.Fatal("served contract differs from canonical authored artifact")
 				}
 				if !strings.HasPrefix(response.Header().Get("Content-Type"), "application/json") {
@@ -44,13 +47,21 @@ func TestOpenAPIAlternateDirectory(t *testing.T) {
 				return
 			}
 			body := response.Body.String()
-			for _, fragment := range []string{"<!DOCTYPE html>", "data-url=\"/static/openapi.json\"", "@scalar/api-reference@", "integrity=\"sha384-", "crossorigin=\"anonymous\""} {
+			for _, fragment := range []string{"<!DOCTYPE html>",
+				"data-url=\"/static/openapi.json\"",
+				"@scalar/api-reference@",
+				"integrity=\"sha384-",
+				"crossorigin=\"anonymous\""} {
 				if !strings.Contains(body, fragment) {
 					t.Fatalf("docs missing %q", fragment)
 				}
 			}
 			policy := response.Header().Get("Content-Security-Policy")
-			for _, fragment := range []string{"default-src 'none'", "script-src 'sha384-", "connect-src 'self'", "frame-ancestors 'none'", "base-uri 'none'"} {
+			for _, fragment := range []string{"default-src 'none'",
+				"script-src 'sha384-",
+				"connect-src 'self'",
+				"frame-ancestors 'none'",
+				"base-uri 'none'"} {
 				if !strings.Contains(policy, fragment) {
 					t.Fatalf("docs CSP missing %q", fragment)
 				}
