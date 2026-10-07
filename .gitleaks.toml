@@ -1,0 +1,7 @@
+title = "Flux secret scanning — pinned default rules"
+
+[extend]
+useDefault = true
+
+# No directory baselines, inline allow comments or credential allowlists.
+# Synthetic scanner credentials are generated only in disposable runtime trees.
