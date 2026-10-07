@@ -20,13 +20,20 @@ const normalize = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(normalize);
   if (value === null || typeof value !== "object") return value;
   const object = value as Record<string, unknown>;
-  const normalized = Object.fromEntries(Object.keys(object).sort().map((key) => [key, normalize(object[key])]));
+  const normalized = Object.fromEntries(
+    Object.keys(object)
+      .sort()
+      .map((key) => [key, normalize(object[key])]),
+  );
   // Preserve the existing ts-rest custom file representation as OpenAPI binary.
-  if (JSON.stringify(normalized) === JSON.stringify({
-    properties: { type: { enum: ["file"], type: "string" } },
-    required: ["type"],
-    type: "object",
-  })) {
+  if (
+    JSON.stringify(normalized) ===
+    JSON.stringify({
+      properties: { type: { enum: ["file"], type: "string" } },
+      required: ["type"],
+      type: "object",
+    })
+  ) {
     return { format: "binary", type: "string" };
   }
   return normalized;
@@ -71,7 +78,9 @@ export const generateOpenAPI = async (
   } catch (error) {
     failures.push(error);
   }
-  const cleanup = await Promise.allSettled(staged.map(({ directory }) => rm(directory, { recursive: true, force: true })));
+  const cleanup = await Promise.allSettled(
+    staged.map(({ directory }) => rm(directory, { recursive: true, force: true })),
+  );
   for (const result of cleanup) {
     if (result.status === "rejected") failures.push(result.reason);
   }

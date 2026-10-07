@@ -1,10 +1,10 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import * as schemas from "@flux/zod";
 import type { ZodType } from "zod";
 
@@ -15,7 +15,10 @@ const servedPath = join(root, "apps/backend/static/openapi.json");
 
 type Generator = {
   serializeOpenAPI: (document?: unknown) => string;
-  generateOpenAPI: (outputs?: string[], write?: (path: string, bytes: string) => Promise<void>) => Promise<void>;
+  generateOpenAPI: (
+    outputs?: string[],
+    write?: (path: string, bytes: string) => Promise<void>,
+  ) => Promise<void>;
 };
 
 const loadGenerator = async (): Promise<Generator> => {
@@ -23,7 +26,7 @@ const loadGenerator = async (): Promise<Generator> => {
   const source = await readFile(generatorPath, "utf8");
   assert.match(source, /export (const|function) serializeOpenAPI/);
   assert.match(source, /export (const|async function|function) generateOpenAPI/);
-  return await import(generatorPath) as unknown as Generator;
+  return (await import(generatorPath)) as unknown as Generator;
 };
 
 const withDirectory = async (run: (directory: string) => Promise<void>) => {
@@ -50,7 +53,13 @@ test("health schemas accept coarse states and reject diagnostic fields", () => {
   assert.equal(ready.safeParse({ status: "ready", checks: [] }).success, true);
   assert.equal(ready.safeParse({ status: "healthy", checks: [] }).success, false);
   assert.equal(live.safeParse({ status: "alive", environment: "secret" }).success, false);
-  assert.equal(ready.safeParse({ status: "ready", checks: [{ name: "database", state: "ready", error: "secret" }] }).success, false);
+  assert.equal(
+    ready.safeParse({
+      status: "ready",
+      checks: [{ name: "database", state: "ready", error: "secret" }],
+    }).success,
+    false,
+  );
 });
 
 test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diagnostics", async () => {
@@ -62,7 +71,8 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   assert.deepEqual(Object.keys(document.paths["/live"].get.responses), ["200"]);
   assert.deepEqual(Object.keys(document.paths["/ready"].get.responses), ["200", "503"]);
   const responseSchema = (path: string, status: string) => {
-    const reference = document.paths[path].get.responses[status].content["application/json"].schema.$ref;
+    const reference =
+      document.paths[path].get.responses[status].content["application/json"].schema.$ref;
     assert.ok(reference, "health schemas have reusable named components");
     return document.components.schemas[reference.split("/").at(-1)];
   };
@@ -72,29 +82,48 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     const schema = responseSchema("/ready", status);
     assert.equal(schema.title, "transport.HealthReadyResponse");
     assert.deepEqual(schema.properties.status.enum, ["ready", "not_ready"]);
-    assert.deepEqual(Object.keys(schema.properties.checks.items.properties).sort(), ["name", "state"]);
+    assert.deepEqual(Object.keys(schema.properties.checks.items.properties).sort(), [
+      "name",
+      "state",
+    ]);
   }
   assert.doesNotMatch(serializeOpenAPI(), /"(error|environment|timestamp|response_time)"/);
 });
 
 test("serialization ignores object insertion order and preserves binary file conversion", async () => {
   const { serializeOpenAPI } = await loadGenerator();
-  assert.equal(serializeOpenAPI({ z: { b: 2, a: 1 }, a: [2, 1] }), serializeOpenAPI({ a: [2, 1], z: { a: 1, b: 2 } }));
-  const file = { type: "object", properties: { type: { type: "string", enum: ["file"] } }, required: ["type"] };
+  assert.equal(
+    serializeOpenAPI({ z: { b: 2, a: 1 }, a: [2, 1] }),
+    serializeOpenAPI({ a: [2, 1], z: { a: 1, b: 2 } }),
+  );
+  const file = {
+    type: "object",
+    properties: { type: { type: "string", enum: ["file"] } },
+    required: ["type"],
+  };
   assert.deepEqual(JSON.parse(serializeOpenAPI(file)), { format: "binary", type: "string" });
-  assert.equal(serializeOpenAPI(file), serializeOpenAPI({ required: ["type"], properties: { type: { enum: ["file"], type: "string" } }, type: "object" }));
+  assert.equal(
+    serializeOpenAPI(file),
+    serializeOpenAPI({
+      required: ["type"],
+      properties: { type: { enum: ["file"], type: "string" } },
+      type: "object",
+    }),
+  );
 });
 
 test("generation awaits writes and produces matching repeatable bytes", async () => {
   const { generateOpenAPI, serializeOpenAPI } = await loadGenerator();
   await withDirectory(async (directory) => {
-    const outputs = [join(directory, "canonical.json"), join(directory, "served.json")];
+    const canonical = join(directory, "canonical.json");
+    const served = join(directory, "served.json");
+    const outputs = [canonical, served];
     await generateOpenAPI(outputs);
-    const first = await readFile(outputs[0]!, "utf8");
+    const first = await readFile(canonical, "utf8");
     assert.equal(first, serializeOpenAPI());
-    assert.equal(first, await readFile(outputs[1]!, "utf8"));
+    assert.equal(first, await readFile(served, "utf8"));
     await generateOpenAPI(outputs);
-    assert.equal(first, await readFile(outputs[0]!, "utf8"));
+    assert.equal(first, await readFile(canonical, "utf8"));
     assert.deepEqual((await readdir(directory)).sort(), ["canonical.json", "served.json"]);
   });
 });
@@ -133,15 +162,18 @@ test("each asynchronous write failure is awaited, preserved, and cleaned up", as
       const failure = new Error(`write failure ${failedIndex}`);
       let writes = 0;
       let settled = false;
-      await assert.rejects(generateOpenAPI(outputs, async (path, bytes) => {
-        const index = writes++;
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        if (index === failedIndex) {
-          settled = true;
-          throw failure;
-        }
-        await writeFile(path, bytes);
-      }), (error) => error === failure);
+      await assert.rejects(
+        generateOpenAPI(outputs, async (path, bytes) => {
+          const index = writes++;
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          if (index === failedIndex) {
+            settled = true;
+            throw failure;
+          }
+          await writeFile(path, bytes);
+        }),
+        (error) => error === failure,
+      );
       assert.equal(settled, true);
       for (const output of outputs) assert.equal(await readFile(output, "utf8"), "original");
       assert.deepEqual((await readdir(directory)).sort(), ["first.json", "second.json"]);
@@ -166,7 +198,10 @@ test("CLI propagates every output write failure to a nonzero process exit", asyn
     await withDirectory(async (directory) => {
       const outputs = [join(directory, "first.json"), join(directory, "second.json")];
       outputs[failedIndex] = join(directory, "missing", "failed.json");
-      const result = spawnSync("node", [generatorPath, ...outputs], { cwd: directory, encoding: "utf8" });
+      const result = spawnSync("node", [generatorPath, ...outputs], {
+        cwd: directory,
+        encoding: "utf8",
+      });
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /ENOENT/);
       assert.deepEqual(await readdir(directory), []);
@@ -177,7 +212,14 @@ test("CLI propagates every output write failure to a nonzero process exit", asyn
 
 test("built contract export resolves under Node and Bun", () => {
   for (const runtime of ["node", "bun"]) {
-    const result = spawnSync(runtime, ["--eval", "import('@flux/openapi/contracts').then(({ apiContract }) => { if (apiContract.Health.getLive.path !== '/live' || apiContract.Health.getReady.path !== '/ready') throw new Error('contract mismatch'); }).catch(error => { console.error(error); process.exitCode = 1; });"], { cwd: join(root, "packages/openapi"), encoding: "utf8" });
+    const result = spawnSync(
+      runtime,
+      [
+        "--eval",
+        "import('@flux/openapi/contracts').then(({ apiContract }) => { if (apiContract.Health.getLive.path !== '/live' || apiContract.Health.getReady.path !== '/ready') throw new Error('contract mismatch'); }).catch(error => { console.error(error); process.exitCode = 1; });",
+      ],
+      { cwd: join(root, "packages/openapi"), encoding: "utf8" },
+    );
     assert.equal(result.status, 0, `${runtime}: ${result.stderr}`);
   }
 });

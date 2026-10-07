@@ -9,7 +9,7 @@ export type PaginatedResponse<T> = {
 };
 
 export const schemaWithPagination = <T>(
-  schema: z.ZodSchema<T>
+  schema: z.ZodSchema<T>,
 ): z.ZodSchema<PaginatedResponse<T>> =>
   z.object({
     data: z.array(schema),

@@ -9,17 +9,15 @@ import {
   Link,
   Preview,
   Section,
-  Text,
   Tailwind,
+  Text,
 } from "@react-email/components";
 
 interface WelcomeEmailProps {
   userFirstName: string;
 }
 
-export const WelcomeEmail = ({
-  userFirstName = "{{.UserFirstName}}",
-}: WelcomeEmailProps) => {
+export const WelcomeEmail = ({ userFirstName = "{{.UserFirstName}}" }: WelcomeEmailProps) => {
   return (
     <Html>
       <Head />
@@ -27,17 +25,11 @@ export const WelcomeEmail = ({
       <Tailwind>
         <Body className="bg-gray-100 font-sans">
           <Container className="bg-white p-8 rounded-lg shadow-sm my-10 mx-auto max-w-[600px]">
-            <Heading className="text-2xl font-bold text-gray-800 mt-4">
-              Welcome to Flux!
-            </Heading>
+            <Heading className="text-2xl font-bold text-gray-800 mt-4">Welcome to Flux!</Heading>
 
             <Section>
-              <Text className="text-gray-700 text-base">
-                Hi {userFirstName},
-              </Text>
-              <Text className="text-gray-700 text-base">
-                Thank you for joining!
-              </Text>
+              <Text className="text-gray-700 text-base">Hi {userFirstName},</Text>
+              <Text className="text-gray-700 text-base">Thank you for joining!</Text>
             </Section>
 
             <Section className="my-8 text-center">
@@ -62,9 +54,7 @@ export const WelcomeEmail = ({
             </Section>
 
             <Section className="mt-8 text-center">
-              <Text className="text-gray-500 text-xs">
-                © Flux. All rights reserved.
-              </Text>
+              <Text className="text-gray-500 text-xs">© Flux. All rights reserved.</Text>
             </Section>
           </Container>
         </Body>
