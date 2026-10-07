@@ -274,7 +274,13 @@ test("real pinned Gitleaks catches runtime worktree and deleted history secrets 
     const secret = ["ghp", randomBytes(30).toString("hex").slice(0, 40)].join("_");
     const lines: string[] = [];
     const scan = () =>
-      runScans({ root, mode: "secrets", verify: async () => {}, emit: (s) => lines.push(s) });
+      runScans({
+        root,
+        mode: "secrets",
+        ci: false,
+        verify: async () => {},
+        emit: (s) => lines.push(s),
+      });
     assert.equal(await scan(), 0);
     await writeFile(join(root, "credentials.txt"), `access_token = ${secret}\n`);
     assert.equal(await scan(), 1);
