@@ -1,33 +1,51 @@
 {
-    "$schema": "https://turbo.build/schema.json",
-    "ui": "tui",
-    "tasks": {
-      "build": {
-        "dependsOn": ["^build"],
-        "inputs": ["$TURBO_DEFAULT$", ".env*"]
-      },
-      "lint": {
-        "dependsOn": ["^lint"]
-      },
-      "lint:fix": {
-        "dependsOn": ["^lint:fix"]
-      },
-      "format": {
-        "dependsOn": ["^format"]
-      },
-      "format:fix": {
-        "dependsOn": ["^format:fix"]
-      },
-      "typecheck": {
-        "dependsOn": ["^typecheck"]
-      },
-      "clean": {
-        "cache": false
-      },
-      "dev": {
-        "cache": false,
-        "persistent": true
-      }
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$"
+      ]
+    },
+    "@flux/emails#build": {
+      "outputs": [
+        "dist/**",
+        "../../apps/backend/templates/emails/*.html"
+      ]
+    },
+    "format:check": {
+      "cache": false
+    },
+    "lint": {
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
+    },
+    "test": {
+      "dependsOn": [
+        "build"
+      ],
+      "cache": false
+    },
+    "generate:check": {
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
     }
   }
-  
+}

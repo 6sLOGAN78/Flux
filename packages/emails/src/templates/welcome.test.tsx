@@ -1,4 +1,3 @@
-import { render } from "@react-email/components";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -6,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { render } from "@react-email/components";
 import WelcomeEmail from "./welcome.js";
 
 test("email and OpenAPI workspaces expose every quality command", async () => {

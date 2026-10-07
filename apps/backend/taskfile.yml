@@ -99,6 +99,42 @@ tasks:
     - task: migrate
     - task: migrate
 
+  format:check:
+    desc: check backend and all implemented workspace formatting without mutation
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run format:check
+
+  lint:
+    desc: run Go vet, staticcheck, golangci-lint and workspace lint
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run lint
+
+  typecheck:
+    desc: compile every Go test and type-check all TypeScript sources
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run typecheck
+
+  test:unit:
+    desc: run all non-container Go tests with the race detector and all Bun suites
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run test:unit
+
+  test:integration:
+    desc: run every classified pinned-container Go regression with the race detector
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run test:integration
+
+  generate:check:
+    desc: regenerate in isolation and reject any contract or email drift
+    dir: '{{.TASKFILE_DIR}}/../..'
+    cmds:
+    - bun run generate:check
+
   migrations:up:
     desc: compatibility alias for explicit embedded migrations
     cmds:
