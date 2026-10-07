@@ -7,18 +7,38 @@ import { test } from "node:test";
 
 const load = () => import("./scan.ts");
 const marker = () => `PRIVATE_${randomBytes(24).toString("hex")}`;
-const goConfig = { protocol_version: "v1.0.0", scanner_name: "govulncheck", scanner_version: "v1.8.0", scan_level: "package", scan_mode: "source", go_version: "go1.26.8" };
-const goReport = (findings: unknown[] = [], config = goConfig) => [
-  { config },
-  { SBOM: { go_version: "go1.26.8", modules: [{ path: "example.test/dependency", version: "v1.0.0" }], roots: ["example.test/fixture"] } },
-  ...findings.map((finding) => ({ finding })),
-].map((event) => JSON.stringify(event)).join("\n");
+const goConfig = {
+  protocol_version: "v1.0.0",
+  scanner_name: "govulncheck",
+  scanner_version: "v1.8.0",
+  scan_level: "package",
+  scan_mode: "source",
+  go_version: "go1.26.8",
+};
+const goReport = (findings: unknown[] = [], config = goConfig) =>
+  [
+    { config },
+    {
+      SBOM: {
+        go_version: "go1.26.8",
+        modules: [{ path: "example.test/dependency", version: "v1.0.0" }],
+        roots: ["example.test/fixture"],
+      },
+    },
+    ...findings.map((finding) => ({ finding })),
+  ]
+    .map((event) => JSON.stringify(event))
+    .join("\n");
 const fixture = async (run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "flux-scan-test-"));
   try {
     await mkdir(join(root, "apps/backend"), { recursive: true });
     await writeFile(join(root, "bun.lock"), "{}");
-    await writeFile(join(root, "apps/backend/go.mod"), "module example.test/fixture\n");
+    await writeFile(
+      join(root, "apps/backend/go.mod"),
+      "module example.test/fixture\nrequire example.test/dependency v1.0.0\n",
+    );
+    await writeFile(join(root, "credentials.txt"), "safe fixture file\n");
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -41,11 +61,13 @@ test("both dependency scanners run and findings fail with safe advisory identifi
         return command.tool === "govulncheck"
           ? {
               code: 0,
-              stdout: goReport([{
+              stdout: goReport([
+                {
                   osv: "GO-2026-0001",
                   fixed_version: privateValue,
                   trace: [{ module: privateValue, package: "example.test/dependency" }],
-              }]),
+                },
+              ]),
               stderr: privateValue,
             }
           : {
@@ -315,15 +337,36 @@ test("unused module inventory stays visible while every imported package or symb
     const { runScans } = await load();
     for (const exposure of ["unused", "package", "symbol"]) {
       const lines: string[] = [];
-      const finding = { osv: "GO-2026-0001", fixed_version: "v1.0.1", trace: [{ module: "example.test/dependency", version: "v1.0.0", ...(exposure === "unused" ? {} : exposure === "package" ? { package: "example.test/dependency/unsafe" } : { function: "Unsafe" }) }] };
-      const result = await runScans({ root, mode: "dependencies", verify: async () => {}, emit: (line) => lines.push(line), runner: async (command) => {
-        if (command.tool !== "govulncheck") return { code: 0, stdout: "{}", stderr: "" };
-        assert.deepEqual(command.args, ["-json", "-scan=package", "-test", "./..."]);
-        return { code: 0, stdout: goReport([finding]), stderr: "" };
-      } });
+      const finding = {
+        osv: "GO-2026-0001",
+        fixed_version: "v1.0.1",
+        trace: [
+          {
+            module: "example.test/dependency",
+            version: "v1.0.0",
+            ...(exposure === "unused"
+              ? {}
+              : exposure === "package"
+                ? { package: "example.test/dependency/unsafe" }
+                : { function: "Unsafe" }),
+          },
+        ],
+      };
+      const result = await runScans({
+        root,
+        mode: "dependencies",
+        verify: async () => {},
+        emit: (line) => lines.push(line),
+        runner: async (command) => {
+          if (command.tool !== "govulncheck") return { code: 0, stdout: "{}", stderr: "" };
+          assert.deepEqual(command.args, ["-json", "-scan=package", "-test", "./..."]);
+          return { code: 0, stdout: goReport([finding]), stderr: "" };
+        },
+      });
       assert.equal(result, exposure === "unused" ? 0 : 1);
       assert.match(lines.join("\n"), /GO-2026-0001/);
-      if (exposure === "unused") assert.match(lines.join("\n"), /inventory.*no vulnerable package imported/);
+      if (exposure === "unused")
+        assert.match(lines.join("\n"), /inventory.*no vulnerable package imported/);
     }
   });
 });
@@ -339,11 +382,40 @@ test("wrong Go protocol, scope, toolchain and incomplete or malformed findings f
       goReport([], { ...goConfig, go_version: "go1.25.5" }),
       JSON.stringify({ SBOM: { go_version: "go1.26.8", modules: [] } }),
       goReport([{ osv: "GO-2026-0001", trace: [] }]),
-      goReport([{ osv: "GO-2026-0001", trace: [{ module: "example.test/dependency", package: 42 }] }]),
+      goReport([
+        { osv: "GO-2026-0001", trace: [{ module: "example.test/dependency", package: 42 }] },
+      ]),
       goReport([]) + JSON.stringify({ unknown: {} }),
     ];
-    for (const stdout of responses) assert.equal(await runScans({ root, mode: "dependencies", verify: async () => {}, emit: () => {}, runner: async (command) => ({ code: 0, stdout: command.tool === "govulncheck" ? stdout : "{}", stderr: "" }) }), 1);
-    assert.equal(await runScans({ root, mode: "dependencies", verify: async () => {}, emit: () => {}, runner: async (command) => ({ code: 0, stdout: command.tool === "govulncheck" ? goReport() : "{}", stderr: "" }) }), 0);
+    for (const stdout of responses)
+      assert.equal(
+        await runScans({
+          root,
+          mode: "dependencies",
+          verify: async () => {},
+          emit: () => {},
+          runner: async (command) => ({
+            code: 0,
+            stdout: command.tool === "govulncheck" ? stdout : "{}",
+            stderr: "",
+          }),
+        }),
+        1,
+      );
+    assert.equal(
+      await runScans({
+        root,
+        mode: "dependencies",
+        verify: async () => {},
+        emit: () => {},
+        runner: async (command) => ({
+          code: 0,
+          stdout: command.tool === "govulncheck" ? goReport() : "{}",
+          stderr: "",
+        }),
+      }),
+      0,
+    );
   });
 });
 
@@ -352,12 +424,41 @@ test("metadata that resembles valid identifiers cannot disclose injected secrets
     const { runScans } = await load();
     const secret = `private-${randomBytes(8).toString("hex")}`;
     const lines: string[] = [];
-    await runScans({ root, verify: async () => {}, emit: (line) => lines.push(line), runner: async (command) => {
-      if (command.tool === "git") return { code: 128, stdout: "", stderr: secret };
-      if (command.tool === "govulncheck") return { code: 0, stdout: goReport([{ osv: secret, fixed_version: `v1.0.0-${secret}`, trace: [{ module: secret, version: `v1.0.0-${secret}`, package: secret }] }]), stderr: secret };
-      if (command.tool === "bun") return { code: 1, stdout: JSON.stringify({ [secret]: [{ id: 3, url: `https://github.com/advisories/${secret}` }] }), stderr: secret };
-      return { code: 1, stdout: JSON.stringify([{ RuleID: secret, File: `${secret}.txt`, StartLine: 1, StartColumn: 2, Secret: secret }]), stderr: secret };
-    } });
+    await runScans({
+      root,
+      verify: async () => {},
+      emit: (line) => lines.push(line),
+      runner: async (command) => {
+        if (command.tool === "git") return { code: 128, stdout: "", stderr: secret };
+        if (command.tool === "govulncheck")
+          return {
+            code: 0,
+            stdout: goReport([
+              {
+                osv: secret,
+                fixed_version: `v1.0.0-${secret}`,
+                trace: [{ module: secret, version: `v1.0.0-${secret}`, package: secret }],
+              },
+            ]),
+            stderr: secret,
+          };
+        if (command.tool === "bun")
+          return {
+            code: 1,
+            stdout: JSON.stringify({
+              [secret]: [{ id: 3, url: `https://github.com/advisories/${secret}` }],
+            }),
+            stderr: secret,
+          };
+        return {
+          code: 1,
+          stdout: JSON.stringify([
+            { RuleID: secret, File: `${secret}.txt`, StartLine: 1, StartColumn: 2, Secret: secret },
+          ]),
+          stderr: secret,
+        };
+      },
+    });
     assert.doesNotMatch(lines.join("\n"), new RegExp(secret));
   });
 });
@@ -365,10 +466,26 @@ test("metadata that resembles valid identifiers cannot disclose injected secrets
 test("real pinned package scanner fails a temporary legacy OpenPGP import", async () => {
   await fixture(async (root) => {
     const { capture, runScans } = await load();
-    for (const file of ["go.mod", "go.sum"]) await writeFile(join(root, "apps/backend", file), await readFile(new URL(`../apps/backend/${file}`, import.meta.url)));
-    await writeFile(join(root, "apps/backend/main.go"), 'package main\nimport _ "golang.org/x/crypto/openpgp"\nfunc main() {}\n');
+    for (const file of ["go.mod", "go.sum"])
+      await writeFile(
+        join(root, "apps/backend", file),
+        await readFile(new URL(`../apps/backend/${file}`, import.meta.url)),
+      );
+    await writeFile(
+      join(root, "apps/backend/main.go"),
+      'package main\nimport _ "golang.org/x/crypto/openpgp"\nfunc main() {}\n',
+    );
     const lines: string[] = [];
-    const result = await runScans({ root, mode: "dependencies", verify: async () => {}, emit: (line) => lines.push(line), runner: async (command) => command.tool === "govulncheck" ? capture({ ...command, tool: join(process.cwd(), "tmp/tools/govulncheck") }) : { code: 0, stdout: "{}", stderr: "" } });
+    const result = await runScans({
+      root,
+      mode: "dependencies",
+      verify: async () => {},
+      emit: (line) => lines.push(line),
+      runner: async (command) =>
+        command.tool === "govulncheck"
+          ? capture({ ...command, tool: join(process.cwd(), "tmp/tools/govulncheck") })
+          : { code: 0, stdout: "{}", stderr: "" },
+    });
     assert.equal(result, 1);
     assert.match(lines.join("\n"), /GO-2026-5932.*imported package/);
   });

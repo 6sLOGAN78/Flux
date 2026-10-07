@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { installTools } from "./install-tools.ts";
@@ -65,26 +65,58 @@ const advisory = (value: unknown) =>
   )
     ? value
     : opaque(value);
+const publicRules = new Set([
+  "github-pat",
+  "github-fine-grained-pat",
+  "github-oauth",
+  "generic-api-key",
+  "aws-access-token",
+  "private-key",
+  "slack-access-token",
+  "stripe-access-token",
+  "npm-access-token",
+]);
 const rule = (value: unknown) =>
-  typeof value === "string" && /^[a-z][a-z0-9-]{1,39}$/.test(value) ? value : opaque(value);
-const packageName = (value: unknown) =>
-  typeof value === "string" && /^[a-z@][a-z0-9@/._-]{1,99}$/.test(value) ? value : opaque(value);
+  typeof value === "string" && publicRules.has(value) ? value : opaque(value);
+const packageName = (value: unknown, known: Set<string>) =>
+  typeof value === "string" && known.has(value) && /^[a-z@][a-z0-9@/._-]{1,99}$/.test(value)
+    ? value
+    : opaque(value);
 const version = (value: unknown) =>
-  typeof value === "string" &&
-  /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value) &&
-  value.length < 50
+  typeof value === "string" && /^v?\d+\.\d+\.\d+$/.test(value) && value.length < 50
     ? value
     : "not reported";
 const location = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) > 0 ? String(value) : "unknown";
-const safePath = (value: unknown, root: string) => {
+const safePath = async (value: unknown, root: string) => {
   if (typeof value !== "string") return opaque(value);
   const path = value.startsWith("/") ? relative(root, value) : value;
-  return path.length <= 160 &&
+  const candidate = resolve(root, path);
+  const inside = candidate.startsWith(`${root}/`);
+  const existing =
+    inside &&
+    (await lstat(candidate)
+      .then((stat) => stat.isFile())
+      .catch(() => false));
+  return existing &&
+    path.length <= 160 &&
     !path.split("/").some((part) => part === ".." || part.length > 40) &&
     /^(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_.-]+$/.test(path)
     ? path
     : opaque(value);
+};
+
+const knownGoModules = async (root: string) => {
+  const mod = await readFile(join(root, "apps/backend/go.mod"), "utf8");
+  return new Set(
+    [...mod.matchAll(/^\s*(?:module\s+|require\s+)?([a-z][a-z0-9./_-]+)(?:\s+v\d|\s*$)/gm)].map(
+      (match) => match[1] ?? "",
+    ),
+  );
+};
+const knownBunPackages = async (root: string) => {
+  const lock = await readFile(join(root, "bun.lock"), "utf8");
+  return new Set([...lock.matchAll(/"([^"\n]+)"\s*:\s*\[\s*"/g)].map((match) => match[1] ?? ""));
 };
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -157,14 +189,23 @@ export const runScans = async (
     error("scanner integrity");
     return 1;
   }
-  const scan = async (stage: string, command: Command, parse: (result: Result) => string[]) => {
+  const scan = async (
+    stage: string,
+    command: Command,
+    parse: (result: Result) => string[] | Promise<string[]>,
+  ) => {
     try {
-      const findings = parse(await run(command));
+      const findings = await parse(await run(command));
       if (findings.length) {
         failed = true;
         for (const finding of findings.slice(0, 100)) emit(`${stage}: ${finding}`);
         if (findings.length > 100) emit(`${stage}: additional findings omitted`);
-      } else emit(`${stage}: clean`);
+      } else
+        emit(
+          stage === "Go dependencies"
+            ? "Go dependencies: no vulnerable imported packages (all backend roles and tests); inventory diagnostics retained"
+            : `${stage}: clean`,
+        );
     } catch {
       error(stage);
     }
@@ -174,14 +215,18 @@ export const runScans = async (
       "Go dependencies",
       {
         tool: options.runner ? "govulncheck" : join(repositoryRoot, "tmp/tools/govulncheck"),
-        args: ["-json", "-scan=module", "-C", "cmd/api"],
+        args: ["-json", "-scan=package", "-test", "./..."],
         cwd: join(root, "apps/backend"),
       },
-      (result) => {
+      async (result) => {
         if (result.code !== 0) throw new Error("scanner failed");
         const events = decodeGo(result.stdout);
         const findings: string[] = [];
+        const inventory = new Map<string, string>();
+        const exposed = new Set<string>();
+        const known = await knownGoModules(root);
         let complete = false;
+        let configured = false;
         for (const event of events) {
           if (
             Object.keys(event).length !== 1 ||
@@ -190,11 +235,34 @@ export const runScans = async (
             )
           )
             throw new Error("invalid event");
+          if (event.config) {
+            const config = object(event.config);
+            if (
+              configured ||
+              config.protocol_version !== "v1.0.0" ||
+              config.scanner_name !== "govulncheck" ||
+              config.scanner_version !== "v1.8.0" ||
+              config.scan_level !== "package" ||
+              config.scan_mode !== "source" ||
+              config.go_version !== "go1.26.8"
+            )
+              throw new Error("invalid scanner protocol/scope");
+            configured = true;
+          } else if (!configured) throw new Error("missing scanner config");
           if (event.SBOM) {
             const sbom = object(event.SBOM);
             if (
               !Array.isArray(sbom.modules) ||
               !sbom.modules.length ||
+              !Array.isArray(sbom.roots) ||
+              !sbom.roots.length ||
+              !sbom.roots.every((path) => typeof path === "string" && path.length > 0) ||
+              !sbom.modules.every((module) => {
+                const m = object(module);
+                return (
+                  typeof m.path === "string" && (!("version" in m) || typeof m.version === "string")
+                );
+              }) ||
               sbom.go_version !== "go1.26.8"
             )
               throw new Error("invalid SBOM/toolchain");
@@ -202,23 +270,54 @@ export const runScans = async (
           }
           if (event.finding) {
             const f = object(event.finding);
-            const trace = Array.isArray(f.trace) && f.trace.length ? object(f.trace[0]) : {};
-            findings.push(
-              `${advisory(f.osv)} ${packageName(trace.module)}@${version(trace.version)} apps/backend/go.mod; fixed=${version(f.fixed_version)}; module-level finding, inspect Go advisory`,
-            );
+            if (
+              !complete ||
+              typeof f.osv !== "string" ||
+              !/^GO-\d{4}-\d{4,}$/.test(f.osv) ||
+              !Array.isArray(f.trace) ||
+              !f.trace.length
+            )
+              throw new Error("invalid finding");
+            const frames = f.trace.map(object);
+            for (const frame of frames) {
+              if (
+                typeof frame.module !== "string" ||
+                !frame.module ||
+                ["package", "function"].some(
+                  (key) => key in frame && (typeof frame[key] !== "string" || !frame[key]),
+                )
+              )
+                throw new Error("invalid finding trace");
+            }
+            const trace = frames[0] ?? {};
+            const detail = `${advisory(f.osv)} ${packageName(trace.module, known)}@${version(trace.version)} apps/backend/go.mod; fixed=${version(f.fixed_version)}`;
+            if (frames.some((frame) => frame.package || frame.function)) {
+              exposed.add(f.osv);
+              findings.push(`${detail}; vulnerable imported package; upgrade per Go advisory`);
+            } else
+              inventory.set(
+                f.osv,
+                `${detail}; inventory advisory, no vulnerable package imported in all roles/tests`,
+              );
           }
         }
-        if (!complete && !findings.length) throw new Error("incomplete report");
+        if (!complete || !configured) throw new Error("incomplete report");
+        for (const finding of [...inventory.entries()]
+          .filter(([id]) => !exposed.has(id))
+          .map(([, detail]) => detail)
+          .slice(0, 100))
+          emit(`Go dependencies inventory: ${finding}`);
         return [...new Set(findings)];
       },
     );
     await scan(
       "Bun dependencies",
       { tool: "bun", args: ["audit", "--json"], cwd: root },
-      (result) => {
+      async (result) => {
         if (result.code !== 0 && result.code !== 1) throw new Error("scanner failed");
         const report = object(JSON.parse(result.stdout));
         const findings: string[] = [];
+        const known = await knownBunPackages(root);
         for (const [name, entries] of Object.entries(report)) {
           if (!Array.isArray(entries) || !entries.length) throw new Error("invalid audit report");
           for (const entry of entries) {
@@ -227,7 +326,7 @@ export const runScans = async (
               throw new Error("invalid audit finding");
             const id = /^https:\/\/github\.com\/advisories\/(GHSA-[a-z0-9-]+)$/.exec(f.url)?.[1];
             findings.push(
-              `${id ? advisory(id) : `npm-advisory-${location(f.id)}`} ${packageName(name)} bun.lock; upgrade affected package per advisory`,
+              `${id ? advisory(id) : `npm-advisory-${location(f.id)}`} ${packageName(name, known)} bun.lock; upgrade affected package per advisory`,
             );
           }
         }
@@ -237,15 +336,17 @@ export const runScans = async (
     );
   }
   if (mode !== "dependencies") {
-    const parse = (result: Result) => {
+    const parse = async (result: Result) => {
       if (result.code !== 0 && result.code !== 1) throw new Error("scanner failed");
       const report: unknown = JSON.parse(result.stdout);
       if (!Array.isArray(report) || (result.code === 1 && !report.length))
         throw new Error("invalid secret report");
-      return report.map((entry) => {
-        const f = object(entry);
-        return `${rule(f.RuleID)} ${safePath(f.File, root)}:${location(f.StartLine)}:${location(f.StartColumn)}; remove secret and rotate credential`;
-      });
+      return Promise.all(
+        report.map(async (entry) => {
+          const f = object(entry);
+          return `${rule(f.RuleID)} ${await safePath(f.File, root)}:${location(f.StartLine)}:${location(f.StartColumn)}; remove secret and rotate credential`;
+        }),
+      );
     };
     const gitleaks = options.runner ? "gitleaks" : join(repositoryRoot, "tmp/tools/gitleaks");
     const flags = [

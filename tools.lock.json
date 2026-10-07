@@ -9,11 +9,11 @@
     },
     "govulncheck": {
       "version": "v1.8.0",
-      "command": ["-json", "-scan=module", "-C", "cmd/api"],
+      "command": ["-json", "-scan=package", "-test", "./..."],
       "toolchain": "go1.26.8",
       "source": "https://go.googlesource.com/vuln/+/refs/tags/v1.8.0",
-      "scope": "Full Go module dependency graph; module-level findings do not claim symbol reachability",
-      "verification": "Pinned help and actual JSON stream including uppercase SBOM and selected Go version"
+      "scope": "All backend roles and tests; every vulnerable imported package fails, unused module inventory remains explicitly visible; no advisory exception",
+      "verification": "Pinned protocol/config, SBOM Go1.26.8, real all-package test analysis and runtime legacy OpenPGP import mutation"
     },
     "gitleaks": {
       "version": "8.30.1",
