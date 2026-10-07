@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Session resumed; recovering existing plan 01-18 collector changes
-last_updated: "2026-10-07T15:28:35.278Z"
-last_activity: 2026-10-06
+stopped_at: Completed 01-18-PLAN.md
+last_updated: "2026-10-07T15:41:31.684Z"
+last_activity: 2026-10-07
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 01 (Foundation Stability & System Boundaries) — EXECUTING
-Plan: 18 of 22
+Plan: 19 of 22
 Status: Ready to execute
-Last activity: 2026-10-06
+Last activity: 2026-10-07
 
-Progress: [████████░░] 77%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [████████░░] 77%
 | Phase 01 P15 | 11min | 2 tasks | 9 files |
 | Phase 01 P16 | 14min | 2 tasks | 6 files |
 | Phase 01 P17 | 9min | 2 tasks | 18 files |
+| Phase 01 P18 | 11min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Inject HTTP tracer/meter APIs with validated UUID correlation, traceparent-only ingress and closed route/method/role/status-class metrics; retain the minimal Server.Telemetry seam for later role composition. — Preserve response/log/span identity and safe public validation while stripping private propagation and request/provider fields before local telemetry capture.
 - [Phase 01]: Migrate unsafe legacy jobs via canonical replacement enqueue followed by RevokeTask; inject narrow email delivery and optional telemetry while retaining existing drain behavior. — Asynq shares payload/header objects with concurrent cancellation persistence; public APIs retain recoverability and remaining retry budget without a data race or Redis-internal schema dependency.
 - [Phase 01]: Register role telemetry first and flush last; share one migrator PostgreSQL/provider exit context; remove vendor types and preserve safe operational diagnostics. — Keep tested serial drain and source-compatible constructors without global providers, successive exit deadlines or vendor dependencies.
+- [Phase 01]: Preserve safe nonzero application Links but drop complete collector Link/event collections with pinned OTTL 0.162.0; validate dirty signals and final 200 cumulative metrics independently.
 
 ### Pending Todos
 
@@ -120,6 +122,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-07T15:28:35.266Z
-Stopped at: Session resumed; recovering existing plan 01-18 collector changes
-Resume file: .planning/phases/01-foundation-stability-system-boundaries/01-18-PLAN.md
+Last session: 2026-10-07T15:41:31.673Z
+Stopped at: Completed 01-18-PLAN.md
+Resume file: None
