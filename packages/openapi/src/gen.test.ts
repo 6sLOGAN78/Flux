@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,6 +13,26 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const generatorPath = join(root, "packages/openapi/dist/gen.js");
 const canonicalPath = join(root, "packages/openapi/openapi.json");
 const servedPath = join(root, "apps/backend/static/openapi.json");
+
+test("both OpenAPI adapters retain the secure merge implementation", () => {
+  const require = createRequire(import.meta.url);
+  const adapterRequires = [require, createRequire(require.resolve("@ts-rest/open-api"))];
+  for (const adapterRequire of adapterRequires) {
+    const mergeRequire = createRequire(adapterRequire.resolve("@anatine/zod-openapi"));
+    const { default: legacyMerge, merge } = mergeRequire("ts-deepmerge");
+    assert.equal(legacyMerge, merge);
+    const result = legacyMerge(
+      { nested: { original: true } },
+      JSON.parse(
+        '{"nested":{"added":true},"__proto__":{"polluted":true},"toString":0,"valueOf":0}',
+      ),
+    );
+    assert.deepEqual(result, { nested: { original: true, added: true } });
+    assert.equal(String(result), "[object Object]");
+    assert.equal(Object.hasOwn(result, "__proto__"), false);
+    assert.equal(Object.hasOwn(Object.prototype, "polluted"), false);
+  }
+});
 
 type Generator = {
   serializeOpenAPI: (document?: unknown) => string;

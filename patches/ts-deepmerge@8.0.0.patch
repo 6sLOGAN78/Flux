@@ -1,0 +1,14 @@
+diff --git a/cjs/index.js b/cjs/index.js
+index e0ceffbb03d26728fec3bf2db9f3a585bf165181..fc44a0f3d8a78ec3bfd77ad18e821c678572fab2 100644
+--- a/cjs/index.js
++++ b/cjs/index.js
+@@ -59,6 +59,9 @@ const merge = (...objects) => objects.reduce((result, current) => {
+     return result;
+ }, {});
+ exports.merge = merge;
++// Preserve the default function expected by the existing Zod OpenAPI adapters.
++// This aliases the patched v8 implementation, including its unsafe-key checks.
++exports.default = merge;
+ const defaultOptions = {
+     allowUndefinedOverrides: true,
+     mergeArrays: true,
