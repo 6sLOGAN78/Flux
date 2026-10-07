@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      GOFLAGS: -mod=readonly
+      GOWORK: "off"
+      GOTOOLCHAIN: local
+      GOTELEMETRY: "off"
+      NO_COLOR: "1"
+    steps:
+      - name: Check out full history without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install exact Go from shared manifest
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        timeout-minutes: 5
+        with:
+          go-version-file: .tool-versions
+          check-latest: false
+          cache: false
+
+      - name: Install exact Node from shared manifest
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .tool-versions
+          check-latest: false
+          package-manager-cache: false
+
+      - name: Install exact Bun from shared manifest
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        timeout-minutes: 5
+        with:
+          bun-version-file: .tool-versions
+          no-cache: true
+
+      - name: Verify installed runtimes and manifest agreement
+        timeout-minutes: 2
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          const entries = readFileSync(".tool-versions", "utf8").trim().split(/\r?\n/).map(line => line.trim().split(/\s+/));
+          assert.equal(entries.length, 3);
+          for (const [name, version] of entries) {
+            assert.ok(["golang", "nodejs", "bun"].includes(name));
+            assert.match(version, /^\d+\.\d+\.\d+$/);
+          }
+          const pins = Object.fromEntries(entries);
+          assert.equal(Object.keys(pins).length, 3);
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const tools = JSON.parse(readFileSync("tools.lock.json", "utf8"));
+          assert.equal(pkg.packageManager, `bun@${pins.bun}`);
+          assert.equal(pkg.engines.node, pins.nodejs);
+          assert.equal(/^go (\S+)$/m.exec(readFileSync("apps/backend/go.mod", "utf8"))?.[1], pins.golang);
+          assert.equal(tools.securityScans.bun.version, pins.bun);
+          assert.equal(tools.securityScans.govulncheck.toolchain, `go${pins.golang}`);
+          assert.equal(process.versions.node, pins.nodejs);
+          assert.equal(execFileSync("go", ["version"], { encoding: "utf8" }).split(" ")[2], `go${pins.golang}`);
+          assert.equal(execFileSync("bun", ["--version"], { encoding: "utf8" }).trim(), pins.bun);
+          console.log("Installed runtimes match shared manifests");
+          JS
+
+      - name: Install frozen Bun dependencies and checked patches
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile
+
+      - name: Install and verify checksum-pinned quality tools
+        timeout-minutes: 10
+        run: |
+          bun run tools:install
+          bun scripts/install-tools.ts --verify-config
+
+      - name: Download and verify authoritative Go modules
+        timeout-minutes: 5
+        working-directory: apps/backend
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Verify Docker and prepare immutable integration images
+        timeout-minutes: 10
+        run: |
+          docker info > /dev/null
+          docker compose --profile observability config --quiet
+          images=$(docker compose --profile observability config --images)
+          while IFS= read -r image; do
+            [[ "$image" =~ ^[a-z0-9./_-]+:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
+            docker pull "$image" > /dev/null
+          done <<< "$images"
+
+      # Direct root commands execute Go and every implemented TS workspace.
+      # check includes races, real containers, migrations, builds, uncached
+      # byte-for-byte generation and scans. No Turbo cache can skip generation.
+      - name: Run every quality and behavior gate
+        timeout-minutes: 45
+        run: bun run check
+
+      - name: Publish only sanitized dependency and secret scan diagnostics
+        timeout-minutes: 10
+        run: bun run scan
+
+      # Deliberately no dependency/tool caches or artifact uploads. Raw scanner
+      # reports, provider diagnostics and credentials never enter retained files.
