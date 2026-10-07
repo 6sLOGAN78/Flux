@@ -1,4 +1,12 @@
 {
+  "otel-collector": {
+    "image": "otel/opentelemetry-collector-contrib:0.162.0",
+    "digest": "sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
+    "source": "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/tag/v0.162.0",
+    "transformDocs": "https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.162.0/processor/transformprocessor/README.md",
+    "verified": "2026-10-07",
+    "verification": "docker buildx imagetools inspect; docker pull immutable manifest; exact binary validate; dirty three-signal OTLP protobuf and debug export capture"
+  },
   "oapi-codegen": {
     "module": "github.com/oapi-codegen/oapi-codegen/v2",
     "version": "v2.8.0",

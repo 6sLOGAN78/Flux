@@ -13,9 +13,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,6 +39,10 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	logcollector "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	metriccollector "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -181,7 +187,7 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 	text = strings.Replace(text, "exporters:\n", "exporters:\n  otlphttp/proof:\n    endpoint: "+postServer.URL+"\n    compression: none\n    encoding: proto\n    retry_on_failure:\n      enabled: false\n", 1)
 	text = strings.ReplaceAll(text, "exporters: [debug]", "exporters: [debug, otlphttp/proof]")
 	path := filepath.Join(t.TempDir(), "collector.yaml")
-	if os.WriteFile(path, []byte(text), 0600) != nil {
+	if os.WriteFile(path, []byte(text), 0644) != nil {
 		t.Fatal("write collector test configuration")
 	}
 	image := pin.Image + "@" + pin.Digest
@@ -190,8 +196,7 @@ func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Contain
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "--mount", "type=bind,src="+path+",dst=/etc/otelcol-contrib/config.yaml,readonly", image, "validate", "--config=/etc/otelcol-contrib/config.yaml")
 	if output, err := cmd.CombinedOutput(); err != nil {
-		_ = output
-		t.Fatal("exact collector binary rejected configuration")
+		t.Fatalf("exact collector binary rejected configuration: %s", output)
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{
 		Image: image, Cmd: []string{"--config=/etc/otelcol-contrib/config.yaml"},
@@ -352,6 +357,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	apiFactory := proofFactories(&output)
 	var queuedID string
 	var httpSpanID string
+	enqueued := make(chan struct{}, 1)
 	apiFactory.router = func(_ config.Role, srv *server.Server) (*echo.Echo, error) {
 		e := echo.New()
 		global := middleware.NewGlobalMiddlewares(srv)
@@ -372,6 +378,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 				return err
 			}
 			queuedID = info.ID
+			enqueued <- struct{}{}
 			return c.NoContent(http.StatusAccepted)
 		})
 		return e, nil
@@ -397,6 +404,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	if response.StatusCode != 202 {
 		t.Fatal("real HTTP enqueue failed")
 	}
+	<-enqueued
 	inspector := asynq.NewInspectorFromRedisClient(queue.Client)
 	queued, err := inspector.GetTaskInfo("default", queuedID)
 	if err != nil {
@@ -576,7 +584,7 @@ func checkProofLineage(t *testing.T, spans []*tracepb.Span, httpSpan string, lin
 				t.Fatal("required injected/worker Link was not exported")
 			}
 			for _, l := range s.Links {
-				if l.TraceState != "" || hex.EncodeToString(l.TraceId) != "4bf92f3577b34da6a3ce929d0e0e4736" || l.Flags&1 != 1 {
+				if l.TraceState != "" || hex.EncodeToString(l.TraceId) != "4bf92f3577b34da6a3ce929d0e0e4736" || len(l.SpanId) != 8 || bytes.Equal(l.SpanId, make([]byte, 8)) || l.Flags&1 != 1 {
 					t.Fatal("Link trace identity/flags/state violated")
 				}
 			}
@@ -596,6 +604,7 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 		return &commonpb.KeyValue{Key: k, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: v}}}
 	}
 	resource := &resourcepb.Resource{Attributes: []*commonpb.KeyValue{kv("service.name", "flux.api"), kv("private", secret)}}
+	resource.Attributes = append(resource.Attributes, kv("process.role", secret), kv("deployment.environment.name", secret))
 	scope := &commonpb.InstrumentationScope{Name: secret, Version: secret, Attributes: []*commonpb.KeyValue{kv("private", secret)}}
 	traceID, _ := hex.DecodeString("4bf92f3577b34da6a3ce929d0e0e4736")
 	spanID, _ := hex.DecodeString("00f067aa0ba902b7")
@@ -604,6 +613,25 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 		"/v1/logs":    &logcollector.ExportLogsServiceRequest{ResourceLogs: []*logpb.ResourceLogs{{Resource: resource, ScopeLogs: []*logpb.ScopeLogs{{Scope: scope, LogRecords: []*logpb.LogRecord{{Body: kv("", secret).Value, SeverityText: secret, EventName: secret, Attributes: []*commonpb.KeyValue{kv("private", secret), kv("request_id", proofRequestID)}}}}}}}},
 		"/v1/metrics": &metriccollector.ExportMetricsServiceRequest{ResourceMetrics: []*metricpb.ResourceMetrics{{Resource: resource, ScopeMetrics: []*metricpb.ScopeMetrics{{Scope: scope, Metrics: []*metricpb.Metric{{Name: "flux.http.requests", Description: secret, Unit: secret, Data: &metricpb.Metric_Sum{Sum: &metricpb.Sum{AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE, DataPoints: []*metricpb.NumberDataPoint{{Attributes: []*commonpb.KeyValue{kv("private", secret), kv("request_id", proofRequestID), kv("http.route", "/live")}, Value: &metricpb.NumberDataPoint_AsInt{AsInt: 1}}}}}}}}}}}},
 	}
+	// Challenge values under allowed keys independently of the SDK sanitizer.
+	// A key-only collector allowlist would let every one of these values leak.
+	unsafeValues := func() []*commonpb.KeyValue {
+		var attrs []*commonpb.KeyValue
+		for _, key := range []string{"operation", "process.role", "http.request.method", "http.route", "outcome", "dependency", "error.category", "error.stage", "job.type", "db.system.name", "db.operation.name", "correlation_id", "http.response.status_code", "retry.count", "start_version", "end_version"} {
+			attrs = append(attrs, kv(key, secret))
+		}
+		return attrs
+	}
+	dirtySpan := messages["/v1/traces"].(*tracecollector.ExportTraceServiceRequest).ResourceSpans[0].ScopeSpans[0].Spans[0]
+	dirtySpan.Attributes = append(dirtySpan.Attributes, unsafeValues()...)
+	dirtyLog := messages["/v1/logs"].(*logcollector.ExportLogsServiceRequest).ResourceLogs[0].ScopeLogs[0].LogRecords[0]
+	dirtyLog.Attributes = append(dirtyLog.Attributes, unsafeValues()...)
+	dirtyPoint := messages["/v1/metrics"].(*metriccollector.ExportMetricsServiceRequest).ResourceMetrics[0].ScopeMetrics[0].Metrics[0].GetSum().DataPoints[0]
+	// OTLP requires attribute keys to be unique. Replace the original route,
+	// rather than append a second key whose map lookup would be undefined.
+	dirtyPoint.Attributes = dirtyPoint.Attributes[:2]
+	dirtyPoint.Attributes = append(dirtyPoint.Attributes, unsafeValues()...)
+	dirtyPoint.Exemplars = []*metricpb.Exemplar{{FilteredAttributes: []*commonpb.KeyValue{kv("private", secret)}, TraceId: traceID, SpanId: spanID, Value: &metricpb.Exemplar_AsInt{AsInt: 1}}}
 	for path, message := range messages {
 		data, err := proto.Marshal(message)
 		if err != nil {
@@ -619,9 +647,51 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 		}
 	}
 	proofEventually(t, func() bool { return len(post.snapshot()) >= 3 })
+	for _, wire := range post.snapshot() {
+		if bytes.Contains(wire.body, []byte(secret)) {
+			t.Fatalf("dirty probe retained private input in %s", wire.path)
+		}
+	}
 	spans := proofSignals(t, post.snapshot(), secret)
 	if len(spans) != 1 || len(spans[0].Links) != 0 || len(spans[0].Events) != 0 {
 		t.Fatal("collector failed to remove private nested fields")
+	}
+	if len(spans[0].Attributes) != 1 || spans[0].Attributes[0].Key != "request_id" || spans[0].Attributes[0].Value.GetStringValue() != proofRequestID {
+		t.Fatal("collector did not preserve only valid trace correlation")
+	}
+	for _, wire := range post.snapshot() {
+		switch wire.path {
+		case "/v1/logs":
+			var request logcollector.ExportLogsServiceRequest
+			if proto.Unmarshal(wire.body, &request) != nil {
+				t.Fatal("decode dirty probe log output")
+			}
+			for _, r := range request.ResourceLogs {
+				for _, scope := range r.ScopeLogs {
+					for _, record := range scope.LogRecords {
+						if len(record.Attributes) != 1 || record.Attributes[0].Key != "request_id" || record.Attributes[0].Value.GetStringValue() != proofRequestID {
+							t.Fatal("collector did not preserve only valid log correlation")
+						}
+					}
+				}
+			}
+		case "/v1/metrics":
+			var request metriccollector.ExportMetricsServiceRequest
+			if proto.Unmarshal(wire.body, &request) != nil {
+				t.Fatal("decode dirty probe metric output")
+			}
+			for _, r := range request.ResourceMetrics {
+				for _, scope := range r.ScopeMetrics {
+					for _, metric := range scope.Metrics {
+						for _, point := range metric.GetSum().DataPoints {
+							if len(point.Attributes) != 0 || len(point.Exemplars) != 0 || point.GetAsInt() != 1 {
+								t.Fatal("collector retained unsafe metric identity or lost its value")
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	logs, err := c.Logs(context.Background())
 	if err != nil {
@@ -659,7 +729,23 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 	proofEventually(t, func() bool {
 		for _, w := range post.snapshot() {
 			if w.path == "/v1/metrics" {
-				return true
+				var req metriccollector.ExportMetricsServiceRequest
+				if proto.Unmarshal(w.body, &req) != nil {
+					t.Fatal("decode final HTTP metrics")
+				}
+				for _, r := range req.ResourceMetrics {
+					for _, s := range r.ScopeMetrics {
+						for _, m := range s.Metrics {
+							if m.Name == "flux.http.requests" {
+								for _, p := range m.GetSum().DataPoints {
+									if p.GetAsInt() == 200 {
+										return true
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 		return false
@@ -681,6 +767,7 @@ func TestCardinalityVariedHTTPInputs(t *testing.T) {
 						continue
 					}
 					for _, p := range m.GetSum().DataPoints {
+						sort.Slice(p.Attributes, func(i, j int) bool { return p.Attributes[i].Key < p.Attributes[j].Key })
 						data, _ := json.Marshal(p.Attributes)
 						series[string(data)] = true
 						count = max(count, p.GetAsInt())
@@ -785,5 +872,151 @@ func TestTelemetryOutageReadinessAndCleanup(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// The migrator has no readiness listener: its required operation is the actual
+// one-shot PostgreSQL migration. Monitoring failures may report an exit failure
+// after a successful migration, but cannot block that required operation.
+func TestTelemetryOutageMigrator(t *testing.T) {
+	pg, closePG := backendtesting.SetupTestPostgres(t)
+	defer closePG()
+	binary := filepath.Join(t.TempDir(), "migrator")
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", binary, "./cmd/migrator")
+	build.Dir = "../.."
+	if output, err := build.CombinedOutput(); err != nil {
+		_ = output
+		t.Fatal("build migrator outage binary")
+	}
+	for _, mode := range []string{"disconnected", "slow"} {
+		t.Run(mode, func(t *testing.T) {
+			endpoint := "http://" + binaryTestAddress(t)
+			if mode == "slow" {
+				collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					select {
+					case <-r.Context().Done():
+					case <-time.After(time.Second):
+					}
+				}))
+				defer collector.Close()
+				endpoint = collector.URL
+			}
+			env := append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...)
+			env = append(env, "FLUX_OBSERVABILITY.OTLP.ENABLED=true", "FLUX_OBSERVABILITY.OTLP.ENDPOINT="+endpoint,
+				"FLUX_OBSERVABILITY.OTLP.EXPORT_TIMEOUT=80ms", "FLUX_OBSERVABILITY.OTLP.EXPORT_INTERVAL=10ms", "FLUX_OBSERVABILITY.HEALTH_CHECKS.TIMEOUT=1s")
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, binary)
+			cmd.Dir = t.TempDir()
+			cmd.Env = env
+			start := time.Now()
+			output, err := cmd.CombinedOutput()
+			var exit *exec.ExitError
+			if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+				t.Fatal("migrator outage prevented bounded execution")
+			}
+			if ctx.Err() != nil || time.Since(start) > 1500*time.Millisecond {
+				t.Fatal("migrator outage exceeded overall exit budget")
+			}
+			if !bytes.Contains(output, []byte(`"outcome":"success"`)) || !bytes.Contains(output, []byte(`"end_version":1`)) {
+				t.Fatal("collector outage prevented required PostgreSQL migration")
+			}
+			var version int
+			if pg.Pool.QueryRow(context.Background(), "SELECT version FROM schema_version").Scan(&version) != nil || version != 1 {
+				t.Fatal("migrator outage lost authoritative PostgreSQL result")
+			}
+		})
+	}
+}
+
+type proofFaultTrace struct {
+	shutdown *atomic.Int32
+	deadline *atomic.Int32
+}
+
+func (e proofFaultTrace) ExportSpans(ctx context.Context, _ []sdktrace.ReadOnlySpan) error {
+	if _, ok := ctx.Deadline(); ok {
+		e.deadline.Add(1)
+	}
+	<-ctx.Done()
+	return errors.New("fault-provider-private")
+}
+func (e proofFaultTrace) Shutdown(context.Context) error {
+	e.shutdown.Add(1)
+	return errors.New("fault-provider-private")
+}
+
+type proofFaultLog struct {
+	shutdown *atomic.Int32
+	deadline *atomic.Int32
+}
+
+func (e proofFaultLog) Export(ctx context.Context, _ []sdklog.Record) error {
+	if _, ok := ctx.Deadline(); ok {
+		e.deadline.Add(1)
+	}
+	<-ctx.Done()
+	return errors.New("fault-provider-private")
+}
+func (e proofFaultLog) Shutdown(context.Context) error {
+	e.shutdown.Add(1)
+	return errors.New("fault-provider-private")
+}
+func (proofFaultLog) ForceFlush(context.Context) error { return nil }
+
+type proofFaultMetric struct {
+	shutdown *atomic.Int32
+	deadline *atomic.Int32
+}
+
+func (proofFaultMetric) Temporality(sdkmetric.InstrumentKind) metricdata.Temporality {
+	return metricdata.CumulativeTemporality
+}
+func (proofFaultMetric) Aggregation(k sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	return sdkmetric.DefaultAggregationSelector(k)
+}
+func (e proofFaultMetric) Export(ctx context.Context, _ *metricdata.ResourceMetrics) error {
+	if _, ok := ctx.Deadline(); ok {
+		e.deadline.Add(1)
+	}
+	<-ctx.Done()
+	return errors.New("fault-provider-private")
+}
+func (e proofFaultMetric) Shutdown(context.Context) error {
+	e.shutdown.Add(1)
+	return errors.New("fault-provider-private")
+}
+func (proofFaultMetric) ForceFlush(context.Context) error { return nil }
+
+func TestObservabilityFaultExportersBoundedCleanup(t *testing.T) {
+	var shutdown, deadline atomic.Int32
+	owner, err := observability.New(context.Background(), observability.Settings{Enabled: true, SampleRatio: 1, ExportTimeout: 80 * time.Millisecond, ExportInterval: time.Minute, Exporters: observability.Exporters{
+		Trace: proofFaultTrace{&shutdown, &deadline}, Metric: proofFaultMetric{&shutdown, &deadline}, Log: proofFaultLog{&shutdown, &deadline},
+	}}, "api")
+	if err != nil {
+		t.Fatal("construct fault exporters")
+	}
+	_, span := owner.Tracer.Start(context.Background(), "http.request")
+	span.End()
+	metric, err := owner.Meter.Int64Counter("flux.operations")
+	if err != nil {
+		t.Fatal("create bounded fault metric")
+	}
+	metric.Add(context.Background(), 1)
+	log := loggerpkg.NewLogger(config.DefaultObservabilityConfig(), io.Discard, owner.Logger)
+	log.Info().Msg("http.request")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err = owner.Shutdown(ctx)
+	if err == nil || time.Since(start) > 300*time.Millisecond {
+		t.Fatal("fault exporter shutdown did not report bounded failure")
+	}
+	proofClean(t, []byte(err.Error()), "fault-provider-private")
+	proofEventually(t, func() bool { return shutdown.Load() == 3 })
+	if deadline.Load() != 3 {
+		t.Fatal("every signal export must receive a deadline")
 	}
 }

@@ -3,6 +3,18 @@
 name: flux
 
 services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0@sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+    profiles: ["observability"]
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "127.0.0.1:${FLUX_LOCAL_OTLP_HTTP_PORT:-4318}:4318"
+      - "127.0.0.1:${FLUX_LOCAL_OTLP_GRPC_PORT:-4317}:4317"
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    mem_limit: 256m
+
   postgres:
     image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:

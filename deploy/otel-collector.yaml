@@ -1,0 +1,133 @@
+# Local opt-in sink only. Application providers sanitize before this boundary.
+# Do not enable collector debug logging: OTTL contexts can contain raw inputs.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 8388608
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 32
+  transform/privacy:
+    error_mode: propagate
+    trace_statements:
+      - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
+      - keep_keys(scope.attributes, [])
+      - set(scope.name, "github.com/6sLOGAN78/flux")
+      - set(scope.version, "")
+      - keep_keys(span.attributes, ["request_id", "correlation_id", "operation", "process.role", "http.request.method", "http.route", "http.response.status_code", "outcome", "dependency", "error.category", "error.stage", "job.type", "retry.count", "db.system.name", "db.operation.name", "start_version", "end_version"])
+      - set(span.trace_state, "")
+      - set(span.status.message, "")
+      - set(span.name, "operation") where not IsMatch(span.name, "^(configuration\\.validate|http\\.request|database\\.query|database\\.connect|redis\\.command|job\\.enqueue|job\\.process|email\\.send|dependency\\.check|telemetry\\.export|telemetry\\.shutdown)$")
+      # No per-link OTTL context in this release. Clear complete collections so
+      # unexpected Link.trace_state/event attributes cannot reach any exporter.
+      - set(span.links, nil)
+      - set(span.events, nil)
+      - delete_key(span.attributes, "operation") where not IsString(span.attributes["operation"]) or not IsMatch(span.attributes["operation"], "^(configuration\\.validate|http\\.request|database\\.query|database\\.connect|redis\\.command|job\\.enqueue|job\\.process|email\\.send|dependency\\.check|telemetry\\.export|telemetry\\.shutdown)$")
+      - delete_key(span.attributes, "process.role") where not IsString(span.attributes["process.role"]) or not IsMatch(span.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(span.attributes, "http.request.method") where not IsString(span.attributes["http.request.method"]) or not IsMatch(span.attributes["http.request.method"], "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$")
+      - delete_key(span.attributes, "http.route") where not IsString(span.attributes["http.route"]) or not IsMatch(span.attributes["http.route"], "^(/live|/ready|/status|/openapi|/openapi\\.json|/docs|unmatched)$")
+      - delete_key(span.attributes, "outcome") where not IsString(span.attributes["outcome"]) or not IsMatch(span.attributes["outcome"], "^(success|error|canceled|timeout)$")
+      - delete_key(span.attributes, "dependency") where not IsString(span.attributes["dependency"]) or not IsMatch(span.attributes["dependency"], "^(postgres|redis|email|telemetry)$")
+      - delete_key(span.attributes, "error.category") where not IsString(span.attributes["error.category"]) or not IsMatch(span.attributes["error.category"], "^(unknown|timeout|canceled|unavailable|validation)$")
+      - delete_key(span.attributes, "error.stage") where not IsString(span.attributes["error.stage"]) or not IsMatch(span.attributes["error.stage"], "^(connect|query|enqueue|process|send|export|shutdown|deadline|validate)$")
+      - delete_key(span.attributes, "job.type") where not IsString(span.attributes["job.type"]) or not IsMatch(span.attributes["job.type"], "^email:welcome$")
+      - delete_key(span.attributes, "db.system.name") where not IsString(span.attributes["db.system.name"]) or not IsMatch(span.attributes["db.system.name"], "^postgresql$")
+      - delete_key(span.attributes, "db.operation.name") where not IsString(span.attributes["db.operation.name"]) or not IsMatch(span.attributes["db.operation.name"], "^(SELECT|INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK|PING)$")
+      - delete_key(span.attributes, "request_id") where not IsString(span.attributes["request_id"]) or not IsMatch(span.attributes["request_id"], "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+      - delete_key(span.attributes, "correlation_id") where not IsString(span.attributes["correlation_id"]) or not IsMatch(span.attributes["correlation_id"], "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+      - delete_key(span.attributes, "http.response.status_code") where not IsInt(span.attributes["http.response.status_code"]) or span.attributes["http.response.status_code"] < 0 or span.attributes["http.response.status_code"] > 999
+      - delete_key(span.attributes, "retry.count") where not IsInt(span.attributes["retry.count"]) or span.attributes["retry.count"] < 0 or span.attributes["retry.count"] > 999
+      - delete_key(span.attributes, "start_version") where not IsInt(span.attributes["start_version"]) or span.attributes["start_version"] < 0 or span.attributes["start_version"] > 2147483647
+      - delete_key(span.attributes, "end_version") where not IsInt(span.attributes["end_version"]) or span.attributes["end_version"] < 0 or span.attributes["end_version"] > 2147483647
+      - delete_key(resource.attributes, "service.name") where not IsString(resource.attributes["service.name"]) or not IsMatch(resource.attributes["service.name"], "^flux\\.(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "process.role") where not IsString(resource.attributes["process.role"]) or not IsMatch(resource.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "deployment.environment.name") where not IsString(resource.attributes["deployment.environment.name"]) or not IsMatch(resource.attributes["deployment.environment.name"], "^(local|development|test|staging|production)$")
+    log_statements:
+      - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
+      - keep_keys(scope.attributes, [])
+      - set(scope.name, "github.com/6sLOGAN78/flux")
+      - set(scope.version, "")
+      - keep_keys(log.attributes, ["request_id", "correlation_id", "operation", "process.role", "http.request.method", "http.route", "http.response.status_code", "outcome", "dependency", "error.category", "error.stage", "job.type", "retry.count", "db.system.name", "db.operation.name", "start_version", "end_version"])
+      - set(log.body, "operation")
+      - set(log.severity_text, "")
+      - set(log.event_name, "")
+      - delete_key(log.attributes, "operation") where not IsString(log.attributes["operation"]) or not IsMatch(log.attributes["operation"], "^(configuration\\.validate|http\\.request|database\\.query|database\\.connect|redis\\.command|job\\.enqueue|job\\.process|email\\.send|dependency\\.check|telemetry\\.export|telemetry\\.shutdown)$")
+      - delete_key(log.attributes, "process.role") where not IsString(log.attributes["process.role"]) or not IsMatch(log.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(log.attributes, "http.request.method") where not IsString(log.attributes["http.request.method"]) or not IsMatch(log.attributes["http.request.method"], "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$")
+      - delete_key(log.attributes, "http.route") where not IsString(log.attributes["http.route"]) or not IsMatch(log.attributes["http.route"], "^(/live|/ready|/status|/openapi|/openapi\\.json|/docs|unmatched)$")
+      - delete_key(log.attributes, "outcome") where not IsString(log.attributes["outcome"]) or not IsMatch(log.attributes["outcome"], "^(success|error|canceled|timeout)$")
+      - delete_key(log.attributes, "dependency") where not IsString(log.attributes["dependency"]) or not IsMatch(log.attributes["dependency"], "^(postgres|redis|email|telemetry)$")
+      - delete_key(log.attributes, "error.category") where not IsString(log.attributes["error.category"]) or not IsMatch(log.attributes["error.category"], "^(unknown|timeout|canceled|unavailable|validation)$")
+      - delete_key(log.attributes, "error.stage") where not IsString(log.attributes["error.stage"]) or not IsMatch(log.attributes["error.stage"], "^(connect|query|enqueue|process|send|export|shutdown|deadline|validate)$")
+      - delete_key(log.attributes, "job.type") where not IsString(log.attributes["job.type"]) or not IsMatch(log.attributes["job.type"], "^email:welcome$")
+      - delete_key(log.attributes, "db.system.name") where not IsString(log.attributes["db.system.name"]) or not IsMatch(log.attributes["db.system.name"], "^postgresql$")
+      - delete_key(log.attributes, "db.operation.name") where not IsString(log.attributes["db.operation.name"]) or not IsMatch(log.attributes["db.operation.name"], "^(SELECT|INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK|PING)$")
+      - delete_key(log.attributes, "request_id") where not IsString(log.attributes["request_id"]) or not IsMatch(log.attributes["request_id"], "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+      - delete_key(log.attributes, "correlation_id") where not IsString(log.attributes["correlation_id"]) or not IsMatch(log.attributes["correlation_id"], "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+      - delete_key(log.attributes, "http.response.status_code") where not IsInt(log.attributes["http.response.status_code"]) or log.attributes["http.response.status_code"] < 0 or log.attributes["http.response.status_code"] > 999
+      - delete_key(log.attributes, "retry.count") where not IsInt(log.attributes["retry.count"]) or log.attributes["retry.count"] < 0 or log.attributes["retry.count"] > 999
+      - delete_key(log.attributes, "start_version") where not IsInt(log.attributes["start_version"]) or log.attributes["start_version"] < 0 or log.attributes["start_version"] > 2147483647
+      - delete_key(log.attributes, "end_version") where not IsInt(log.attributes["end_version"]) or log.attributes["end_version"] < 0 or log.attributes["end_version"] > 2147483647
+      - delete_key(resource.attributes, "service.name") where not IsString(resource.attributes["service.name"]) or not IsMatch(resource.attributes["service.name"], "^flux\\.(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "process.role") where not IsString(resource.attributes["process.role"]) or not IsMatch(resource.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "deployment.environment.name") where not IsString(resource.attributes["deployment.environment.name"]) or not IsMatch(resource.attributes["deployment.environment.name"], "^(local|development|test|staging|production)$")
+    metric_statements:
+      - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
+      - keep_keys(scope.attributes, [])
+      - set(scope.name, "github.com/6sLOGAN78/flux")
+      - set(scope.version, "")
+      - set(metric.description, "")
+      - set(metric.unit, "")
+      - set(metric.name, "flux.operations") where not IsMatch(metric.name, "^flux\\.(operations|duration|http\\.requests|http\\.duration|db\\.operations|db\\.duration|jobs|job\\.duration)$")
+      - keep_keys(datapoint.attributes, ["operation", "process.role", "http.request.method", "http.route", "http.response.status_code", "outcome", "dependency", "error.category", "error.stage", "job.type", "retry.count", "db.system.name", "db.operation.name"])
+      - delete_key(datapoint.attributes, "operation") where not IsString(datapoint.attributes["operation"]) or not IsMatch(datapoint.attributes["operation"], "^(configuration\\.validate|http\\.request|database\\.query|database\\.connect|redis\\.command|job\\.enqueue|job\\.process|email\\.send|dependency\\.check|telemetry\\.export|telemetry\\.shutdown)$")
+      - delete_key(datapoint.attributes, "process.role") where not IsString(datapoint.attributes["process.role"]) or not IsMatch(datapoint.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(datapoint.attributes, "http.request.method") where not IsString(datapoint.attributes["http.request.method"]) or not IsMatch(datapoint.attributes["http.request.method"], "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$")
+      - delete_key(datapoint.attributes, "http.route") where not IsString(datapoint.attributes["http.route"]) or not IsMatch(datapoint.attributes["http.route"], "^(/live|/ready|/status|/openapi|/openapi\\.json|/docs|unmatched)$")
+      - delete_key(datapoint.attributes, "outcome") where not IsString(datapoint.attributes["outcome"]) or not IsMatch(datapoint.attributes["outcome"], "^(success|error|canceled|timeout)$")
+      - delete_key(datapoint.attributes, "dependency") where not IsString(datapoint.attributes["dependency"]) or not IsMatch(datapoint.attributes["dependency"], "^(postgres|redis|email|telemetry)$")
+      - delete_key(datapoint.attributes, "error.category") where not IsString(datapoint.attributes["error.category"]) or not IsMatch(datapoint.attributes["error.category"], "^(unknown|timeout|canceled|unavailable|validation)$")
+      - delete_key(datapoint.attributes, "error.stage") where not IsString(datapoint.attributes["error.stage"]) or not IsMatch(datapoint.attributes["error.stage"], "^(connect|query|enqueue|process|send|export|shutdown|deadline|validate)$")
+      - delete_key(datapoint.attributes, "job.type") where not IsString(datapoint.attributes["job.type"]) or not IsMatch(datapoint.attributes["job.type"], "^email:welcome$")
+      - delete_key(datapoint.attributes, "db.system.name") where not IsString(datapoint.attributes["db.system.name"]) or not IsMatch(datapoint.attributes["db.system.name"], "^postgresql$")
+      - delete_key(datapoint.attributes, "db.operation.name") where not IsString(datapoint.attributes["db.operation.name"]) or not IsMatch(datapoint.attributes["db.operation.name"], "^(SELECT|INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK|PING)$")
+      - delete_key(datapoint.attributes, "http.response.status_code") where not IsInt(datapoint.attributes["http.response.status_code"]) or datapoint.attributes["http.response.status_code"] < 0 or datapoint.attributes["http.response.status_code"] > 999
+      - delete_key(datapoint.attributes, "retry.count") where not IsInt(datapoint.attributes["retry.count"]) or datapoint.attributes["retry.count"] < 0 or datapoint.attributes["retry.count"] > 999
+      - delete_key(resource.attributes, "service.name") where not IsString(resource.attributes["service.name"]) or not IsMatch(resource.attributes["service.name"], "^flux\\.(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "process.role") where not IsString(resource.attributes["process.role"]) or not IsMatch(resource.attributes["process.role"], "^(api|redirector|worker|migrator)$")
+      - delete_key(resource.attributes, "deployment.environment.name") where not IsString(resource.attributes["deployment.environment.name"]) or not IsMatch(resource.attributes["deployment.environment.name"], "^(local|development|test|staging|production)$")
+      - set(datapoint.exemplars, nil)
+  batch:
+    timeout: 100ms
+    send_batch_size: 64
+    send_batch_max_size: 256
+
+exporters:
+  # Development proof only: exporter receives sanitized signals exclusively.
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, batch]
+      exporters: [debug]
