@@ -4,9 +4,13 @@
   "description": "Package which exports all Flux zod schemas and types",
   "type": "module",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "tsc --typeRoots ../openapi/node_modules/@types,./node_modules/@types && tsc-alias",
     "dev": "tsc && (concurrently \"tsc -w\" \"tsc-alias -w\")",
-    "clean": "rimraf dist tsconfig.tsbuildinfo .turbo node_modules"
+    "clean": "rimraf dist tsconfig.tsbuildinfo .turbo node_modules",
+    "format:check": "../../tmp/tools/biome format src",
+    "lint": "../../tmp/tools/biome lint src --error-on-warnings",
+    "typecheck": "tsc --noEmit --typeRoots ../openapi/node_modules/@types,./node_modules/@types",
+    "test": "bun test src"
   },
   "exports": {
     ".": {

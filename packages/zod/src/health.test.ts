@@ -18,7 +18,8 @@ test("health accepts documented liveness and both readiness states", () => {
     assert.deepEqual(ZHealthReadyResponse.parse(response), response);
   }
   assert.deepEqual(ZHealthReadyResponse.parse({ status: "ready", checks: [] }), {
-    status: "ready", checks: [],
+    status: "ready",
+    checks: [],
   });
 });
 

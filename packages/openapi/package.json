@@ -6,9 +6,12 @@
   "scripts": {
     "gen": "tsx src/gen.ts",
     "build": "tsc && tsc-alias",
-    "test": "bun test src/gen.test.ts",
+    "test": "bun test src",
     "dev": "wait-on ../zod/dist/index.js && tsc && (concurrently \"tsc -w\" \"tsc-alias -w\")",
-    "clean": "rimraf dist tsconfig.tsbuildinfo .turbo node_modules"
+    "clean": "rimraf dist tsconfig.tsbuildinfo .turbo node_modules",
+    "format:check": "../../tmp/tools/biome format src",
+    "lint": "../../tmp/tools/biome lint src --error-on-warnings",
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     "./contracts": {
