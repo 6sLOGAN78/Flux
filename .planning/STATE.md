@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-18-PLAN.md
-last_updated: "2026-10-07T15:41:31.684Z"
+stopped_at: Completed 01-19-PLAN.md
+last_updated: "2026-10-07T16:07:54.726Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 01 (Foundation Stability & System Boundaries) — EXECUTING
-Plan: 19 of 22
+Plan: 20 of 22
 Status: Ready to execute
 Last activity: 2026-10-07
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [████████░░] 82%
 | Phase 01 P16 | 14min | 2 tasks | 6 files |
 | Phase 01 P17 | 9min | 2 tasks | 18 files |
 | Phase 01 P18 | 11min | 2 tasks | 5 files |
+| Phase 01 P19 | 18min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Migrate unsafe legacy jobs via canonical replacement enqueue followed by RevokeTask; inject narrow email delivery and optional telemetry while retaining existing drain behavior. — Asynq shares payload/header objects with concurrent cancellation persistence; public APIs retain recoverability and remaining retry budget without a data race or Redis-internal schema dependency.
 - [Phase 01]: Register role telemetry first and flush last; share one migrator PostgreSQL/provider exit context; remove vendor types and preserve safe operational diagnostics. — Keep tested serial drain and source-compatible constructors without global providers, successive exit deadlines or vendor dependencies.
 - [Phase 01]: Preserve safe nonzero application Links but drop complete collector Link/event collections with pinned OTTL 0.162.0; validate dirty signals and final 200 cumulative metrics independently.
+- [Phase 01]: Pin official Biome2.5.15, golangci-lint2.14.0, staticcheck2026.2.1, Gitleaks8.30.1 and source-built govulncheckv1.8.0 with Go1.26.8 and verified source/executable hashes. — Upstream govulncheck has no prebuilts; isolated readonly source builds reproduce exact measured hashes without application dependencies; preserve Go checks through v2 migration.
 
 ### Pending Todos
 
@@ -122,6 +124,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-07T15:41:31.673Z
-Stopped at: Completed 01-18-PLAN.md
+Last session: 2026-10-07T16:07:54.714Z
+Stopped at: Completed 01-19-PLAN.md
 Resume file: None
