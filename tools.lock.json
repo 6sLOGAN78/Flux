@@ -176,5 +176,192 @@
         "source": "https://github.com/open-telemetry/opentelemetry-proto-go/releases/tag/v1.11.0"
       }
     ]
+  },
+  "qualityTools": {
+    "biome": {
+      "version": "2.5.15",
+      "versionArgs": ["--version"],
+      "source": "https://github.com/biomejs/biome/releases/tag/%40biomejs/biome%402.5.15",
+      "verified": "2026-10-07",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/biomejs/biome/releases/download/%40biomejs/biome%402.5.15/biome-linux-x64",
+          "sha256": "5d867a0b2ccea1755b7e508b01d836a8c64e31a1e4d11ec24b43b6b4eec8b3b6",
+          "binarySha256": "5d867a0b2ccea1755b7e508b01d836a8c64e31a1e4d11ec24b43b6b4eec8b3b6",
+          "checksumSource": "https://api.github.com/repos/biomejs/biome/releases/assets/601227626"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/biomejs/biome/releases/download/%40biomejs/biome%402.5.15/biome-linux-arm64",
+          "sha256": "a56bcd73ddbfdb0f57a82bb67b7ea698eed4027aff602b95aa18fafe919d59e0",
+          "binarySha256": "a56bcd73ddbfdb0f57a82bb67b7ea698eed4027aff602b95aa18fafe919d59e0",
+          "checksumSource": "https://api.github.com/repos/biomejs/biome/releases/assets/601227632"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/biomejs/biome/releases/download/%40biomejs/biome%402.5.15/biome-darwin-x64",
+          "sha256": "86fc618563d19f373ac24eb5b8f1e41bd753a506d5df1f198c152ec365141490",
+          "binarySha256": "86fc618563d19f373ac24eb5b8f1e41bd753a506d5df1f198c152ec365141490",
+          "checksumSource": "https://api.github.com/repos/biomejs/biome/releases/assets/601227623"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/biomejs/biome/releases/download/%40biomejs/biome%402.5.15/biome-darwin-arm64",
+          "sha256": "3636796d8c78bfcfe0d45946dc93e21e12d27a49eba7401e18af1ea854d25503",
+          "binarySha256": "3636796d8c78bfcfe0d45946dc93e21e12d27a49eba7401e18af1ea854d25503",
+          "checksumSource": "https://api.github.com/repos/biomejs/biome/releases/assets/601227628"
+        }
+      },
+      "versionOutput": "Version: 2.5.15"
+    },
+    "golangci-lint": {
+      "version": "2.14.0",
+      "versionArgs": ["version"],
+      "source": "https://github.com/golangci/golangci-lint/releases/tag/v2.14.0",
+      "verified": "2026-10-07",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-linux-amd64.tar.gz",
+          "sha256": "ab90aeb7b066f92a33415b638a50fe5344bbb75a0d32ad30cc248d88f81032ab",
+          "binarySha256": "9f44104281628a17a0dc5aea2429ef51e256d405fd1af38342939578b2e2c83d",
+          "checksumSource": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-checksums.txt",
+          "archivePath": "golangci-lint-2.14.0-linux-amd64/golangci-lint"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-linux-arm64.tar.gz",
+          "sha256": "ee7ec5f3453d15ddf106fae5a4d6c71737712348a979d1fe9cd52ec7ea299bae",
+          "binarySha256": "3b857abaf7445aef6ba030f845acc6385dd626778258c8b3621bbab7d4352036",
+          "checksumSource": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-checksums.txt",
+          "archivePath": "golangci-lint-2.14.0-linux-arm64/golangci-lint"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-darwin-amd64.tar.gz",
+          "sha256": "a5667c1c3536be1740133213e1e822bfb8f0d98ea12903174d6d5f635e4ed68d",
+          "binarySha256": "78f26652ab17d09ff3e39398709af9cd1e7c2ea830c2e24b730f8262b7ca9150",
+          "checksumSource": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-checksums.txt",
+          "archivePath": "golangci-lint-2.14.0-darwin-amd64/golangci-lint"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-darwin-arm64.tar.gz",
+          "sha256": "5ef5f36a7147e91dc58ef9ef4d11bb7bad5ead0c76eb6c01327a73c641d1dcc3",
+          "binarySha256": "9d27d70d225062c18c3ba900c176f896408619428421a2037564b5ea8f9a1644",
+          "checksumSource": "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-checksums.txt",
+          "archivePath": "golangci-lint-2.14.0-darwin-arm64/golangci-lint"
+        }
+      },
+      "versionOutput": "golangci-lint has version 2.14.0"
+    },
+    "staticcheck": {
+      "version": "2026.2.1",
+      "versionArgs": ["-version"],
+      "source": "https://github.com/dominikh/go-tools/releases/tag/2026.2.1",
+      "verified": "2026-10-07",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_linux_amd64.tar.gz",
+          "sha256": "91186205a78db3f2d40efb3c102749aef66f85c2204793de7488d163b655aa7c",
+          "binarySha256": "cafc8e0e9bd4b8310c2a05654b711b6c97b0b494cee30be84894bd4d79069b1e",
+          "checksumSource": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_linux_amd64.tar.gz.sha256",
+          "archivePath": "staticcheck/staticcheck"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_linux_arm64.tar.gz",
+          "sha256": "594421f28ba620ea14b98377cb84a309cf73cc420ba0f52f30c7fa4d92fd2b0e",
+          "binarySha256": "8c1eb39fac43f5b01b73a9404bb0ebb740127f62e660f266f5ab8b43e1bf7d86",
+          "checksumSource": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_linux_arm64.tar.gz.sha256",
+          "archivePath": "staticcheck/staticcheck"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_darwin_amd64.tar.gz",
+          "sha256": "a581a26261c9554a9a9450e0de2d0cfd93a7babd4de98cc9ea556444015216f4",
+          "binarySha256": "d7256c93c3c68936401634d207117f2bc929c568e9ea874bbeda92bcaf351642",
+          "checksumSource": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_darwin_amd64.tar.gz.sha256",
+          "archivePath": "staticcheck/staticcheck"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_darwin_arm64.tar.gz",
+          "sha256": "06db0a00e5d44d0d60bc99dab10e1bd49103531054d560af658775450a25f72c",
+          "binarySha256": "32053b44a877e01aadd13343e504f386efff56d7f344ccb2ccf20b4e045dba79",
+          "checksumSource": "https://github.com/dominikh/go-tools/releases/download/2026.2.1/staticcheck_darwin_arm64.tar.gz.sha256",
+          "archivePath": "staticcheck/staticcheck"
+        }
+      },
+      "versionOutput": "staticcheck 2026.2.1 (0.8.1)"
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "versionArgs": ["version"],
+      "source": "https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1",
+      "verified": "2026-10-07",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+          "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "binarySha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+          "checksumSource": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt",
+          "archivePath": "gitleaks"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
+          "sha256": "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080",
+          "binarySha256": "00e91bbe655bd7c47753e8cfe61cb76ea1a5d7e7702fe161ee40102b46b3823b",
+          "checksumSource": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt",
+          "archivePath": "gitleaks"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_x64.tar.gz",
+          "sha256": "dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709",
+          "binarySha256": "cee01fea7173f1b779dff188e1c26ecbcb4027d394acc573b23aaf0be260e291",
+          "checksumSource": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt",
+          "archivePath": "gitleaks"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+          "binarySha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+          "checksumSource": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt",
+          "archivePath": "gitleaks"
+        }
+      },
+      "versionOutput": "8.30.1"
+    },
+    "govulncheck": {
+      "version": "v1.8.0",
+      "versionArgs": ["-version"],
+      "versionOutput": "Scanner: govulncheck@v1.8.0",
+      "source": "https://go.googlesource.com/vuln/+/refs/tags/v1.8.0",
+      "verified": "2026-10-07",
+      "build": {
+        "toolchain": "go1.26.8",
+        "module": "golang.org/x/vuln",
+        "sum": "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=",
+        "goModSum": "h1:Fzm4XK3Hbl1ZvZ7JpNTEWb7CJWOZ7m2LX0GLu4Fsrwo=",
+        "goMod": "module flux.tools\n\ngo 1.26.8\n\nrequire golang.org/x/vuln v1.8.0\n",
+        "goSum": "golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=\ngolang.org/x/mod v0.41.0/go.mod h1:Ek9pY8RKWXwsWvd3rQiHYtMqkjSUV+s1Rj7j4H5Ur6o=\ngolang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=\ngolang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=\ngolang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 h1:F5BWKvW126NXR74uxkxuc1jQHhm/rwm/J3rSiFyuRs4=\ngolang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518/go.mod h1:i+ivNqjDnTF3WTElsdk5g9V5DTSBYgdNo7xTU9SDwYA=\ngolang.org/x/tools v0.50.0 h1:c2ifzfcuY7L90lZ2aKd8S4K2NpASF08SZx9ZuJkHmSU=\ngolang.org/x/tools v0.50.0/go.mod h1:7ulVMw3831Mwi5EZD6RomGyffr4VFjuNYXf2BbCEAV0=\ngolang.org/x/vuln v1.8.0 h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=\ngolang.org/x/vuln v1.8.0/go.mod h1:Fzm4XK3Hbl1ZvZ7JpNTEWb7CJWOZ7m2LX0GLu4Fsrwo=\n"
+      },
+      "platforms": {
+        "linux-x64": {
+          "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
+          "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
+          "binarySha256": "f417d39b256c1a73c83d64fbcd8b063547d4cf67e151502e2340456003feecc8",
+          "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
+        },
+        "linux-arm64": {
+          "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
+          "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
+          "binarySha256": "8acb3fb970c59d7198112350ba6f5ee9fa0feaa010df474f62d3cf3acd632915",
+          "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
+        },
+        "darwin-x64": {
+          "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
+          "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
+          "binarySha256": "57889c79da8305e862f212367f61fd3275e82e0d6cee98422f65c4d197243123",
+          "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
+        },
+        "darwin-arm64": {
+          "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
+          "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
+          "binarySha256": "5d27e22cd1fc3ef22b9b0b3773cbf7769cbd95b59829e9cc6a0718e1b6a7e827",
+          "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
+        }
+      }
+    }
   }
 }
