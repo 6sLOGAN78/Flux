@@ -114,16 +114,18 @@ jobs:
             docker pull "$image" > /dev/null
           done <<< "$images"
 
+      # Run the closed-diagnostic scanner directly before the root runner, which
+      # keeps arbitrary subprocess output private. Findings stay actionable here.
+      - name: Run sanitized dependency and secret scans
+        timeout-minutes: 10
+        run: bun run scan
+
       # Direct root commands execute Go and every implemented TS workspace.
       # check includes races, real containers, migrations, builds, uncached
       # byte-for-byte generation and scans. No Turbo cache can skip generation.
       - name: Run every quality and behavior gate
         timeout-minutes: 45
         run: bun run check
-
-      - name: Publish only sanitized dependency and secret scan diagnostics
-        timeout-minutes: 10
-        run: bun run scan
 
       # Deliberately no dependency/tool caches or artifact uploads. Raw scanner
       # reports, provider diagnostics and credentials never enter retained files.
