@@ -10,6 +10,88 @@ import type { Stage } from "./check.ts";
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
 
+const browserReport = () => ({
+  errors: [],
+  stats: { expected: 1, unexpected: 0, skipped: 0, flaky: 0 },
+  suites: [
+    {
+      suites: [],
+      specs: [
+        {
+          ok: true,
+          tests: [
+            {
+              expectedStatus: "passed",
+              status: "expected",
+              results: [{ status: "passed", retry: 0, errors: [] }],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+test("browser gate requires positive complete non-skipped nonflaky JSON results", async () => {
+  const { assertBrowserReport } = await load();
+  assert.equal(assertBrowserReport(JSON.stringify(browserReport())), 1);
+  for (const output of [
+    "",
+    "{}",
+    "not-json",
+    JSON.stringify({ ...browserReport(), suites: [] }),
+    ...["expected", "unexpected", "skipped", "flaky"].map((key) =>
+      JSON.stringify({
+        ...browserReport(),
+        stats: { ...browserReport().stats, [key]: key === "expected" ? 0 : 1 },
+      }),
+    ),
+    JSON.stringify({ ...browserReport(), errors: [{}] }),
+    JSON.stringify(browserReport()).replace('"status":"passed"', '"status":"skipped"'),
+    JSON.stringify(browserReport()).replace('"retry":0', '"retry":1'),
+  ])
+    assert.throws(() => assertBrowserReport(output), /No successful browser tests/);
+});
+
+test("browser stage forwards selectors without overriding the JSON reporter", async () => {
+  await fixture(async (root) => {
+    const frontend = join(root, "apps/frontend");
+    await mkdir(join(frontend, "tests"), { recursive: true });
+    await writeFile(
+      join(frontend, "package.json"),
+      JSON.stringify({
+        name: "@flux/frontend",
+        scripts: Object.fromEntries(
+          [...commands, "test:e2e", "browser:install"].map((command) => [command, "true"]),
+        ),
+      }),
+    );
+    await writeFile(join(frontend, "tests/auth.spec.ts"), "export {};");
+    const { runChecks } = await load();
+    const seen: Stage[] = [];
+    await runChecks({
+      root,
+      group: "test:e2e",
+      browserArgs: ["--project=local", "--grep", "sign-in"],
+      runner: async (stage) => {
+        seen.push(stage);
+        return {
+          code: 0,
+          stdout: stage.browserTests ? JSON.stringify(browserReport()) : successfulOutput(stage),
+        };
+      },
+    });
+    assert.deepEqual(seen.at(-1)?.command, [
+      "bun",
+      "run",
+      "test:e2e",
+      "--project=local",
+      "--grep",
+      "sign-in",
+    ]);
+  });
+});
+
 test("root subprocesses find the pinned Task when the host PATH has none", async () => {
   const { runCommand } = await load();
   const previous = process.env.PATH;

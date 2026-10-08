@@ -4,6 +4,64 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+// Validate the complete JSON tree as well as aggregate stats. Retries, skips,
+// empty selection and infrastructure errors must never produce green evidence.
+export const assertBrowserReport = (output: string): number => {
+  const fail = (): never => {
+    throw new Error("No successful browser tests");
+  };
+  let report: Record<string, unknown>;
+  try {
+    report = JSON.parse(output);
+  } catch {
+    return fail();
+  }
+  if (!report || typeof report !== "object") return fail();
+  const stats = report.stats as Record<string, unknown> | undefined;
+  if (
+    !stats ||
+    !Number.isSafeInteger(stats.expected) ||
+    Number(stats.expected) < 1 ||
+    stats.unexpected !== 0 ||
+    stats.skipped !== 0 ||
+    stats.flaky !== 0 ||
+    !Array.isArray(report.errors) ||
+    report.errors.length !== 0
+  )
+    return fail();
+  let completed = 0;
+  const visit = (suites: unknown): void => {
+    if (!Array.isArray(suites)) fail();
+    for (const suite of suites as Record<string, unknown>[]) {
+      if (!suite || !Array.isArray(suite.specs) || !Array.isArray(suite.suites)) fail();
+      for (const spec of suite.specs as Record<string, unknown>[]) {
+        if (spec.ok !== true || !Array.isArray(spec.tests) || spec.tests.length === 0) fail();
+        for (const test of spec.tests as Record<string, unknown>[]) {
+          if (
+            test.expectedStatus !== "passed" ||
+            test.status !== "expected" ||
+            !Array.isArray(test.results) ||
+            test.results.length !== 1
+          )
+            fail();
+          const result = (test.results as Record<string, unknown>[])[0];
+          if (
+            result?.status !== "passed" ||
+            result.retry !== 0 ||
+            !Array.isArray(result.errors) ||
+            result.errors.length !== 0
+          )
+            fail();
+          completed++;
+        }
+      }
+      visit(suite.suites);
+    }
+  };
+  visit(report.suites);
+  if (completed !== stats.expected) return fail();
+  return completed;
+};
 const requiredCommands = ["format:check", "lint", "typecheck", "test", "build"] as const;
 type Group =
   | "tools"
@@ -12,6 +70,7 @@ type Group =
   | "typecheck"
   | "test:unit"
   | "test:integration"
+  | "test:e2e"
   | "build"
   | "migrate:check"
   | "generate:check"
@@ -25,6 +84,7 @@ export type Stage = {
   expectedTests?: string[];
   listedTests?: Record<string, string[]>;
   bunTests?: boolean;
+  browserTests?: boolean;
   emptyOutput?: boolean;
 };
 type Result = { code: number; stdout: string; failedTests?: string[] };
@@ -67,7 +127,8 @@ export const integrationTests: Record<string, string[]> = {
 const filesUnder = async (directory: string): Promise<string[]> => {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (["node_modules", "dist", ".git", "build", "tmp", ".turbo"].includes(entry.name)) continue;
+    if (["node_modules", "dist", ".git", "build", ".next", "tmp", ".turbo"].includes(entry.name))
+      continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...(await filesUnder(path)));
     else if (entry.isFile()) files.push(path);
@@ -249,6 +310,24 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
     add(`${workspace.name}:test`, "test:unit", ["bun", "run", "test"], join(root, workspace.path), {
       bunTests: true,
     });
+  for (const workspace of workspaces.filter((workspace) => workspace.path === "apps/frontend")) {
+    add(
+      `${workspace.name}:browser-install`,
+      "test:e2e",
+      ["bun", "run", "browser:install"],
+      join(root, workspace.path),
+    );
+    add(
+      `${workspace.name}:test:e2e`,
+      "test:e2e",
+      ["bun", "run", "test:e2e"],
+      join(root, workspace.path),
+      {
+        browserTests: true,
+        timeoutMs: 600000,
+      },
+    );
+  }
   if (scriptTests.length)
     add("scripts:test", "test:unit", ["bun", "test", ...scriptTests], root, { bunTests: true });
   add("tools:self-test", "test:unit", ["bun", "scripts/install-tools.ts", "--self-test"]);
@@ -393,6 +472,7 @@ export const runChecks = async (
     group?: Group;
     runner?: Runner;
     progress?: (id: string) => void;
+    browserArgs?: string[];
   } = {},
 ) => {
   const context = await discover(options.root);
@@ -409,6 +489,7 @@ export const runChecks = async (
     : all;
   if (!stages.some((stage) => stage.group !== "tools")) throw new Error("No stages selected");
   for (const stage of stages) {
+    if (stage.browserTests) stage.command.push(...(options.browserArgs ?? []));
     options.progress?.(stage.id);
     const result = await (options.runner ?? runCommand)(stage);
     if (result.code !== 0 || (stage.emptyOutput && result.stdout.trim())) {
@@ -420,6 +501,7 @@ export const runChecks = async (
     }
     if (stage.bunTests && !/[1-9]\d* pass\b/.test(result.stdout))
       throw new Error(`No successful tests: ${stage.id}`);
+    if (stage.browserTests) assertBrowserReport(result.stdout);
     if (stage.listedTests) {
       const listed: Record<string, string[]> = {};
       for (const line of result.stdout.split("\n")) {
@@ -467,24 +549,35 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
   try {
     const args = process.argv.slice(2);
     const group = args[0] === "--stage" ? (args[1] as Group) : undefined;
+    const browserArgs =
+      group === "test:e2e"
+        ? args.slice(2).filter((arg, index) => !(index === 0 && arg === "--"))
+        : [];
     const groups: Group[] = [
       "format:check",
       "lint",
       "typecheck",
       "test:unit",
       "test:integration",
+      "test:e2e",
       "build",
       "migrate:check",
       "generate:check",
     ];
     if (
       !(args.length === 1 && ["--fast", "--full"].includes(args[0] ?? "")) &&
-      !(args.length === 2 && group && groups.includes(group))
+      !(
+        args.length >= 2 &&
+        group &&
+        groups.includes(group) &&
+        (args.length === 2 || group === "test:e2e")
+      )
     )
       throw new Error("Usage: bun scripts/check.ts --fast|--full|--stage <group>");
     await runChecks({
       mode: args[0] === "--fast" ? "fast" : "full",
       group,
+      browserArgs,
       progress: (id) => console.log(`Checking ${id}`),
     });
     console.log("Checks passed");

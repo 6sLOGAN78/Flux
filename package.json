@@ -20,6 +20,7 @@
     "scan:secrets": "bun scripts/scan.ts --secrets",
     "test:unit": "bun scripts/check.ts --stage test:unit",
     "test:integration": "bun scripts/check.ts --stage test:integration",
+    "test:e2e": "bun scripts/check.ts --stage test:e2e",
     "migrate:check": "bun scripts/check.ts --stage migrate:check"
   },
   "packageManager": "bun@1.3.14",
