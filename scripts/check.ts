@@ -329,7 +329,10 @@ export const runCommand: Runner = async (stage) =>
     let failed = false;
     const child = spawn(stage.command[0] ?? "", stage.command.slice(1), {
       cwd: stage.cwd,
-      env: process.env,
+      env: {
+        ...process.env,
+        PATH: `${join(repositoryRoot, "tmp/tools")}:${process.env.PATH ?? ""}`,
+      },
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });

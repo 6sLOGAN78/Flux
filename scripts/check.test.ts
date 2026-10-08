@@ -10,6 +10,28 @@ import type { Stage } from "./check.ts";
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
 
+test("root subprocesses find the pinned Task when the host PATH has none", async () => {
+  const { runCommand } = await load();
+  const previous = process.env.PATH;
+  try {
+    process.env.PATH = "/nonexistent-task-host-path";
+    const result = await runCommand({
+      id: "task:version",
+      group: "tools",
+      command: ["task", "--version"],
+      cwd: fileURLToPath(new URL("../", import.meta.url)),
+      timeoutMs: 1000,
+    });
+    assert.equal(result.code, 0);
+    const manifest = JSON.parse(
+      await readFile(new URL("../tools.lock.json", import.meta.url), "utf8"),
+    );
+    assert.equal(result.stdout.trim(), manifest.qualityTools.task.versionOutput);
+  } finally {
+    process.env.PATH = previous;
+  }
+});
+
 test("real full and fast root checks reject initial drift before any mutation", {
   timeout: 180000,
 }, async () => {

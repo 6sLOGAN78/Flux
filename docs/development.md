@@ -8,7 +8,11 @@ tenant entities, and a dashboard belong to later phases.
 
 Use `.tool-versions` for Go 1.26.8, Node 22.23.3, and Bun 1.3.14.
 `tools.lock.json` is the source for standalone quality tools, the Go generator,
-and collector version. `compose.yaml` and the Testcontainers helpers use the
+and collector version, including the required Task 3.54.0 runtime for backend
+task parity tests. `bun run tools:install` provisions it without a host Task
+installation; the root check prepends `tmp/tools` for all test subprocesses.
+For direct backend tests, use `PATH="$PWD/tmp/tools:$PATH"` from the repository
+root before changing directories. `compose.yaml` and the Testcontainers helpers use the
 same immutable PostgreSQL 17.11 and Redis 8.10.2 images. Bun owns the root
 `bun.lock`; the embedded Tern library in `apps/backend/go.mod` owns migrations.
 

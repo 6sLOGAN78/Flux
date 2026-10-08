@@ -37,7 +37,7 @@ declare global {
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 export const defaultInstallRoot = join(repositoryRoot, "tmp/tools");
-const names = ["biome", "golangci-lint", "staticcheck", "govulncheck", "gitleaks"] as const;
+const names = ["biome", "golangci-lint", "staticcheck", "govulncheck", "gitleaks", "task"] as const;
 
 type Tool = {
   version: string;
@@ -416,6 +416,7 @@ export const installTools = async (
             "golangci-lint": "https://github.com/golangci/golangci-lint/releases/download/",
             staticcheck: "https://github.com/dominikh/go-tools/releases/download/",
             gitleaks: "https://github.com/gitleaks/gitleaks/releases/download/",
+            task: "https://github.com/go-task/task/releases/download/",
           }[name];
     if (
       !official.href.startsWith(allowed) ||

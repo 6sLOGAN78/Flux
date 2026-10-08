@@ -94,6 +94,7 @@ jobs:
         run: |
           bun run tools:install
           bun scripts/install-tools.ts --verify-config
+          echo "$GITHUB_WORKSPACE/tmp/tools" >> "$GITHUB_PATH"
 
       - name: Download and verify authoritative Go modules
         timeout-minutes: 5

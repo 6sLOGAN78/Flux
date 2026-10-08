@@ -210,6 +210,42 @@
     ]
   },
   "qualityTools": {
+    "task": {
+      "version": "3.54.0",
+      "versionArgs": ["--version"],
+      "versionOutput": "3.54.0",
+      "source": "https://github.com/go-task/task/releases/tag/v3.54.0",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/go-task/task/releases/download/v3.54.0/task_linux_amd64.tar.gz",
+          "sha256": "680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb",
+          "binarySha256": "f00f13e91018d0aa8d4b5dc59ec5b523d0f8941760e33276ea31af7eb86fd61f",
+          "archivePath": "task",
+          "checksumSource": "https://github.com/go-task/task/releases/download/v3.54.0/task_checksums.txt"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/go-task/task/releases/download/v3.54.0/task_linux_arm64.tar.gz",
+          "sha256": "d7189d439d4a6058e39e1b2acd7c8b27acd4856691b408f23b242e4294e1df5b",
+          "binarySha256": "e7aa12d271f9829354138ac243dd89b7bacdcad5ecdb40d7924502eba7e80aed",
+          "archivePath": "task",
+          "checksumSource": "https://github.com/go-task/task/releases/download/v3.54.0/task_checksums.txt"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/go-task/task/releases/download/v3.54.0/task_darwin_amd64.tar.gz",
+          "sha256": "0543b0844a725814c0412d3f4bed12873ce9ed0da207b15775f63a97d734aac0",
+          "binarySha256": "15a679d0d9983f5c99395f4da04b9f7e4e354902f184a74203fdb562ec3bfd0a",
+          "archivePath": "task",
+          "checksumSource": "https://github.com/go-task/task/releases/download/v3.54.0/task_checksums.txt"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/go-task/task/releases/download/v3.54.0/task_darwin_arm64.tar.gz",
+          "sha256": "12a69fcf37bb8d5bc9150c44f9a936775b73e59ff044c2c245232f198c135637",
+          "binarySha256": "47301f293af8e049a6906982c8dd88fedbf55d40357e2fbe99f9fc97ba491846",
+          "archivePath": "task",
+          "checksumSource": "https://github.com/go-task/task/releases/download/v3.54.0/task_checksums.txt"
+        }
+      }
+    },
     "biome": {
       "version": "2.5.15",
       "versionArgs": ["--version"],
