@@ -1,10 +1,24 @@
 import { extendApi } from "@anatine/zod-openapi";
 import { z } from "zod";
 
-export const ZIdentityResponse = extendApi(z.object({ authenticated: z.literal(true) }).strict(), {
-  title: "transport.IdentityResponse",
-  description: "A verified active bearer session. Durable Flux identity is mapped separately.",
-});
+export const ZIdentityResponse = extendApi(
+  z
+    .object({
+      authenticated: z.literal(true),
+      user: z
+        .object({
+          id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+          email: extendApi(z.string().email().max(320), { "x-go-type": "string" }),
+        })
+        .strict(),
+    })
+    .strict(),
+  {
+    title: "transport.IdentityResponse",
+    description:
+      "Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.",
+  },
+);
 
 export const ZIdentityError = extendApi(
   z

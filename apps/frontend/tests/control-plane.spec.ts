@@ -342,7 +342,9 @@ test("bearer signed browser request reaches the production Go boundary", async (
     };
   }, fixture);
   expect(result.status).toBe(200);
-  expect(result.body).toEqual({ authenticated: true });
+  expect(result.body.authenticated).toBe(true);
+  expect(result.body.user.id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(result.body.user.email).toBe("local@example.test");
   expect(result.cache).toBe("no-store");
 });
 
@@ -403,10 +405,12 @@ test("identity resolves the signed browser session to one stable internal UUID",
     return results;
   }, fixture);
   expect(results).toHaveLength(2);
-  expect(results[0].status).toBe(200);
-  expect(results[0].cache).toBe("no-store");
-  expect(results[0].body.user.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  expect(results[1]).toEqual(results[0]);
+  const first = results[0];
+  if (!first) throw new Error("The identity request did not produce a result");
+  expect(first.status).toBe(200);
+  expect(first.cache).toBe("no-store");
+  expect(first.body.user.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(results[1]).toEqual(first);
   expect(JSON.stringify(results)).not.toContain("user_fixture");
   expect(JSON.stringify(results)).not.toContain(fixture.token);
 });

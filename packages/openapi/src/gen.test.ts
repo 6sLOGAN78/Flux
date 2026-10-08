@@ -110,6 +110,24 @@ test("health schemas accept coarse states and reject diagnostic fields", () => {
   );
 });
 
+test("identity schema requires a strict internal UUID and verified email response", () => {
+  const identity = (schemas as unknown as Record<string, ZodType>).ZIdentityResponse;
+  assert.ok(identity);
+  const valid = {
+    authenticated: true,
+    user: { id: "00000000-0000-4000-8000-000000000001", email: "local@example.test" },
+  };
+  assert.deepEqual(identity.parse(valid), valid);
+  for (const invalid of [
+    { authenticated: true },
+    { ...valid, issuer: "private-provider" },
+    { ...valid, user: { ...valid.user, id: "user_provider" } },
+    { ...valid, user: { ...valid.user, email: "unverified input" } },
+    { ...valid, user: { ...valid.user, subject: "private-provider" } },
+  ])
+    assert.equal(identity.safeParse(invalid).success, false);
+});
+
 test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diagnostics", async () => {
   const { serializeOpenAPI } = await loadGenerator();
   const document = JSON.parse(serializeOpenAPI());
@@ -120,6 +138,13 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   assert.deepEqual(me.security, [{ bearerAuth: [] }]);
   assert.deepEqual(Object.keys(me.responses).sort(), ["200", "401", "429", "503"]);
   assert.match(me.description, /Cache-Control: no-store/);
+  const identity = document.components.schemas["transport.IdentityResponse"];
+  assert.deepEqual(identity.required.sort(), ["authenticated", "user"]);
+  assert.equal(identity.additionalProperties, false);
+  assert.equal(identity.properties.user.additionalProperties, false);
+  assert.deepEqual(identity.properties.user.required.sort(), ["email", "id"]);
+  assert.equal(identity.properties.user.properties.id.format, "uuid");
+  assert.equal(identity.properties.user.properties.email.format, "email");
   assert.deepEqual(Object.keys(document.paths["/live"].get.responses), ["200"]);
   assert.deepEqual(Object.keys(document.paths["/ready"].get.responses), ["200", "503"]);
   const responseSchema = (path: string, status: string) => {

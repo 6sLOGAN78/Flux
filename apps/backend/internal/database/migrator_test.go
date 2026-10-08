@@ -21,6 +21,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lifecycle"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	tern "github.com/jackc/tern/v2/migrate"
 	containerconfig "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/rs/zerolog"
@@ -232,6 +233,29 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 		"FLUX_DATABASE.NAME=migration_test",
 		"FLUX_DATABASE.SSL_MODE=disable")
 	// Exercise the executable's first run from an empty migration ledger too.
+	// Undo the actual schema through the same embedded migration corpus before
+	// resetting its ledger; product migrations cannot safely be replayed over DDL.
+	migrator, err := tern.NewMigrator(ctx, conn, "schema_version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subtree, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loadErr := migrator.LoadMigrations(subtree); loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if prefixErr := migrator.MigrateTo(ctx, 1); prefixErr != nil {
+		t.Fatal(prefixErr)
+	}
+	upgraded, upgradeErr := MigrateWithResult(ctx, cfg)
+	if upgradeErr != nil || upgraded.StartVersion != 1 || upgraded.EndVersion != want {
+		t.Fatal("existing bootstrap prefix did not upgrade to the exact latest product schema")
+	}
+	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
+		t.Fatal(downErr)
+	}
 	if _, err187 := conn.Exec(ctx, "DROP TABLE schema_version"); err187 != nil {
 		t.Fatal(err187)
 	}
@@ -270,6 +294,9 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 			[]byte(net.JoinHostPort(host,
 				"1"))) {
 		t.Fatalf("failed binary status/redaction: %v: %s", err209, output)
+	}
+	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
+		t.Fatal(downErr)
 	}
 	if _,
 		err212 := conn.Exec(ctx,

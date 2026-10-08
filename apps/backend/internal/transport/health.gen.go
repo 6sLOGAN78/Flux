@@ -131,9 +131,13 @@ type TransportIdentityError struct {
 // TransportIdentityErrorActionType defines model for TransportIdentityError.Action.Type.
 type TransportIdentityErrorActionType string
 
-// TransportIdentityResponse A verified active bearer session. Durable Flux identity is mapped separately.
+// TransportIdentityResponse Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.
 type TransportIdentityResponse struct {
 	Authenticated TransportIdentityResponseAuthenticated `json:"authenticated"`
+	User          struct {
+		Email string `json:"email"`
+		Id    string `json:"id"`
+	} `json:"user"`
 }
 
 // TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.

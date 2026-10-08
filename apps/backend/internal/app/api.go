@@ -297,7 +297,10 @@ func defaultRoleRouter(role config.Role, srv *server.Server) (*echo.Echo, error)
 			middleware.NewContextEnhancer(srv).EnhanceContext(), global.RequestLogger(), global.Recover())
 		return e, nil
 	}
-	services := &service.Services{Job: srv.Job, Auth: service.NewAuthService(srv)}
+	services, err := service.NewServices(srv, nil)
+	if err != nil {
+		return nil, err
+	}
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, services), nil
 }
 

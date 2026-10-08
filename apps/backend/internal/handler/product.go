@@ -11,12 +11,17 @@ import (
 )
 
 // ProductHandler adapts verified control-plane identity to canonical transports.
-type ProductHandler struct{ auth *service.AuthService }
+type ProductHandler struct {
+	auth     *service.AuthService
+	identity service.IdentityResolver
+}
 
 // NewProductHandler injects the authentication boundary explicitly.
-func NewProductHandler(auth *service.AuthService) *ProductHandler { return &ProductHandler{auth: auth} }
+func NewProductHandler(auth *service.AuthService, identity service.IdentityResolver) *ProductHandler {
+	return &ProductHandler{auth: auth, identity: identity}
+}
 
-// Me proves authentication without fabricating a durable Flux user identifier.
+// Me returns the committed internal identity for an actively verified bearer.
 func (h *ProductHandler) Me(c echo.Context) error {
 	c.Response().Header().Set("Cache-Control", "no-store")
 	values := c.Request().Header.Values("Authorization")
@@ -27,9 +32,20 @@ func (h *ProductHandler) Me(c echo.Context) error {
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
 		return errs.NewUnauthorizedError("Authentication required", false)
 	}
-	_, err := h.auth.Authenticate(c.Request().Context(), token)
+	actor, err := h.auth.Authenticate(c.Request().Context(), token)
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, transport.TransportIdentityResponse{Authenticated: true})
+	if h.identity == nil {
+		return &errs.HTTPError{Code: "SERVICE_UNAVAILABLE", Message: "Authentication temporarily unavailable",
+			Status: http.StatusServiceUnavailable}
+	}
+	user, err := h.identity.Resolve(c.Request().Context(), actor)
+	if err != nil {
+		return err
+	}
+	response := transport.TransportIdentityResponse{Authenticated: true}
+	response.User.Id = user.ID.String()
+	response.User.Email = user.Email
+	return c.JSON(http.StatusOK, response)
 }

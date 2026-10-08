@@ -1189,14 +1189,14 @@ func TestTelemetryOutageMigrator(t *testing.T) {
 			if !bytes.Contains(output,
 				[]byte(`"outcome":"success"`)) ||
 				!bytes.Contains(output,
-					[]byte(`"end_version":1`)) {
+					[]byte(fmt.Sprintf(`"end_version":%d`, latestMigrationVersion(t)))) {
 				t.Fatal("collector outage prevented required PostgreSQL migration")
 			}
 			var version int
 			if pg.Pool.QueryRow(context.Background(),
 				"SELECT version FROM schema_version").
 				Scan(&version) != nil ||
-				version != 1 {
+				version != latestMigrationVersion(t) {
 				t.Fatal("migrator outage lost authoritative PostgreSQL result")
 			}
 		})

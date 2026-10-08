@@ -1,6 +1,8 @@
+//nolint:lll // Keep test-only provider wire data and rollback SQL readable without changing their representation.
 package handler_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -16,6 +18,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/handler"
+	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/6sLOGAN78/flux/internal/router"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/service"
@@ -38,18 +41,20 @@ type signedProvider struct {
 	key         *rsa.PrivateKey
 	server      *httptest.Server
 	status      string
-	mu          sync.Mutex
-	failure     bool
-	requests    int
 	profileMode string
+	issuer      string
+	logs        bytes.Buffer
+	mu          sync.Mutex
+	requests    int
 	profiles    int
+	failure     bool
 }
 
 func newSignedProvider(t *testing.T) *signedProvider {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	p := &signedProvider{key: key, status: "active"}
+	p := &signedProvider{key: key, status: "active", issuer: fixtureIssuer}
 	p.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		p.mu.Lock()
@@ -67,6 +72,9 @@ func newSignedProvider(t *testing.T) *signedProvider {
 			id := strings.TrimPrefix(r.URL.Path, "/users/")
 			p.profiles++
 			verified := "verified"
+			primary := "email_fixture"
+			email := "same@example.test"
+			banned := false
 			switch p.profileMode {
 			case "failure":
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -79,9 +87,17 @@ func newSignedProvider(t *testing.T) *signedProvider {
 				id = "user_unrelated"
 			case "unverified":
 				verified = "unverified"
+			case "missingprimary":
+				primary = "missing"
+			case "invalidemail":
+				email = "not an email"
+			case "incompatibleemail":
+				email = "local@localhost"
+			case "banned":
+				banned = true
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "primary_email_address_id": "email_fixture",
-				"email_addresses": []any{map[string]any{"id": "email_fixture", "email_address": "same@example.test",
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "primary_email_address_id": primary, "banned": banned,
+				"email_addresses": []any{map[string]any{"id": "email_fixture", "email_address": email,
 					"verification": map[string]any{"status": verified}}}})
 			return
 		}
@@ -124,7 +140,7 @@ func newSignedProvider(t *testing.T) *signedProvider {
 
 func (p *signedProvider) token(t *testing.T, changes map[string]any) string {
 	t.Helper()
-	claims := map[string]any{"iss": fixtureIssuer, "azp": fixtureParty, "sub": "user_fixture", "sid": "sess_fixture",
+	claims := map[string]any{"iss": p.issuer, "azp": fixtureParty, "sub": "user_fixture", "sid": "sess_fixture",
 		"iat": time.Now().Unix(), "nbf": time.Now().Add(-time.Second).Unix(),
 		"exp": time.Now().Add(3 * time.Minute).Unix(), "v": 2}
 	for name, value := range changes {
@@ -143,24 +159,23 @@ func (p *signedProvider) token(t *testing.T, changes map[string]any) string {
 }
 
 func productRouter(cfg *config.Config, db *database.Database, p *signedProvider) http.Handler {
-	log := zerolog.Nop()
+	log := zerolog.New(zerolog.SyncWriter(&p.logs))
 	srv := &server.Server{Config: cfg, Logger: &log, DB: db}
-	cfg.Auth = config.AuthConfig{SecretKey: "test-only", Issuer: fixtureIssuer, AuthorizedParties: []string{fixtureParty}}
+	cfg.Auth = config.AuthConfig{SecretKey: "test-only", Issuer: p.issuer, AuthorizedParties: []string{fixtureParty}}
 	clients := &clerk.ClientConfig{BackendConfig: clerk.BackendConfig{
 		URL: clerk.String(p.server.URL), Key: clerk.String(cfg.Auth.SecretKey),
 		HTTPClient: &http.Client{Timeout: 3 * time.Second}}}
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
-	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth})
+	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
+		Identity: service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)})
 }
 
-func requestMe(t *testing.T, api string, token string, cookie bool) (int, string, string) {
+func requestMe(t *testing.T, api string, token string, _ bool) (int, string, string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, api+"/api/v1/me", nil)
 	require.NoError(t, err)
-	if cookie {
-		req.AddCookie(&http.Cookie{Name: "__session", Value: token})
-	} else if token != "" {
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	response, err := (&http.Client{Timeout: 4 * time.Second}).Do(req)
@@ -183,7 +198,11 @@ func TestProductActualHTTP(t *testing.T) {
 		status, body, cache := requestMe(t, api.URL, token, false)
 		require.Equal(t, 200, status)
 		require.Equal(t, "no-store", cache)
-		var identity struct{ User struct{ ID string } }
+		var identity struct {
+			User struct {
+				ID string `json:"id"`
+			} `json:"user"`
+		}
 		require.NoError(t, json.Unmarshal([]byte(body), &identity))
 		id, err := uuid.Parse(identity.User.ID)
 		require.NoError(t, err, "authenticated session must resolve to a durable internal UUID")
@@ -223,26 +242,40 @@ func TestProductActualHTTP(t *testing.T) {
 		var rows int
 		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&rows))
 		require.Equal(t, 2, rows, "same verified email must never merge two provider subjects")
+		var response struct {
+			User struct {
+				ID string `json:"id"`
+			} `json:"user"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(first), &response))
+		var stored, original string
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT id::text FROM users WHERE issuer=$1 AND subject=$2", fixtureIssuer, "user_other").Scan(&stored))
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT id::text FROM users WHERE issuer=$1 AND subject=$2", fixtureIssuer, "user_fixture").Scan(&original))
+		require.Equal(t, stored, response.User.ID)
+		require.NotEqual(t, original, response.User.ID)
 	})
 	for _, tc := range []struct {
 		mode   string
 		status int
 	}{
 		{"failure", 503}, {"slow", 503}, {"mismatch", 401}, {"unverified", 401},
+		{"missingprimary", 401}, {"invalidemail", 401}, {"banned", 401},
+		{"incompatibleemail", 401},
 	} {
 		t.Run("identity-profile-"+tc.mode, func(t *testing.T) {
 			provider := newSignedProvider(t)
 			provider.profileMode = tc.mode
-			api := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, provider))
-			defer api.Close()
+			profileAPI := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, provider))
+			defer profileAPI.Close()
 			subject := "user_" + tc.mode
 			started := time.Now()
-			status, body, cache := requestMe(t, api.URL, provider.token(t, map[string]any{"sub": subject, "sid": "sess_" + subject}), false)
+			status, body, cache := requestMe(t, profileAPI.URL, provider.token(t, map[string]any{"sub": subject, "sid": "sess_" + subject}), false)
 			require.Equal(t, tc.status, status)
 			require.Equal(t, "no-store", cache)
 			require.Less(t, time.Since(started), 3*time.Second)
 			for _, secret := range []string{subject, fixtureIssuer, "same@example.test", "PRIVATE-PROFILE-MARKER"} {
 				require.NotContains(t, body, secret)
+				require.NotContains(t, provider.logs.String(), secret)
 			}
 			var rows int
 			require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM users WHERE subject=$1", subject).Scan(&rows))
@@ -254,15 +287,78 @@ func TestProductActualHTTP(t *testing.T) {
 		CREATE CONSTRAINT TRIGGER reject_identity_commit AFTER INSERT ON users DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_identity_commit()`)
 		require.NoError(t, err)
 		defer func() {
-			_, err := db.Pool.Exec(context.Background(), "DROP TRIGGER reject_identity_commit ON users; DROP FUNCTION reject_identity_commit()")
-			require.NoError(t, err)
+			_, dropErr := db.Pool.Exec(context.Background(), "DROP TRIGGER reject_identity_commit ON users; DROP FUNCTION reject_identity_commit()")
+			require.NoError(t, dropErr)
 		}()
 		status, body, cache := requestMe(t, api.URL, p.token(t, map[string]any{"sub": "user_rollback", "sid": "sess_user_rollback"}), false)
 		require.Equal(t, 503, status)
 		require.Equal(t, "no-store", cache)
 		require.NotContains(t, body, "PRIVATE-COMMIT-MARKER")
+		require.NotContains(t, p.logs.String(), "PRIVATE-COMMIT-MARKER")
 		var rows int
 		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM users WHERE subject=$1", "user_rollback").Scan(&rows))
 		require.Zero(t, rows)
+	})
+	t.Run("identity-configured-issuer-namespace", func(t *testing.T) {
+		provider := newSignedProvider(t)
+		provider.issuer = "https://second.clerk.accounts.dev"
+		cfg := &config.Config{Server: config.ServerConfig{CORSAllowedOrigins: []string{fixtureParty}}}
+		issuerAPI := httptest.NewServer(productRouter(cfg, &database.Database{Pool: db.Pool}, provider))
+		defer issuerAPI.Close()
+		status, _, _ := requestMe(t, issuerAPI.URL, provider.token(t, nil), false)
+		require.Equal(t, 200, status)
+		var rows int
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(DISTINCT id) FROM users WHERE subject=$1", "user_fixture").Scan(&rows))
+		require.Equal(t, 2, rows, "same subject under a different configured issuer is distinct")
+	})
+	t.Run("identity-namespace-and-UUID-immutable", func(t *testing.T) {
+		for _, statement := range []string{
+			"UPDATE users SET issuer='https://changed.test' WHERE subject='user_fixture'",
+			"UPDATE users SET subject='user_changed' WHERE subject='user_fixture'",
+			"UPDATE users SET id=gen_random_uuid() WHERE subject='user_fixture'",
+		} {
+			_, err := db.Pool.Exec(context.Background(), statement)
+			require.Error(t, err)
+		}
+	})
+	t.Run("identity-request-cancellation-rolls-back", func(t *testing.T) {
+		lock, err := db.Pool.Begin(context.Background())
+		require.NoError(t, err)
+		_, err = lock.Exec(context.Background(), "LOCK TABLE users IN SHARE MODE")
+		require.NoError(t, err)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, api.URL+"/api/v1/me", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+p.token(t, map[string]any{"sub": "user_cancelled", "sid": "sess_user_cancelled"}))
+		finished := make(chan error, 1)
+		go func() {
+			response, requestErr := (&http.Client{Timeout: 4 * time.Second}).Do(req)
+			if response != nil {
+				_ = response.Body.Close()
+			}
+			finished <- requestErr
+		}()
+		require.Eventually(t, func() bool {
+			var waiting int
+			return db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity "+
+				"WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'INSERT INTO users%'").
+				Scan(&waiting) == nil && waiting == 1
+		}, 2*time.Second, 20*time.Millisecond, "signed request must reach the blocked PostgreSQL insert")
+		cancel()
+		require.ErrorIs(t, <-finished, context.Canceled)
+		require.NoError(t, lock.Rollback(context.Background()))
+		require.Eventually(t, func() bool {
+			var transactions int
+			return db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'").Scan(&transactions) == nil && transactions == 0
+		}, 2*time.Second, 20*time.Millisecond)
+		var rows int
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM users WHERE subject=$1", "user_cancelled").Scan(&rows))
+		require.Zero(t, rows)
+	})
+	t.Run("identity-success-logs-exclude-secrets", func(t *testing.T) {
+		for _, secret := range []string{token, "same@example.test", fixtureIssuer, "user_fixture", "sess_fixture"} {
+			require.NotContains(t, p.logs.String(), secret)
+		}
 	})
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/handler"
+	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/6sLOGAN78/flux/internal/router"
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/service"
@@ -31,6 +32,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/go-jose/go-jose/v3"
 	josejwt "github.com/go-jose/go-jose/v3/jwt"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -66,6 +68,12 @@ func newSignedProvider(t *testing.T) *signedProvider {
 		if r.URL.Path == "/jwks" {
 			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{
 				Key: &key.PublicKey, KeyID: "fixture", Algorithm: "RS256", Use: "sig"}}})
+			return
+		}
+		if r.URL.Path == "/users/user_fixture" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user_fixture", "primary_email_address_id": "email_fixture",
+				"email_addresses": []any{map[string]any{"id": "email_fixture", "email_address": "local@example.test",
+					"verification": map[string]any{"status": "verified"}}}})
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/sessions/") {
@@ -128,7 +136,20 @@ func fixtureRouter(cfg *config.Config, db *database.Database, p *signedProvider)
 		HTTPClient: &http.Client{Timeout: 3 * time.Second}}}
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
-	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth})
+	var identity service.IdentityResolver = authCorpusIdentity{}
+	if db != nil {
+		identity = service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)
+	}
+	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
+		&service.Services{Auth: auth, Identity: identity})
+}
+
+// Only the provider-boundary unit corpus uses this explicit resolver. The browser
+// fixture and registered product integration dispatcher use migrated PostgreSQL.
+type authCorpusIdentity struct{}
+
+func (authCorpusIdentity) Resolve(context.Context, service.Actor) (repository.User, error) {
+	return repository.User{ID: uuid.MustParse("00000000-0000-4000-8000-000000000001"), Email: "local@example.test"}, nil
 }
 
 // TestBearerBrowserFixture uses the actual router and pinned migrated PostgreSQL.
@@ -250,7 +271,8 @@ func TestBearerSignedHTTPCorpus(t *testing.T) {
 			require.Equal(t, "no-store", cache)
 			require.Less(t, time.Since(started), 3*time.Second)
 			if status == 200 {
-				require.JSONEq(t, `{"authenticated":true}`, body)
+				require.JSONEq(t, `{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001",`+
+					`"email":"local@example.test"}}`, body)
 			} else {
 				require.NotContains(t, body, "user_fixture")
 				require.NotContains(t, body, "sess_")

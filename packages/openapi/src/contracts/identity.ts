@@ -6,9 +6,9 @@ const c = initContract();
 
 export const identityContract = c.router({
   getMe: {
-    summary: "Verify the current bearer session",
+    summary: "Resolve the current internal user",
     description:
-      "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
+      "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
     path: "/api/v1/me",
     method: "GET",
     metadata: getSecurityMetadata(),

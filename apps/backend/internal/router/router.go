@@ -66,10 +66,12 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 
 	// register versioned routes
 	var auth *service.AuthService
+	var identity service.IdentityResolver
 	if services != nil {
 		auth = services.Auth
+		identity = services.Identity
 	}
-	product := handler.NewProductHandler(auth)
+	product := handler.NewProductHandler(auth, identity)
 	router.Group("/api/v1").GET("/me", product.Me)
 
 	return router

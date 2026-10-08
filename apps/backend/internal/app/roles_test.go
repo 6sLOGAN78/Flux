@@ -753,7 +753,8 @@ func TestRoleBinaryStartup(t *testing.T) {
 	t.Run("migrator", func(t *testing.T) {
 		pg, closePG := backendTesting.SetupTestPostgres(t)
 		defer closePG()
-		for _, startVersion := range []int{0, 1} {
+		latest := latestMigrationVersion(t)
+		for _, startVersion := range []int{0, latest} {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			cmd := exec.CommandContext(ctx, filepath.Join(binaries, "migrator"))
 			cmd.Dir,
@@ -767,7 +768,7 @@ func TestRoleBinaryStartup(t *testing.T) {
 					[]byte(fmt.Sprintf(`"start_version":%d`,
 						startVersion))) ||
 				!bytes.Contains(output,
-					[]byte(`"end_version":1`)) {
+					[]byte(fmt.Sprintf(`"end_version":%d`, latest))) {
 				t.Fatalf("migrator did not exit once with exact versions: %v: %s", err594, output)
 			}
 		}
@@ -775,7 +776,7 @@ func TestRoleBinaryStartup(t *testing.T) {
 		if err601 := pg.Pool.QueryRow(context.Background(),
 			"SELECT version FROM schema_version").
 			Scan(&version); err601 != nil ||
-			version != 1 {
+			version != latest {
 			t.Fatalf("migrator schema ledger: version %d, %v", version, err601)
 		}
 	})
@@ -808,6 +809,15 @@ func TestRoleBinaryStartup(t *testing.T) {
 			}
 		}
 	})
+}
+
+func latestMigrationVersion(t *testing.T) int {
+	t.Helper()
+	files, err := filepath.Glob("../database/migrations/[0-9]*.sql")
+	if err != nil || len(files) == 0 {
+		t.Fatal("numbered migration corpus is missing")
+	}
+	return len(files)
 }
 
 func binaryTestEnv() []string {

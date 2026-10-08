@@ -146,17 +146,39 @@
       },
       "transport.IdentityResponse": {
         "additionalProperties": false,
-        "description": "A verified active bearer session. Durable Flux identity is mapped separately.",
+        "description": "Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.",
         "properties": {
           "authenticated": {
             "enum": [
               true
             ],
             "type": "boolean"
+          },
+          "user": {
+            "additionalProperties": false,
+            "properties": {
+              "email": {
+                "format": "email",
+                "maxLength": 320,
+                "type": "string",
+                "x-go-type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string",
+                "x-go-type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "email"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "authenticated"
+          "authenticated",
+          "user"
         ],
         "title": "transport.IdentityResponse",
         "type": "object"
@@ -184,7 +206,7 @@
   "paths": {
     "/api/v1/me": {
       "get": {
-        "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
+        "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
         "operationId": "getMe",
         "parameters": [],
         "responses": {
@@ -234,7 +256,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Verify the current bearer session",
+        "summary": "Resolve the current internal user",
         "tags": [
           "Identity"
         ]
