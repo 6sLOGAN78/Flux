@@ -202,14 +202,19 @@ test("each asynchronous write failure is awaited, preserved, and cleaned up", as
   }
 });
 
-test("CLI works from another directory and both tracked artifacts match", async () => {
+test("CLI works from another directory with explicit temporary outputs", async () => {
   await withDirectory(async (directory) => {
-    const result = spawnSync("node", [generatorPath], { cwd: directory, encoding: "utf8" });
+    const before = await Promise.all([readFile(canonicalPath), readFile(servedPath)]);
+    const outputs = [join(directory, "canonical.json"), join(directory, "served.json")];
+    const result = spawnSync("node", [generatorPath, ...outputs], {
+      cwd: directory,
+      encoding: "utf8",
+    });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(await readdir(directory), []);
-    assert.equal(await readFile(canonicalPath, "utf8"), await readFile(servedPath, "utf8"));
     const { serializeOpenAPI } = await loadGenerator();
-    assert.equal(await readFile(canonicalPath, "utf8"), serializeOpenAPI());
+    for (const output of outputs) assert.equal(await readFile(output, "utf8"), serializeOpenAPI());
+    assert.deepEqual(await readFile(canonicalPath), before[0]);
+    assert.deepEqual(await readFile(servedPath), before[1]);
   });
 });
 

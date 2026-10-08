@@ -169,6 +169,10 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
   ) => {
     stages.push({ id, group, command, cwd, timeoutMs: 300000, ...extra });
   };
+  // Reject the initial checked bytes before any build or test can publish assets.
+  add("generate:check", "generate:check", ["bun", "run", "generate:check"], root, {
+    timeoutMs: 600000,
+  });
   add("tools:verify", "tools", ["bun", "scripts/install-tools.ts", "--verify"]);
   add("backend:modules", "tools", ["go", "mod", "verify"], backend);
   add("backend:format", "format:check", ["gofmt", "-l", ...goFiles], backend, {
@@ -312,9 +316,6 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
     ["go", "build", "-o", join(root, "tmp/check-bin/"), "./cmd/..."],
     backend,
   );
-  add("generate:check", "generate:check", ["bun", "run", "generate:check"], root, {
-    timeoutMs: 600000,
-  });
   if (mode === "full") add("scan", "scan", ["bun", "run", "scan"], root, { timeoutMs: 900000 });
   return stages;
 };

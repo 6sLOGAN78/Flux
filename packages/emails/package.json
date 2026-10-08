@@ -10,7 +10,7 @@
     "lint": "../../tmp/tools/biome lint src --error-on-warnings",
     "typecheck": "tsc --noEmit --typeRoots ../openapi/node_modules/@types,./node_modules/@types --types node,react,react-dom",
     "test": "bun test src",
-    "build": "tsc --typeRoots ../openapi/node_modules/@types,./node_modules/@types --types node,react,react-dom && bun run export"
+    "build": "tsc --typeRoots ../openapi/node_modules/@types,./node_modules/@types --types node,react,react-dom"
   },
   "keywords": [],
   "author": "",

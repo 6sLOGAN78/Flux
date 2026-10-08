@@ -1,12 +1,65 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { Stage } from "./check.ts";
 
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
+
+test("real full and fast root checks reject initial drift before any mutation", {
+  timeout: 180000,
+}, async () => {
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  const root = await mkdtemp(join(tmpdir(), "flux-root-drift-"));
+  const { artifactManifest } = await import("./generate.ts");
+  try {
+    for (const path of ["package.json", "tools.lock.json", "scripts", "packages", "apps"]) {
+      await cp(join(repository, path), join(root, path), {
+        recursive: true,
+        filter: (path) =>
+          !/(?:^|\/)(node_modules|dist|tmp|\.env)(?:\/|$)/.test(relative(repository, path)),
+      });
+    }
+    await symlink(join(repository, "node_modules"), join(root, "node_modules"));
+    for (const name of ["zod", "openapi", "emails"])
+      await symlink(
+        join(repository, "packages", name, "node_modules"),
+        join(root, "packages", name, "node_modules"),
+      );
+    const original = await Promise.all(artifactManifest.map((path) => readFile(join(root, path))));
+    const authored = await readFile(join(root, "packages/zod/src/health.ts"));
+    for (const mode of [["--full"], ["--fast"]]) {
+      for (const [index, path] of artifactManifest.entries()) {
+        for (const mutation of ["changed", "missing"]) {
+          if (mutation === "missing") await rm(join(root, path));
+          else await writeFile(join(root, path), "private-drift-sentinel");
+          const result = spawnSync("bun", [join(root, "scripts/check.ts"), ...mode], {
+            cwd: root,
+            encoding: "utf8",
+            timeout: 60000,
+          });
+          assert.equal(result.status, 1, `${mode.join(" ")} ${path} ${mutation}`);
+          assert.match(result.stderr, /Check failed: generate:check/);
+          assert.doesNotMatch(result.stdout + result.stderr, /private-drift-sentinel/);
+          assert.doesNotMatch(result.stdout, /tools:verify|:build|:test/);
+          if (mutation === "missing") await assert.rejects(readFile(join(root, path)));
+          else assert.equal(await readFile(join(root, path), "utf8"), "private-drift-sentinel");
+          for (const [otherIndex, other] of artifactManifest.entries())
+            if (other !== path)
+              assert.deepEqual(await readFile(join(root, other)), original[otherIndex]);
+          assert.deepEqual(await readFile(join(root, "packages/zod/src/health.ts")), authored);
+          await writeFile(join(root, path), original[index] as Buffer);
+        }
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 const successfulOutput = (stage: Stage) => {
   if (stage.listedTests)
     return Object.entries(stage.listedTests)
