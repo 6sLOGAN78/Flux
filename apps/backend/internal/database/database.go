@@ -3,9 +3,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -89,19 +86,7 @@ func New(cfg *config.Config,
 	_ *loggerConfig.LoggerService,
 	telemetry ...*observability.Telemetry) (*Database,
 	error) {
-	hostPort := net.JoinHostPort(cfg.Database.Host, strconv.Itoa(cfg.Database.Port))
-
-	// URL-encode the password
-	encodedPassword := url.QueryEscape(cfg.Database.Password)
-	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s",
-		cfg.Database.User,
-		encodedPassword,
-		hostPort,
-		cfg.Database.Name,
-		cfg.Database.SSLMode,
-	)
-
-	pgxPoolConfig, err := pgxpool.ParseConfig(dsn)
+	pgxPoolConfig, err := pgxpool.ParseConfig(databaseURL(cfg.Database))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse pgx pool config: %w", err)
 	}

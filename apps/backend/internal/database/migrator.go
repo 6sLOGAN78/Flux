@@ -64,15 +64,7 @@ func MigrateWithResult(ctx context.Context,
 	if cfg == nil {
 		return result, &MigrationError{Operation: "config", cause: errors.New("configuration required")}
 	}
-	db := cfg.Database
-	dsn := &url.URL{Scheme: "postgres",
-		User: url.UserPassword(db.User,
-			db.Password),
-		Host: net.JoinHostPort(db.Host,
-			strconv.Itoa(db.Port)),
-		Path: "/" + db.Name}
-	dsn.RawQuery = url.Values{"sslmode": []string{db.SSLMode}}.Encode()
-	conn, err := pgx.Connect(ctx, dsn.String())
+	conn, err := pgx.Connect(ctx, databaseURL(cfg.Database))
 	if err != nil {
 		return result, &MigrationError{Operation: "connect", cause: err}
 	}
@@ -100,6 +92,20 @@ func MigrateWithResult(ctx context.Context,
 		return result, &MigrationError{Operation: "construct", cause: err}
 	}
 	return applyMigrations(ctx, m)
+}
+
+// databaseURL encodes userinfo, the database path, and query values consistently
+// for long-lived API pools and the one-shot migration connection.
+func databaseURL(db config.DatabaseConfig) string {
+	dsn := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(db.User, db.Password),
+		Host:     net.JoinHostPort(db.Host, strconv.Itoa(db.Port)),
+		Path:     "/" + db.Name,
+		RawPath:  "/" + url.PathEscape(db.Name),
+		RawQuery: url.Values{"sslmode": []string{db.SSLMode}}.Encode(),
+	}
+	return dsn.String()
 }
 
 func closeMigration(cleanup *lifecycle.Cleanup) error {

@@ -45,6 +45,7 @@ type Context = {
 // A renamed/deleted classified test fails discovery instead of silently dropping coverage.
 export const integrationTests: Record<string, string[]> = {
   "internal/app": [
+    "TestAPIMigratorSpecialCredentials",
     "TestRoleRealDependenciesRemainIndependent",
     "TestRoleBinaryStartup",
     "TestPartialStartupRealLifecycleResources",

@@ -422,6 +422,41 @@ func TestRolePartialProviderFailureStillReleasesOwner(t *testing.T) {
 	}
 }
 
+func TestAPIMigratorSpecialCredentials(t *testing.T) {
+	ctx := context.Background()
+	pg, closePG := backendTesting.SetupTestPostgres(t)
+	defer closePG()
+	// Disposable literal fixtures cover every URL component without diagnostics.
+	if _, err := pg.Pool.Exec(ctx,
+		`CREATE ROLE "synthetic user@/?:+" LOGIN SUPERUSER PASSWORD 'synthetic password @:/?+%#'`); err != nil {
+		t.Fatal("create special-character role")
+	}
+	if _, err := pg.Pool.Exec(ctx, `CREATE DATABASE "synthetic db@/?:+" OWNER "synthetic user@/?:+"`); err != nil {
+		t.Fatal("create special-character database")
+	}
+	cfg := roleTestConfig()
+	cfg.Server = pg.Config.Server
+	cfg.Database = pg.Config.Database
+	cfg.Database.User = "synthetic user@/?:+"
+	cfg.Database.Password = "synthetic password @:/?+%#"
+	cfg.Database.Name = "synthetic db@/?:+"
+	if _, err := database.MigrateWithResult(ctx, cfg); err != nil {
+		t.Fatal("migrator rejected accepted credentials")
+	}
+	api, err := NewAPI(ctx, cfg)
+	if err != nil {
+		t.Fatal("API rejected migrator credentials")
+	}
+	defer api.Close(ctx)
+	var user, name string
+	if err = api.Server.DB.Pool.QueryRow(ctx, "SELECT current_user, current_database()").Scan(&user, &name); err != nil {
+		t.Fatal("query API connection identity")
+	}
+	if user != cfg.Database.User || name != cfg.Database.Name {
+		t.Fatal("API changed connection identity")
+	}
+}
+
 func TestRoleServerReceivesOnlyExplicitResources(t *testing.T) {
 	log := zerolog.Nop()
 	srv, err := server.New(roleTestConfig(), &log, nil)
