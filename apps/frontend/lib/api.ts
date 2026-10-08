@@ -104,7 +104,9 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
               ? "unauthenticated"
               : response.status === 403
                 ? "forbidden"
-                : "request_failed",
+                : response.status === 429 || response.status >= 500
+                  ? "unavailable"
+                  : "request_failed",
             response.status,
           );
         }

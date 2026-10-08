@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
+import "./globals.css";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const key = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -35,18 +36,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   );
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          background: "#F1F5F9",
-          color: "#0F172A",
-          fontFamily: "system-ui, sans-serif",
-          fontSize: "16px",
-          lineHeight: 1.5,
-        }}
-      >
-        {content}
-      </body>
+      <body>{content}</body>
     </html>
   );
 }

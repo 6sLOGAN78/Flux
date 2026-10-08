@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/service"
@@ -24,17 +23,9 @@ func NewProductHandler(auth *service.AuthService, identity service.IdentityResol
 // Me returns the committed internal identity for an actively verified bearer.
 func (h *ProductHandler) Me(c echo.Context) error {
 	c.Response().Header().Set("Cache-Control", "no-store")
-	values := c.Request().Header.Values("Authorization")
-	if len(values) != 1 {
+	actor, ok := c.Get("actor").(service.Actor)
+	if !ok {
 		return errs.NewUnauthorizedError("Authentication required", false)
-	}
-	scheme, token, ok := strings.Cut(values[0], " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") {
-		return errs.NewUnauthorizedError("Authentication required", false)
-	}
-	actor, err := h.auth.Authenticate(c.Request().Context(), token)
-	if err != nil {
-		return err
 	}
 	if h.identity == nil {
 		return &errs.HTTPError{Code: "SERVICE_UNAVAILABLE", Message: "Authentication temporarily unavailable",

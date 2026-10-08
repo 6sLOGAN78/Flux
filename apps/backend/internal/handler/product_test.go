@@ -199,49 +199,11 @@ func TestProductActualHTTP(t *testing.T) {
 		cfg := *db.Config
 		cfg.Server.CORSAllowedOrigins = []string{fixtureParty}
 		e := productRouter(&cfg, &database.Database{Pool: db.Pool}, p).(*echo.Echo)
-		writes := 0
-		verifiedActor := false
-		legacyAuthority := false
-		// Only the test router owns this probe; no production mutation is invented.
-		e.POST("/api/v1/session-probe", func(c echo.Context) error {
-			_, ok := c.Get("actor").(service.Actor)
-			verifiedActor = ok
-			legacyAuthority = c.Get("user_role") != nil || c.Get("permissions") != nil
-			writes++
-			return c.NoContent(204)
-		})
-		for _, item := range []struct {
-			name, origin, content, bearer, body string
-			status                              int
-		}{
-			{"missing-origin", "", "application/json", "Bearer " + token, "{}", 403},
-			{"null-origin", "null", "application/json", "Bearer " + token, "{}", 403},
-			{"foreign-origin", "https://foreign.test", "application/json", "Bearer " + token, "{}", 403},
-			{"cross-site-form", fixtureParty, "application/x-www-form-urlencoded", "Bearer " + token, "x=y", 415},
-			{"cookie-only", fixtureParty, "application/json", "", "{}", 401},
-			{"malformed-header", fixtureParty, "application/json", "Bearer  " + token, "{}", 401},
-			{"body-limit", fixtureParty, "application/json", "Bearer " + token, strings.Repeat("x", 65537), 413},
-			{"allowed", fixtureParty, "application/json; charset=utf-8", "Bearer " + token, "{}", 204},
-		} {
-			t.Run(item.name, func(t *testing.T) {
-				req := httptest.NewRequest(http.MethodPost, "/api/v1/session-probe", strings.NewReader(item.body))
-				req.Header.Set("Origin", item.origin)
-				req.Header.Set("Content-Type", item.content)
-				if item.bearer != "" {
-					req.Header.Set("Authorization", item.bearer)
-				}
-				req.Header.Set("Cookie", "__session=ambient-cookie")
-				response := httptest.NewRecorder()
-				e.ServeHTTP(response, req)
-				require.Equal(t, item.status, response.Code)
-				require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-				require.NotEmpty(t, response.Header().Get("X-Request-ID"))
-				require.NotContains(t, response.Body.String(), token)
-			})
-		}
-		require.Equal(t, 1, writes)
-		require.True(t, verifiedActor)
-		require.False(t, legacyAuthority)
+		checkSessionMutations(t, e, token)
+	})
+	t.Run("session-recovery-headers", func(t *testing.T) {
+		e := productRouter(db.Config, &database.Database{Pool: db.Pool}, p).(*echo.Echo)
+		checkSessionRecoveryHeaders(t, e, p.token(t, map[string]any{"sid": "sess_outage"}))
 	})
 	t.Run("identity-stable-committed-UUID", func(t *testing.T) {
 		status, body, cache := requestMe(t, api.URL, token, false)
@@ -410,4 +372,70 @@ func TestProductActualHTTP(t *testing.T) {
 			require.NotContains(t, p.logs.String(), secret)
 		}
 	})
+}
+
+func checkSessionMutations(t *testing.T, e *echo.Echo, token string) {
+	t.Helper()
+	writes := 0
+	verifiedActor := false
+	legacyAuthority := false
+	// Only the test router owns this probe; no production mutation is invented.
+	e.POST("/api/v1/session-probe", func(c echo.Context) error {
+		_, ok := c.Get("actor").(service.Actor)
+		verifiedActor = ok
+		legacyAuthority = c.Get("user_role") != nil || c.Get("permissions") != nil
+		writes++
+		return c.NoContent(204)
+	})
+	for _, item := range []struct {
+		name, origin, content, bearer, body string
+		status                              int
+	}{
+		{"missing-origin", "", "application/json", "Bearer " + token, "{}", 403},
+		{"null-origin", "null", "application/json", "Bearer " + token, "{}", 403},
+		{"foreign-origin", "https://foreign.test", "application/json", "Bearer " + token, "{}", 403},
+		{"cross-site-form", fixtureParty, "application/x-www-form-urlencoded", "Bearer " + token, "x=y", 415},
+		{"cookie-only", fixtureParty, "application/json", "", "{}", 401},
+		{"malformed-header", fixtureParty, "application/json", "Bearer  " + token, "{}", 401},
+		{"body-limit", fixtureParty, "application/json", "Bearer " + token, strings.Repeat("x", 65537), 413},
+		{"allowed", fixtureParty, "application/json; charset=utf-8", "Bearer " + token, "{}", 204},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/session-probe", strings.NewReader(item.body))
+			req.Header.Set("Origin", item.origin)
+			req.Header.Set("Content-Type", item.content)
+			if item.bearer != "" {
+				req.Header.Set("Authorization", item.bearer)
+			}
+			req.Header.Set("Cookie", "__session=ambient-cookie")
+			response := httptest.NewRecorder()
+			e.ServeHTTP(response, req)
+			require.Equal(t, item.status, response.Code)
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			require.NotEmpty(t, response.Header().Get("X-Request-ID"))
+			require.NotContains(t, response.Body.String(), token)
+		})
+	}
+	require.Equal(t, 1, writes)
+	require.True(t, verifiedActor)
+	require.False(t, legacyAuthority)
+}
+
+func checkSessionRecoveryHeaders(t *testing.T, e *echo.Echo, token string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	e.ServeHTTP(response, req)
+	require.Equal(t, 503, response.Code)
+	require.Equal(t, "1", response.Header().Get("Retry-After"))
+	for range 20 {
+		response = httptest.NewRecorder()
+		e.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
+	}
+	require.Equal(t, 429, response.Code)
+	require.Equal(t, "1", response.Header().Get("Retry-After"))
+	require.Equal(t, "20", response.Header().Get("X-Ratelimit-Limit"))
+	require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+	require.NotEmpty(t, response.Header().Get("X-Request-ID"))
 }

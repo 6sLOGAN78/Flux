@@ -4,6 +4,7 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/server"
@@ -27,9 +28,30 @@ func NewGlobalMiddlewares(s *server.Server) *GlobalMiddlewares {
 
 // CORS applies the configured cross-origin policy.
 func (global *GlobalMiddlewares) CORS() echo.MiddlewareFunc {
-	return middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: global.server.Config.Server.CORSAllowedOrigins,
+	origins := global.server.Config.Server.CORSAllowedOrigins
+	cors := middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOriginFunc: func(origin string) (bool, error) { return ExactOrigin(origin, origins), nil },
+		AllowMethods: []string{
+			http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions,
+		},
+		AllowHeaders:  []string{"Authorization", "Content-Type", "Idempotency-Key", "If-Match"},
+		ExposeHeaders: []string{"X-Request-ID", "Retry-After", "X-RateLimit-Limit"},
 	})
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		allowed := cors(next)
+		return func(c echo.Context) error {
+			if strings.HasPrefix(c.Request().URL.Path, "/api/v1/") {
+				c.Response().Header().Set("Cache-Control", "no-store")
+				if c.Request().Method == http.MethodOptions {
+					values := c.Request().Header.Values("Origin")
+					if len(values) != 1 || !ExactOrigin(values[0], origins) {
+						return echo.NewHTTPError(http.StatusForbidden)
+					}
+				}
+			}
+			return allowed(c)
+		}
+	}
 }
 
 // RequestLogger logs safe request metadata after handler execution.
@@ -134,6 +156,9 @@ func (global *GlobalMiddlewares) GlobalErrorHandler(err error, c echo.Context) {
 	}
 
 	// Telemetry records fixed operational fields. Public typed validation stays intact.
+	if status == http.StatusServiceUnavailable {
+		c.Response().Header().Set("Retry-After", "1")
+	}
 	GetLogger(c).
 		Error().
 		Str("operation",

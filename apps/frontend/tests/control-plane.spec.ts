@@ -261,6 +261,12 @@ test("session root loads committed identity and signout clears private data", as
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
   await expect(page.getByText("local@example.test", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 640 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.getByRole("button", { name: "Sign out", exact: true }).focus();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByText("local@example.test", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sign in to Flux", exact: true })).toBeVisible();
@@ -276,7 +282,7 @@ for (const status of [401, 503]) {
       route.fulfill({ status, body: "PRIVATE-PROVIDER-DIAGNOSTIC" }),
     );
     await page.goto("/");
-    await expect(page.getByRole("alert")).toHaveText(
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
       status === 401
         ? "Your session ended. Sign in to continue."
         : "Sign-in is temporarily unavailable. Try again shortly.",

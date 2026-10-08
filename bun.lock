@@ -20,6 +20,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@clerk/nextjs": "7.9.12",
+        "@flux/zod": "workspace:*",
         "next": "16.4.0",
         "react": "^19.2.6",
         "react-dom": "^19.2.6",

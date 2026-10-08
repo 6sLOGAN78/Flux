@@ -1,83 +1,60 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
-	"time"
+	"strings"
 
 	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/server"
-	"github.com/clerk/clerk-sdk-go/v2"
-	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
+	"github.com/6sLOGAN78/flux/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
-// AuthMiddleware validates authentication headers before protected handlers.
-type AuthMiddleware struct {
-	server *server.Server
+// AuthMiddleware verifies bearer identity without provider organization authority.
+type AuthMiddleware struct{ auth *service.AuthService }
+
+// NewAuthMiddleware constructs fixed-endpoint authentication dependencies.
+func NewAuthMiddleware(s *server.Server) *AuthMiddleware {
+	return &AuthMiddleware{auth: service.NewAuthService(s)}
 }
 
-// NewAuthMiddleware constructs authentication middleware with explicit dependencies.
-func NewAuthMiddleware(s *server.Server) *AuthMiddleware {
-	return &AuthMiddleware{
-		server: s,
+// RequireAuth requires a verified actor; ambient cookies never authenticate requests.
+func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
+	return RequireActor(auth.auth)(next)
+}
+
+// RequireActor installs verified identity, never workspace permissions.
+func RequireActor(auth *service.AuthService) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Response().Header().Set("Cache-Control", "no-store")
+			values := c.Request().Header.Values("Authorization")
+			if len(values) != 1 {
+				return errs.NewUnauthorizedError("Authentication required", false)
+			}
+			scheme, token, ok := strings.Cut(values[0], " ")
+			if !ok || !strings.EqualFold(scheme, "Bearer") {
+				return errs.NewUnauthorizedError("Authentication required", false)
+			}
+			actor, err := auth.Authenticate(c.Request().Context(), token)
+			if err != nil {
+				return err
+			}
+			c.Set("actor", actor)
+			return next(c)
+		}
 	}
 }
 
-// RequireAuth requires a valid authenticated user.
-func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
-	return echo.WrapMiddleware(
-		clerkhttp.WithHeaderAuthorization(
-			clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(func(w http.ResponseWriter,
-				_ *http.Request) {
-				start := time.Now()
-
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-
-				response := map[string]string{
-					"code":     "UNAUTHORIZED",
-					"message":  "Unauthorized",
-					"override": "false",
-					"status":   "401",
-				}
-
-				if err := json.NewEncoder(w).Encode(response); err != nil {
-					auth.server.Logger.Error().Err(err).Str("function", "RequireAuth").Dur(
-						"duration", time.Since(start)).Msg("failed to write JSON response")
-				} else {
-					auth.server.Logger.Error().
-						Str("function",
-							"RequireAuth").
-						Dur("duration",
-							time.Since(start)).
-						Msg(
-							"could not get session claims from context")
-				}
-			}))))(func(c echo.Context) error {
-		start := time.Now()
-		claims, ok := clerk.SessionClaimsFromContext(c.Request().Context())
-
-		if !ok {
-			auth.server.Logger.Error().
-				Str("function", "RequireAuth").
-				Str("request_id", GetRequestID(c)).
-				Dur("duration", time.Since(start)).
-				Msg("could not get session claims from context")
-			return errs.NewUnauthorizedError("Unauthorized", false)
+// ProductSession protects installed versioned routes, including future mutations.
+func ProductSession(auth *service.AuthService, origins []string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		protected := BrowserMutation(origins)(RequireActor(auth)(next))
+		return func(c echo.Context) error {
+			if !strings.HasPrefix(c.Request().URL.Path, "/api/v1/") || c.Request().Method == http.MethodOptions {
+				return next(c)
+			}
+			return protected(c)
 		}
-
-		c.Set("user_id", claims.Subject)
-		c.Set("user_role", claims.ActiveOrganizationRole)
-		c.Set("permissions", claims.ActiveOrganizationPermissions)
-
-		auth.server.Logger.Info().
-			Str("function", "RequireAuth").
-			Str("user_id", claims.Subject).
-			Str("request_id", GetRequestID(c)).
-			Dur("duration", time.Since(start)).
-			Msg("user authenticated successfully")
-
-		return next(c)
-	})
+	}
 }

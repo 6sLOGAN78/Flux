@@ -15,6 +15,7 @@
     "browser:install": "playwright install chromium"
   },
   "dependencies": {
+    "@flux/zod": "workspace:*",
     "@clerk/nextjs": "7.9.12",
     "next": "16.4.0",
     "react": "^19.2.6",
