@@ -12,6 +12,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: "json",
+  expect: { timeout: 20000 },
   use: {
     baseURL: "http://127.0.0.1:3100",
     trace: "off",

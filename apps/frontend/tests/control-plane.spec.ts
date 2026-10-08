@@ -2,7 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 
 // Only the browser harness substitutes FAPI responses. The real SDK and native
 // UI still render; local transport proofs never count as live factor acceptance.
-export const installProviderTransport = async (page: Page) => {
+export const installProviderTransport = async (
+  page: Page,
+  sessionClient?: Record<string, unknown>,
+) => {
   const attribute = (enabled = false, required = false) => ({
     enabled,
     required,
@@ -108,7 +111,9 @@ export const installProviderTransport = async (page: Page) => {
     protect_config: { enabled: false },
     maintenance_mode: false,
   };
-  const client = {
+  let signIn: Record<string, unknown> | null = null;
+  let signUp: Record<string, unknown> | null = null;
+  const client: Record<string, unknown> = sessionClient ?? {
     object: "client",
     id: "client_local",
     sessions: [],
@@ -124,12 +129,83 @@ export const installProviderTransport = async (page: Page) => {
     if (url.pathname.startsWith("/npm/")) {
       // Fetch provider-owned SDK assets, not fake application auth controls.
       const response = await route.fetch({
-        url: `https://cdn.jsdelivr.net${url.pathname}${url.search}`,
+        url: `https://cdn.jsdelivr.net${url.pathname.replace("@clerk/clerk-js@6/", "@clerk/clerk-js@6.38.1/").replace("@clerk/ui@1/", "@clerk/ui@1.39.1/")}${url.search}`,
       });
       await route.fulfill({ response });
       return;
     }
-    const response = url.pathname === "/v1/environment" ? environment : client;
+    if (url.pathname.includes("/client/sign_ins") && route.request().method() === "POST") {
+      signIn = {
+        object: "sign_in",
+        id: "si_local",
+        status: "needs_first_factor",
+        supported_identifiers: ["email_address"],
+        supported_first_factors: [
+          { strategy: "password" },
+          {
+            strategy: "reset_password_email_code",
+            email_address_id: "idn_local",
+            safe_identifier: "local@example.test",
+          },
+        ],
+        supported_second_factors: [],
+        first_factor_verification: null,
+        second_factor_verification: null,
+        identifier: "local@example.test",
+        created_session_id: null,
+        abandon_at: Date.now() + 600000,
+      };
+      client.sign_in = signIn;
+    }
+    if (url.pathname.includes("/client/sign_ups") && route.request().method() === "POST") {
+      signUp = {
+        object: "sign_up",
+        id: "su_local",
+        status: "missing_requirements",
+        required_fields: ["email_address", "password"],
+        optional_fields: [],
+        missing_fields: [],
+        unverified_fields: ["email_address"],
+        email_address: "local@example.test",
+        username: null,
+        first_name: null,
+        last_name: null,
+        phone_number: null,
+        web3_wallet: null,
+        external_account: null,
+        external_account_strategy: null,
+        has_password: true,
+        unsafe_metadata: {},
+        created_session_id: null,
+        created_user_id: null,
+        abandon_at: Date.now() + 600000,
+        legal_accepted_at: null,
+        locale: "en",
+        timezone: null,
+        verifications: {
+          email_address: {
+            status: "unverified",
+            strategy: "email_code",
+            supported_strategies: ["email_code"],
+            next_action: "needs_attempt",
+            attempts: 0,
+            expire_at: Date.now() + 600000,
+            error: null,
+          },
+          phone_number: null,
+          web3_wallet: null,
+          external_account: null,
+        },
+      };
+      client.sign_up = signUp;
+    }
+    const response = url.pathname.includes("/client/sign_ups")
+      ? signUp
+      : url.pathname === "/v1/environment"
+        ? environment
+        : url.pathname.includes("/client/sign_ins")
+          ? signIn
+          : client;
     await route.fulfill({
       contentType: "application/json",
       headers: {
@@ -144,6 +220,62 @@ export const installProviderTransport = async (page: Page) => {
 test.beforeEach(async ({ page }) => {
   await installProviderTransport(page);
 });
+
+test("sign-in reaches native password and recovery controls using isolated transport", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email address", { exact: true }).fill("local@example.test");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+  const recovery = page.getByRole("link", { name: "Forgot password?" });
+  await expect(recovery).toBeVisible();
+  await recovery.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Reset your password/).first()).toBeVisible();
+});
+
+test("sign-in links to native sign-up with required password and social options", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await page.getByRole("link", { name: "Sign up", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Create your account", exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Google/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GitHub/ })).toBeVisible();
+});
+
+test("sign-in sign-up reaches native mandatory email verification without creating a session", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.getByLabel("Email address", { exact: true }).fill("local@example.test");
+  await page.getByLabel("Password", { exact: true }).fill("Local test password9!");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await expect(page.getByRole("heading", { name: /Verify your email/ })).toBeVisible();
+  await expect(page.getByText("Your account is signed in.")).toHaveCount(0);
+});
+
+for (const width of [320, 768, 1280]) {
+  test(`sign-in remains usable at ${width}px with keyboard and reduced motion`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/sign-in");
+    const email = page.getByLabel("Email address", { exact: true });
+    await expect(email).toBeVisible();
+    await email.focus();
+    await expect(email).toBeFocused();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+}
 
 test("sign-in exposes original auth heading and native provider controls", async ({ page }) => {
   await page.goto("/sign-in");

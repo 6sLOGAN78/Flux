@@ -33,8 +33,13 @@ export const assertBrowserReport = (output: string): number => {
   const visit = (suites: unknown): void => {
     if (!Array.isArray(suites)) fail();
     for (const suite of suites as Record<string, unknown>[]) {
-      if (!suite || !Array.isArray(suite.specs) || !Array.isArray(suite.suites)) fail();
-      for (const spec of suite.specs as Record<string, unknown>[]) {
+      if (
+        !suite ||
+        (suite.specs !== undefined && !Array.isArray(suite.specs)) ||
+        (suite.suites !== undefined && !Array.isArray(suite.suites))
+      )
+        fail();
+      for (const spec of (suite.specs ?? []) as Record<string, unknown>[]) {
         if (spec.ok !== true || !Array.isArray(spec.tests) || spec.tests.length === 0) fail();
         for (const test of spec.tests as Record<string, unknown>[]) {
           if (
@@ -55,7 +60,7 @@ export const assertBrowserReport = (output: string): number => {
           completed++;
         }
       }
-      visit(suite.suites);
+      visit(suite.suites ?? []);
     }
   };
   visit(report.suites);

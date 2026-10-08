@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --webpack --hostname 127.0.0.1",
-    "build": "next build",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build --webpack",
     "start": "next start --hostname 127.0.0.1",
-    "format:check": "bun -e 'import{readdirSync,readFileSync}from\"node:fs\";import{spawnSync}from\"node:child_process\";const files=[...readdirSync(\"app\",{recursive:true}).map(x=>\"app/\"+x),...readdirSync(\"lib\",{recursive:true}).map(x=>\"lib/\"+x),...readdirSync(\"tests\",{recursive:true}).map(x=>\"tests/\"+x),\"next.config.ts\",\"playwright.config.ts\"];for(const file of files.filter(x=>/\\.tsx?$/.test(x))){const result=spawnSync(\"../../tmp/tools/biome\",[\"format\",\"--stdin-file-path=packages/zod/src/frontend\"+(file.endsWith(\"tsx\")?\".tsx\":\".ts\"),...(\"format\"===\"lint\"?[\"--error-on-warnings\"]:[])],{input:readFileSync(file),encoding:\"utf8\"});if(result.status!==0){console.error(file);console.error(result.stderr);process.exit(1)}}'",
-    "lint": "bun -e 'import{readdirSync,readFileSync}from\"node:fs\";import{spawnSync}from\"node:child_process\";const files=[...readdirSync(\"app\",{recursive:true}).map(x=>\"app/\"+x),...readdirSync(\"lib\",{recursive:true}).map(x=>\"lib/\"+x),...readdirSync(\"tests\",{recursive:true}).map(x=>\"tests/\"+x),\"next.config.ts\",\"playwright.config.ts\"];for(const file of files.filter(x=>/\\.tsx?$/.test(x))){const result=spawnSync(\"../../tmp/tools/biome\",[\"lint\",\"--stdin-file-path=packages/zod/src/frontend\"+(file.endsWith(\"tsx\")?\".tsx\":\".ts\"),...(\"lint\"===\"lint\"?[\"--error-on-warnings\"]:[])],{input:readFileSync(file),encoding:\"utf8\"});if(result.status!==0){console.error(file);console.error(result.stderr);process.exit(1)}}'",
+    "format:check": "bun -e 'import{readdirSync,readFileSync}from\"node:fs\";import{spawnSync}from\"node:child_process\";const files=[...readdirSync(\"app\",{recursive:true}).map(x=>\"app/\"+x),...readdirSync(\"lib\",{recursive:true}).map(x=>\"lib/\"+x),...readdirSync(\"tests\",{recursive:true}).map(x=>\"tests/\"+x),\"next.config.ts\",\"playwright.config.ts\"];for(const file of files.filter(x=>/\\.tsx?$/.test(x))){const result=spawnSync(\"../../tmp/tools/biome\",[\"format\",\"--write\",\"--stdin-file-path=packages/zod/src/frontend\"+(file.endsWith(\"tsx\")?\".tsx\":\".ts\"),...(\"format\"===\"lint\"?[\"--error-on-warnings\"]:[])],{input:readFileSync(file),encoding:\"utf8\"});if(result.status!==0||result.stdout!==readFileSync(file,\"utf8\")){console.error(file);console.error(result.stderr);process.exit(1)}}'",
+    "lint": "bun -e 'import{readdirSync,readFileSync}from\"node:fs\";import{spawnSync}from\"node:child_process\";const files=[...readdirSync(\"app\",{recursive:true}).map(x=>\"app/\"+x),...readdirSync(\"lib\",{recursive:true}).map(x=>\"lib/\"+x),...readdirSync(\"tests\",{recursive:true}).map(x=>\"tests/\"+x),\"next.config.ts\",\"playwright.config.ts\"];for(const file of files.filter(x=>/\\.tsx?$/.test(x))){const result=spawnSync(\"../../tmp/tools/biome\",[\"lint\",\"--write\",\"--stdin-file-path=packages/zod/src/frontend\"+(file.endsWith(\"tsx\")?\".tsx\":\".ts\"),...(\"lint\"===\"lint\"?[\"--error-on-warnings\"]:[])],{input:readFileSync(file),encoding:\"utf8\"});if(result.status!==0||result.stdout!==readFileSync(file,\"utf8\")){console.error(file);console.error(result.stderr);process.exit(1)}}'",
     "typecheck": "tsc --noEmit",
     "test": "bun test lib",
     "test:e2e": "playwright test --reporter=json",
@@ -23,6 +23,6 @@
   "devDependencies": {
     "@clerk/testing": "2.2.44",
     "@playwright/test": "1.64.0",
-    "@types/node": "^22.19.7"
+    "@types/node": "22.19.19"
   }
 }

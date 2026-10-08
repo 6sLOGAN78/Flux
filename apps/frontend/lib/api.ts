@@ -1,14 +1,150 @@
+type Code =
+  | "invalid_request"
+  | "unauthenticated"
+  | "forbidden"
+  | "cancelled"
+  | "unavailable"
+  | "request_failed";
+const messages: Record<Code, string> = {
+  invalid_request: "The request is invalid.",
+  unauthenticated: "Sign in to continue.",
+  forbidden: "You do not have access to this resource.",
+  cancelled: "The request was cancelled.",
+  unavailable: "The request could not be completed. Try again.",
+  request_failed: "The request could not be completed.",
+};
+
 export class ApiError extends Error {
-  code = "unavailable";
-  status = 0;
+  constructor(
+    public readonly code: Code,
+    public readonly status = 0,
+  ) {
+    super(messages[code]);
+    this.name = "ApiError";
+  }
 }
 
-export const createAPI = (_getToken: () => Promise<string | null>, _options: {
+type APIOptions = {
   origin: string;
   fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   timeoutMs?: number;
-}) => ({
-  request: async (_path: string, _request?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<unknown> => {
-    throw new ApiError("The request could not be completed. Try again.");
-  },
-});
+};
+type APIRequest = {
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  body?: unknown;
+  signal?: AbortSignal;
+  query?: URLSearchParams;
+  idempotencyKey?: string;
+};
+
+// Called with Clerk useAuth().getToken and window.location.origin. Tokens stay
+// in the invocation only; cookies, redirects and arbitrary request URLs cannot
+// carry credentials out of the fixed same-origin Go API boundary.
+export const createAPI = (getToken: () => Promise<string | null>, options: APIOptions) => {
+  const origin = new URL(options.origin);
+  if (
+    origin.origin !== options.origin ||
+    origin.username ||
+    origin.password ||
+    !(
+      origin.protocol === "https:" ||
+      (origin.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname))
+    )
+  ) {
+    throw new ApiError("invalid_request");
+  }
+  const timeoutMs = options.timeoutMs ?? 10000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
+    throw new ApiError("invalid_request");
+  return {
+    async request<T = unknown>(path: string, request: APIRequest = {}): Promise<T> {
+      if (
+        !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(path) ||
+        (request.idempotencyKey && !/^[A-Za-z0-9_-]{16,128}$/.test(request.idempotencyKey))
+      )
+        throw new ApiError("invalid_request");
+      if (request.signal?.aborted) throw new ApiError("cancelled");
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      request.signal?.addEventListener("abort", cancel, { once: true });
+      const timer = setTimeout(cancel, timeoutMs);
+      let abortHandler: (() => void) | undefined;
+      const aborted = new Promise<never>((_resolve, reject) => {
+        abortHandler = () =>
+          reject(new ApiError(request.signal?.aborted ? "cancelled" : "unavailable"));
+        controller.signal.addEventListener("abort", abortHandler, { once: true });
+      });
+      const perform = async (): Promise<T> => {
+        const token = await getToken();
+        if (controller.signal.aborted) throw new ApiError("cancelled");
+        if (!token || /[\r\n]/.test(token)) throw new ApiError("unauthenticated");
+        const target = new URL(`/api/v1${path}`, origin);
+        if (request.query) target.search = request.query.toString();
+        const headers = new Headers({
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        });
+        if (request.body !== undefined) headers.set("Content-Type", "application/json");
+        if (request.idempotencyKey) headers.set("Idempotency-Key", request.idempotencyKey);
+        const response = await (options.fetch ?? globalThis.fetch)(target.href, {
+          method: request.method ?? "GET",
+          headers,
+          body: request.body === undefined ? undefined : JSON.stringify(request.body),
+          signal: controller.signal,
+          cache: "no-store",
+          credentials: "omit",
+          redirect: "error",
+          mode: "same-origin",
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) {
+          await response.body?.cancel();
+          throw new ApiError(
+            response.status === 401
+              ? "unauthenticated"
+              : response.status === 403
+                ? "forbidden"
+                : "request_failed",
+            response.status,
+          );
+        }
+        if (response.status === 204) return undefined as T;
+        const reader = response.body?.getReader();
+        if (!reader) throw new ApiError("unavailable");
+        let size = 0;
+        const chunks: Uint8Array[] = [];
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > 65536) {
+              await reader.cancel();
+              throw new ApiError("unavailable");
+            }
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        const bytes = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return JSON.parse(new TextDecoder().decode(bytes)) as T;
+      };
+      try {
+        return await Promise.race([perform(), aborted]);
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(request.signal?.aborted ? "cancelled" : "unavailable");
+      } finally {
+        clearTimeout(timer);
+        request.signal?.removeEventListener("abort", cancel);
+        if (abortHandler) controller.signal.removeEventListener("abort", abortHandler);
+      }
+    },
+  };
+};

@@ -1,24 +1,24 @@
 "use client";
 
-import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignIn, UserButton } from "@clerk/nextjs";
+import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignUp, UserButton } from "@clerk/nextjs";
 
-export default function SignInPage() {
+export default function SignUpPage() {
   return (
     <main
       style={{ maxWidth: "448px", margin: "48px auto", padding: "24px", boxSizing: "border-box" }}
     >
       <p>Flux</p>
-      <h1 style={{ fontSize: "28px", fontWeight: 600 }}>Sign in to Flux</h1>
+      <h1 style={{ fontSize: "28px", fontWeight: 600 }}>Create your account</h1>
       <ClerkLoading>
-        <p role="status">Loading sign-in…</p>
+        <p role="status">Loading sign-up…</p>
       </ClerkLoading>
       <ClerkFailed>
         <p role="alert">Sign-in is temporarily unavailable. Try again shortly.</p>
-        <a href="/sign-in">Retry sign-in</a>
+        <a href="/sign-up">Retry sign-in</a>
       </ClerkFailed>
       <ClerkLoaded>
         <Show when="signed-out">
-          <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" forceRedirectUrl="/sign-in" />
+          <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" forceRedirectUrl="/sign-in" />
         </Show>
         <Show when="signed-in">
           <p role="status">Your account is signed in.</p>

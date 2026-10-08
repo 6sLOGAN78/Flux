@@ -35,6 +35,9 @@ const browserReport = () => ({
 test("browser gate requires positive complete non-skipped nonflaky JSON results", async () => {
   const { assertBrowserReport } = await load();
   assert.equal(assertBrowserReport(JSON.stringify(browserReport())), 1);
+  const leafReport = browserReport();
+  Reflect.deleteProperty(leafReport.suites[0] ?? {}, "suites");
+  assert.equal(assertBrowserReport(JSON.stringify(leafReport)), 1);
   for (const output of [
     "",
     "{}",
@@ -125,7 +128,9 @@ test("real full and fast root checks reject initial drift before any mutation", 
       await cp(join(repository, path), join(root, path), {
         recursive: true,
         filter: (path) =>
-          !/(?:^|\/)(node_modules|dist|tmp|\.env)(?:\/|$)/.test(relative(repository, path)),
+          !/(?:^|\/)(node_modules|dist|build|\.next|tmp|\.env)(?:\/|$)/.test(
+            relative(repository, path),
+          ),
       });
     }
     await symlink(join(repository, "node_modules"), join(root, "node_modules"));
