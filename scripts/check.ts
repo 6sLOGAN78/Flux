@@ -1,9 +1,47 @@
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+
+// Next generates deployment-local signing/encryption keys in its build tree.
+// Remove the disposable output after verification, before scanning the complete
+// worktree. Authored source and full Git history keep every secret rule enabled.
+export const cleanFrontendBuild = async (root: string): Promise<void> => {
+  const output = join(root, "apps/frontend/build");
+  let metadata: Stats;
+  try {
+    metadata = await lstat(output);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new Error("Frontend build cleanup failed");
+  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink())
+    throw new Error("Invalid frontend build output");
+  if ((await realpath(output)) !== join(await realpath(root), "apps/frontend/build"))
+    throw new Error("Invalid frontend build output");
+  let manifest: { version?: number; routes?: unknown; preview?: Record<string, unknown> };
+  try {
+    manifest = JSON.parse(await readFile(join(output, "prerender-manifest.json"), "utf8"));
+  } catch (cause) {
+    throw new Error("Invalid frontend build output", { cause });
+  }
+  const preview = manifest.preview ?? {};
+  if (
+    manifest?.version !== 4 ||
+    !manifest.routes ||
+    typeof preview.previewModeId !== "string" ||
+    !/^[a-f0-9]{32}$/.test(preview.previewModeId) ||
+    typeof preview.previewModeSigningKey !== "string" ||
+    !/^[a-f0-9]{64}$/.test(preview.previewModeSigningKey) ||
+    typeof preview.previewModeEncryptionKey !== "string" ||
+    !/^[a-f0-9]{64}$/.test(preview.previewModeEncryptionKey)
+  )
+    throw new Error("Invalid frontend build output");
+  await rm(output, { recursive: true });
+};
 // Validate the complete JSON tree as well as aggregate stats. Retries, skips,
 // empty selection and infrastructure errors must never produce green evidence.
 export const assertBrowserReport = (output: string): number => {
@@ -584,6 +622,7 @@ export const runChecks = async (
   for (const stage of stages) {
     if (stage.browserTests) stage.command.push(...(options.browserArgs ?? []));
     options.progress?.(stage.id);
+    if (stage.id === "scan") await cleanFrontendBuild(context.root);
     const fixture =
       stage.browserTests && !options.runner ? await startBearerFixture(context.root) : undefined;
     if (fixture) stage.env = { FLUX_BROWSER_FIXTURE: fixture.url };

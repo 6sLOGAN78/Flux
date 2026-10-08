@@ -10,6 +10,47 @@ import type { Stage } from "./check.ts";
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
 
+test("final secret scan removes generated Next keys while preserving source and refusing unrelated output", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flux-next-output-"));
+  const { cleanFrontendBuild } = await load();
+  const frontend = join(root, "apps/frontend");
+  const output = join(frontend, "build");
+  try {
+    await mkdir(output, { recursive: true });
+    await writeFile(join(frontend, "source.ts"), "authored source must remain");
+    await writeFile(join(output, "keep.txt"), "unrecognized output");
+    await assert.rejects(cleanFrontendBuild(root));
+    assert.equal(await readFile(join(output, "keep.txt"), "utf8"), "unrecognized output");
+    await writeFile(
+      join(output, "prerender-manifest.json"),
+      JSON.stringify({
+        version: 4,
+        routes: {},
+        preview: {
+          previewModeId: "0".repeat(32),
+          previewModeSigningKey: "0".repeat(64),
+          previewModeEncryptionKey: "0".repeat(64),
+        },
+      }),
+    );
+    await cleanFrontendBuild(root);
+    await assert.rejects(readFile(join(output, "prerender-manifest.json")));
+    assert.equal(
+      await readFile(join(frontend, "source.ts"), "utf8"),
+      "authored source must remain",
+    );
+    await cleanFrontendBuild(root);
+    await symlink(frontend, output);
+    await assert.rejects(cleanFrontendBuild(root), /Invalid frontend build output/);
+    assert.equal(
+      await readFile(join(frontend, "source.ts"), "utf8"),
+      "authored source must remain",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 const browserReport = () => ({
   errors: [],
   stats: { expected: 1, unexpected: 0, skipped: 0, flaky: 0 },

@@ -541,7 +541,9 @@ test("metadata that resembles valid identifiers cannot disclose injected secrets
   });
 });
 
-test("real pinned package scanner fails a temporary legacy OpenPGP import", async () => {
+test("real pinned package scanner fails a temporary legacy OpenPGP import", {
+  timeout: 65000,
+}, async () => {
   await fixture(async (root) => {
     const { capture, runScans } = await load();
     for (const file of ["go.mod", "go.sum"])
@@ -561,7 +563,7 @@ test("real pinned package scanner fails a temporary legacy OpenPGP import", asyn
       emit: (line) => lines.push(line),
       runner: async (command) =>
         command.tool === "govulncheck"
-          ? capture({ ...command, tool: join(process.cwd(), "tmp/tools/govulncheck") })
+          ? capture({ ...command, tool: join(process.cwd(), "tmp/tools/govulncheck") }, 60000)
           : { code: 0, stdout: "{}", stderr: "" },
     });
     assert.equal(result, 1);
