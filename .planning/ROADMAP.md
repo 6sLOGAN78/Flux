@@ -10,7 +10,7 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions created after planning
 
-- [ ] **Phase 1: Foundation Stability & System Boundaries** - Make the existing service foundation reproducible, independently operable, observable, and safe to extend.
+- [x] **Phase 1: Foundation Stability & System Boundaries** - Make the existing service foundation reproducible, independently operable, observable, and safe to extend. (completed 2026-10-08)
 - [ ] **Phase 2: Tenant-Safe Link Control Plane** - Give authenticated teams isolated workspaces and complete managed-domain link management.
 - [ ] **Phase 3: Fast Managed-Domain Redirects** - Serve correct, cache-backed redirects independently of analytics and control-plane failures.
 - [ ] **Phase 4: Durable Click Tracking & Privacy** - Capture, enrich, identify, and replay click facts within an explicit privacy and loss contract.
@@ -30,7 +30,7 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
   3. A developer can reproduce the pinned local/CI environment, and CI fails on formatting, linting, type checking, generated-contract drift, migration failure, tests, builds, dependency findings, or secret findings.
   4. A developer can change the versioned API contract and regenerate consistent Go, TypeScript, OpenAPI, and served documentation artifacts without working-directory-dependent runtime failures.
   5. An operator can correlate requests and asynchronous work through redacted structured logs, correlation IDs, traces, and bounded-cardinality metrics without exposing credentials, event secrets, or personal data.
-**Plans:** 22/22 plans executed; phase review and verification pending
+**Plans:** 22/22 plans complete
 **UI hint:** no — this phase has operator endpoints and API documentation, but no user-facing product UI.
 
 ### Phase 2: Tenant-Safe Link Control Plane
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation Stability & System Boundaries | 22/22 | Awaiting verification | - |
+| 1. Foundation Stability & System Boundaries | 22/22 | Complete    | 2026-10-08 |
 | 2. Tenant-Safe Link Control Plane | 0/TBD | Not started | - |
 | 3. Fast Managed-Domain Redirects | 0/TBD | Not started | - |
 | 4. Durable Click Tracking & Privacy | 0/TBD | Not started | - |
