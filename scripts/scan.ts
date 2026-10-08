@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { installTools } from "./install-tools.ts";
+import { captureBounded } from "./subprocess.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 export type Command = { tool: string; args: string[]; cwd: string };
@@ -18,42 +18,19 @@ export const capture = (
   timeoutMs = 240_000,
   maxBytes = 8_388_608,
 ): Promise<Result> =>
-  new Promise((accept, reject) => {
-    const child = spawn(command.tool, command.args, {
-      cwd: command.cwd,
-      env: {
-        ...process.env,
-        GOFLAGS: "-mod=readonly",
-        GOWORK: "off",
-        GOTOOLCHAIN: "go1.26.8",
-        NO_COLOR: "1",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const chunks: Buffer[] = [];
-    let bytes = 0;
-    let failed = false;
-    const stop = () => {
-      failed = true;
-      child.kill("SIGKILL");
-    };
-    const timer = setTimeout(stop, timeoutMs);
-    const collect = (chunk: Buffer, keep: boolean) => {
-      bytes += chunk.length;
-      if (bytes > maxBytes) stop();
-      else if (keep) chunks.push(chunk);
-    };
-    child.stdout.on("data", (chunk: Buffer) => collect(chunk, true));
-    child.stderr.on("data", (chunk: Buffer) => collect(chunk, false));
-    child.on("error", () => {
-      clearTimeout(timer);
-      reject(new Error("scanner execution failed"));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (failed || code === null) reject(new Error("scanner execution failed"));
-      else accept({ code, stdout: Buffer.concat(chunks).toString("utf8"), stderr: "" });
-    });
+  captureBounded([command.tool, ...command.args], {
+    cwd: command.cwd,
+    env: {
+      ...process.env,
+      GOFLAGS: "-mod=readonly",
+      GOWORK: "off",
+      GOTOOLCHAIN: "go1.26.8",
+      NO_COLOR: "1",
+    },
+    timeoutMs,
+    maxBytes,
+  }).catch(() => {
+    throw new Error("scanner execution failed");
   });
 
 const opaque = (value: unknown) =>

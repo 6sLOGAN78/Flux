@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
 import {
   chmod,
   lstat,
@@ -16,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { captureBounded } from "./subprocess.ts";
 
 // Bun's existing generation script needs only this subprocess API. Use the
 // locked Node declarations already supplied by the OpenAPI workspace, without
@@ -72,43 +72,20 @@ type Release = Omit<Tool, "url" | "sha256" | "binarySha256" | "archivePath"> & {
 };
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
-const execute: IO["execute"] = (
+export const execute: IO["execute"] = async (
   cmd,
   cwd = repositoryRoot,
   env = process.env,
   timeoutMs = 300_000,
-) =>
-  new Promise((accept, reject) => {
-    const executable = cmd[0];
-    if (!executable) {
-      reject(new Error("tool command failed"));
-      return;
-    }
-    const child = spawn(executable, cmd.slice(1), { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    const collect = (chunk: Buffer, capture: boolean) => {
-      size += chunk.length;
-      if (size > 1024 * 1024) child.kill("SIGKILL");
-      else if (capture) chunks.push(chunk);
-    };
-    child.stdout.on("data", (chunk: Buffer) => collect(chunk, true));
-    child.stderr.on("data", (chunk: Buffer) => collect(chunk, false));
-    child.on("error", () => {
-      clearTimeout(timer);
-      reject(new Error("tool command failed"));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut || size > 1024 * 1024 || code !== 0) reject(new Error("tool command failed"));
-      else accept(Buffer.concat(chunks).toString("utf8"));
-    });
-  });
+) => {
+  try {
+    const result = await captureBounded(cmd, { cwd, env, timeoutMs, maxBytes: 1024 * 1024 });
+    if (result.code !== 0) throw new Error();
+    return result.stdout;
+  } catch {
+    throw new Error("tool command failed");
+  }
+};
 
 const download: IO["download"] = async (url) => {
   const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
