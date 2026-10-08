@@ -20,7 +20,7 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
 ## Phase Details
 
 ### Phase 1: Foundation Stability & System Boundaries
-**Goal:** Operators and developers have a boring, reliable foundation with final process and architecture boundaries for every later product slice.
+**Goal:** As a Flux operator or developer, I want to use independently operable, reproducible, observable process and architecture boundaries, so that every later product slice can build on a boring, reliable foundation.
 **Mode:** mvp
 **Depends on:** Nothing (first phase)
 **Requirements:** PLAT-01, PLAT-02, PLAT-03, PLAT-04, PLAT-05, PLAT-06, PLAT-07, PLAT-08, SAFE-01, SAFE-08
