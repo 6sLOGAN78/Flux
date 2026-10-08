@@ -338,7 +338,9 @@ test("real CLI rejects invalid invocation safely", async () => {
   assert.equal(result.code, 1);
 });
 
-test("real Sourcegraph scanning separates public Git evidence from worktree and historical tokens", async () => {
+test("real Sourcegraph scanning separates public Git evidence from worktree and historical tokens", {
+  timeout: 60000,
+}, async () => {
   await fixture(async (root) => {
     const { capture, runScans } = await load();
     const git = async (args: string[]) => {
@@ -389,20 +391,22 @@ test("real Sourcegraph scanning separates public Git evidence from worktree and 
       ["sgp", randomBytes(8).toString("hex"), randomBytes(20).toString("hex")].join("_"),
     ];
     for (const [index, token] of tokens.entries()) {
-      const label = index === 0 ? "SOURCEGRAPH_ACCESS_TOKEN = " : index === 1 ? "SRC_ACCESS_TOKEN = " : "";
+      const label =
+        index === 0 ? "SOURCEGRAPH_ACCESS_TOKEN = " : index === 1 ? "SRC_ACCESS_TOKEN = " : "";
       await writeFile(join(root, "credentials.txt"), `${label}${token}\n`);
       assert.equal(await scan(), 1);
       assert.match(lines.join("\n"), /Secrets worktree: sourcegraph-access-token/);
       for (const privateToken of tokens)
         assert.equal(lines.join("\n").includes(privateToken), false);
+      await commit("runtime credential fixture");
+      await writeFile(join(root, "credentials.txt"), "removed\n");
+      await commit("remove runtime fixture");
+      assert.equal(await scan(), 1);
+      assert.match(lines.join("\n"), /Secrets worktree: clean/);
+      assert.match(lines.join("\n"), /Secrets history: sourcegraph-access-token/);
+      for (const privateToken of tokens)
+        assert.equal(lines.join("\n").includes(privateToken), false);
     }
-    await commit("runtime credential fixture");
-    await writeFile(join(root, "credentials.txt"), "removed\n");
-    await commit("remove runtime fixture");
-    assert.equal(await scan(), 1);
-    assert.match(lines.join("\n"), /Secrets worktree: clean/);
-    assert.match(lines.join("\n"), /Secrets history: sourcegraph-access-token/);
-    for (const token of tokens) assert.equal(lines.join("\n").includes(token), false);
   });
 });
 

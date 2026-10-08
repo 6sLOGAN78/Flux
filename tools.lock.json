@@ -20,7 +20,7 @@
       "source": "https://github.com/gitleaks/gitleaks/blob/v8.30.1/README.md",
       "worktree": "dir --redact=100 --report-format=json --report-path=-",
       "history": "git --log-opts=--all --full-history --redact=100 --report-format=json --report-path=-",
-      "verification": "Pinned dir/git help, real full-history scan and runtime-generated deleted-history mutation fixtures"
+      "verification": "Pinned dir/git help, real full-history scan, public Git evidence regression, and runtime-generated prefixed/legacy credential worktree and deleted-history fixtures"
     },
     "policy": {
       "timeoutSeconds": 240,

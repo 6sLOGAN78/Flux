@@ -52,6 +52,7 @@ const publicRules = new Set([
   "slack-access-token",
   "stripe-access-token",
   "npm-access-token",
+  "sourcegraph-access-token",
 ]);
 const rule = (value: unknown) =>
   typeof value === "string" && publicRules.has(value) ? value : opaque(value);
