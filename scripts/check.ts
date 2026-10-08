@@ -27,7 +27,7 @@ export type Stage = {
   bunTests?: boolean;
   emptyOutput?: boolean;
 };
-type Result = { code: number; stdout: string };
+type Result = { code: number; stdout: string; failedTests?: string[] };
 type Runner = (stage: Stage) => Promise<Result>;
 type Workspace = { path: string; name: string; dependencies: string[] };
 type GoTests = { path: string; unit: string[]; integration: string[] };
@@ -321,6 +321,23 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
   return stages;
 };
 
+// Extract only repository-discovered test identifiers; subtest labels, output,
+// package names and malformed events remain private.
+const failedGoTests = (stage: Stage, stdout: string): string[] => {
+  const failed = new Set<string>();
+  for (const line of stdout.split("\n")) {
+    try {
+      const event = JSON.parse(line);
+      if (event?.Action !== "fail" || typeof event.Test !== "string") continue;
+      const name = event.Test.split("/")[0];
+      if (stage.expectedTests?.includes(name)) failed.add(name);
+    } catch {
+      // Incomplete or non-JSON diagnostics cannot contribute public metadata.
+    }
+  }
+  return (stage.expectedTests ?? []).filter((name) => failed.has(name));
+};
+
 // Capture at most 16 MiB and never print subprocess diagnostics. On timeout or
 // overflow terminate the whole subprocess group, including compiler/container helpers.
 export const runCommand: Runner = async (stage) =>
@@ -360,7 +377,12 @@ export const runCommand: Runner = async (stage) =>
     });
     child.once("close", (code) => {
       clearTimeout(timer);
-      complete({ code: failed ? 1 : (code ?? 1), stdout: failed || code !== 0 ? "" : stdout });
+      const failedTests = stage.expectedTests ? failedGoTests(stage, stdout) : [];
+      complete({
+        code: failed ? 1 : (code ?? 1),
+        stdout: failed || code !== 0 ? "" : stdout,
+        ...(failedTests.length ? { failedTests } : {}),
+      });
     });
   });
 
@@ -389,8 +411,13 @@ export const runChecks = async (
   for (const stage of stages) {
     options.progress?.(stage.id);
     const result = await (options.runner ?? runCommand)(stage);
-    if (result.code !== 0 || (stage.emptyOutput && result.stdout.trim()))
-      throw new Error(`Check failed: ${stage.id}`);
+    if (result.code !== 0 || (stage.emptyOutput && result.stdout.trim())) {
+      const failedTests = (stage.expectedTests ?? []).filter((name) =>
+        result.failedTests?.includes(name),
+      );
+      const detail = failedTests.length ? ` (${failedTests.join(", ")})` : "";
+      throw new Error(`Check failed: ${stage.id}${detail}`);
+    }
     if (stage.bunTests && !/[1-9]\d* pass\b/.test(result.stdout))
       throw new Error(`No successful tests: ${stage.id}`);
     if (stage.listedTests) {

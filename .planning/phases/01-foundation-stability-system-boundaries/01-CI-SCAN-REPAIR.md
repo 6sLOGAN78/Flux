@@ -16,3 +16,11 @@ Regression evidence:
 - Actual repository dependency, worktree and full-history scans passed after the refinement. The unrelated unimported Go module inventory advisory remains visible under the existing generic package-exposure policy.
 
 Final acceptance uses the full local command and the current hosted workflow, rather than reusing the earlier hosted pass. This follow-up does not start Phase 2 or alter the completed foundation's product scope.
+
+## Application integration diagnostic follow-up
+
+[Run 37751432635](https://github.com/6sLOGAN78/Flux/actions/runs/37751432635) passed the direct sanitized scanner and all preceding full-check stages, then failed `backend:integration:internal/app`. The complete local check passed on the same source. Its hosted failure did not identify a test because the root runner discarded output from unsuccessful subprocesses.
+
+Preserve that privacy boundary while extracting only failed Go test names already present in the repository-discovered stage manifest. Never expose event output, package names, arbitrary subtest labels or unknown identifiers. Non-JSON diagnostics retain the existing generic failure. The real subprocess regression verifies a failed child with private stdout/stderr and unrecognized metadata produces only the known top-level test identifier in the root failure message.
+
+This change improves the evidence needed to diagnose the integration failure; it does not change application behavior, skip a test, retry a failed CI gate or relax a deadline. Acceptance still requires the current hosted workflow.

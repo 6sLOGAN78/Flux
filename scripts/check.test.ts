@@ -307,3 +307,40 @@ test("subprocess deadlines and bounded private diagnostics fail safely", async (
   assert.notEqual(result.code, 0);
   assert.doesNotMatch(JSON.stringify(result), /SECRET-MARKER/);
 });
+
+test("failed Go subprocesses expose only expected test identifiers", async () => {
+  const { runCommand, runChecks } = await load();
+  await fixture(async (root) => {
+    await assert.rejects(
+      runChecks({
+        root,
+        runner: async (stage) => {
+          if (stage.id !== "backend:integration:internal/app")
+            return { code: 0, stdout: successfulOutput(stage) };
+          const events = [
+            { Action: "output", Output: "PRIVATE-DIAGNOSTIC-MARKER" },
+            { Action: "fail", Test: "TestRoleBinaryStartup/private-subtest" },
+            { Action: "fail", Test: "TestRoleBinaryStartup" },
+            { Action: "fail", Test: "TestUnknownPRIVATE-DIAGNOSTIC-MARKER" },
+            { Action: "fail" },
+          ];
+          const result = await runCommand({
+            ...stage,
+            command: [
+              "bun",
+              "-e",
+              `console.log(${JSON.stringify(events.map((event) => JSON.stringify(event)).join("\n"))});console.error("PRIVATE-DIAGNOSTIC-MARKER");process.exit(1)`,
+            ],
+            timeoutMs: 5000,
+          });
+          assert.equal(result.code, 1);
+          assert.equal(result.stdout, "");
+          assert.deepEqual(result.failedTests, ["TestRoleBinaryStartup"]);
+          assert.doesNotMatch(JSON.stringify(result), /PRIVATE-DIAGNOSTIC-MARKER/);
+          return result;
+        },
+      }),
+      { message: "Check failed: backend:integration:internal/app (TestRoleBinaryStartup)" },
+    );
+  });
+});
