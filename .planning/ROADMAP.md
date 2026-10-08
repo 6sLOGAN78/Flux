@@ -44,7 +44,7 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
   3. A permitted member can create a managed-domain link with a generated or available custom key, while unsafe destinations, normalized collisions, duplicate retries, and conflicting concurrent changes are rejected safely.
   4. A member can inspect, search, filter, and paginate links and perform allowed lifecycle transitions; an authorized administrator can suspend abuse with a recorded actor, reason, and time.
   5. Secure sessions, CSRF controls, workspace-scoped parameterized data access, explicit transactions, destination/egress defenses, and two-workspace denial tests protect every delivered control-plane workflow.
-**Plans:** 1/35 plans executed
+**Plans:** 2/35 plans executed
 **UI hint:** yes
 
 ### Phase 3: Fast Managed-Domain Redirects
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation Stability & System Boundaries | 22/22 | Complete    | 2026-10-08 |
-| 2. Tenant-Safe Link Control Plane | 1/35 | In Progress|  |
+| 2. Tenant-Safe Link Control Plane | 2/35 | In Progress|  |
 | 3. Fast Managed-Domain Redirects | 0/TBD | Not started | - |
 | 4. Durable Click Tracking & Privacy | 0/TBD | Not started | - |
 | 5. Idempotent Conversion Attribution | 0/TBD | Not started | - |
