@@ -1,8 +1,63 @@
 import { expect } from "@playwright/test";
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 import { ApiError, createAPI } from "./api";
 
 const origin = "https://flux.example";
+test("session API rewrite rejects credentials, nonlocal cleartext and noncanonical origins at build time", () => {
+  for (const value of [
+    "https://user:password@api.test",
+    "http://remote.test",
+    "https://api.test/path",
+    "https://api.test?token=private",
+    "https://api.test#private",
+    "https://api.test",
+    "http://127.0.0.1:8080",
+  ]) {
+    const result = spawnSync("bun", ["-e", 'await import("./next.config.ts")'], {
+      env: { ...process.env, FLUX_API_ORIGIN: value },
+      cwd: new URL("../", import.meta.url),
+      stdio: "ignore",
+    });
+    if (["https://api.test", "http://127.0.0.1:8080"].includes(value))
+      expect(result.status).toBe(0);
+    else expect(result.status).not.toBe(0);
+  }
+});
+test("session provider outage and rate limiting have safe actionable recovery codes", async () => {
+  for (const status of [429, 503]) {
+    const api = createAPI(async () => "credential", {
+      origin,
+      fetch: async () => new Response("PRIVATE-PROVIDER-DETAIL", { status }),
+    });
+    await expect(api.request("/me")).rejects.toMatchObject({ code: "unavailable", status });
+  }
+});
+
+test("session cancellation during token refresh never dispatches a late request", async () => {
+  let resolveToken: (token: string) => void = () => {};
+  let fetches = 0;
+  const controller = new AbortController();
+  const api = createAPI(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveToken = resolve;
+      }),
+    {
+      origin,
+      fetch: async () => {
+        fetches++;
+        return Response.json({});
+      },
+    },
+  );
+  const pending = api.request("/me", { signal: controller.signal });
+  controller.abort();
+  await expect(pending).rejects.toMatchObject({ code: "cancelled" });
+  resolveToken("late-credential");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(fetches).toBe(0);
+});
 test("adapter sends fresh explicit bearer only to fixed API origin with no ambient credentials", async () => {
   let tokens = 0;
   const requests: [string, RequestInit][] = [];

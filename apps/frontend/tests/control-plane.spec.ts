@@ -134,6 +134,10 @@ export const installProviderTransport = async (
   };
   await page.route("https://fixture.clerk.accounts.dev/**", async (route) => {
     const url = new URL(route.request().url());
+    if (/\/sessions\/[^/]+\/(?:remove|end)$/.test(url.pathname)) {
+      client.sessions = [];
+      client.last_active_session_id = null;
+    }
     if (url.pathname.startsWith("/npm/")) {
       // Fetch provider-owned SDK assets, not fake application auth controls.
       const asset = (async () => {
@@ -241,6 +245,57 @@ export const installProviderTransport = async (
 test.beforeEach(async ({ page }) => {
   await installProviderTransport(page);
 });
+
+test("session root loads committed identity and signout clears private data", async ({
+  page,
+  request,
+}) => {
+  const protocol = process.env.FLUX_BROWSER_FIXTURE;
+  expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  const fixture = await (await request.get(`${protocol}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  await page.route("**/api/v1/me", async (route) => {
+    const response = await route.fetch({ url: `${fixture.api}/api/v1/me` });
+    await route.fulfill({ response });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
+  await expect(page.getByText("local@example.test", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByText("local@example.test", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Sign in to Flux", exact: true })).toBeVisible();
+});
+
+for (const status of [401, 503]) {
+  test(`session root handles ${status} safely and supports recovery`, async ({ page, request }) => {
+    const protocol = process.env.FLUX_BROWSER_FIXTURE;
+    expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const fixture = await (await request.get(`${protocol}/client`)).json();
+    await installProviderTransport(page, fixture.client);
+    await page.route("**/api/v1/me", (route) =>
+      route.fulfill({ status, body: "PRIVATE-PROVIDER-DIAGNOSTIC" }),
+    );
+    await page.goto("/");
+    await expect(page.getByRole("alert")).toHaveText(
+      status === 401
+        ? "Your session ended. Sign in to continue."
+        : "Sign-in is temporarily unavailable. Try again shortly.",
+    );
+    await expect(page.getByText("PRIVATE-PROVIDER-DIAGNOSTIC")).toHaveCount(0);
+    await expect(page.getByText("local@example.test", { exact: true })).toHaveCount(0);
+    if (status === 401) {
+      await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+    } else {
+      await page.unroute("**/api/v1/me");
+      await page.route("**/api/v1/me", async (route) => {
+        const response = await route.fetch({ url: `${fixture.api}/api/v1/me` });
+        await route.fulfill({ response });
+      });
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(page.getByText("local@example.test", { exact: true })).toBeVisible();
+    }
+  });
+}
 
 test.afterEach(async ({ page }) => {
   // Stop the document producing new requests, then finish only the fixture's
@@ -400,7 +455,11 @@ test("identity resolves the signed browser session to one stable internal UUID",
         credentials: "omit",
         cache: "no-store",
       });
-      results.push({ status: response.status, body: await response.json(), cache: response.headers.get("cache-control") });
+      results.push({
+        status: response.status,
+        body: await response.json(),
+        cache: response.headers.get("cache-control"),
+      });
     }
     return results;
   }, fixture);
@@ -409,7 +468,9 @@ test("identity resolves the signed browser session to one stable internal UUID",
   if (!first) throw new Error("The identity request did not produce a result");
   expect(first.status).toBe(200);
   expect(first.cache).toBe("no-store");
-  expect(first.body.user.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(first.body.user.id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   expect(results[1]).toEqual(first);
   expect(JSON.stringify(results)).not.toContain("user_fixture");
   expect(JSON.stringify(results)).not.toContain(fixture.token);
