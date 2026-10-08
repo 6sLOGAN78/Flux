@@ -90,6 +90,7 @@ export type Stage = {
   listedTests?: Record<string, string[]>;
   bunTests?: boolean;
   browserTests?: boolean;
+  env?: Record<string, string>;
   emptyOutput?: boolean;
 };
 type Result = { code: number; stdout: string; failedTests?: string[] };
@@ -127,6 +128,7 @@ export const integrationTests: Record<string, string[]> = {
   ],
   "internal/handler": ["TestRoleHealthActualHTTP"],
   "internal/lib/job": ["TestCorrelationRetryLegacyRedis"],
+  "internal/service": ["TestBearerBrowserFixture"],
 };
 
 const filesUnder = async (directory: string): Promise<string[]> => {
@@ -433,6 +435,7 @@ export const runCommand: Runner = async (stage) =>
       cwd: stage.cwd,
       env: {
         ...process.env,
+        ...stage.env,
         PATH: `${join(repositoryRoot, "tmp/tools")}:${process.env.PATH ?? ""}`,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -470,6 +473,91 @@ export const runCommand: Runner = async (stage) =>
     });
   });
 
+// Provider diagnostics and signed tokens stay private; readiness exposes only a
+// validated loopback protocol URL owned by the test binary.
+const startBearerFixture = async (root: string) => {
+  const child = spawn(
+    "go",
+    [
+      "test",
+      "-run",
+      "^TestBearerBrowserFixture$",
+      "-v",
+      "./internal/service",
+      "-args",
+      "-browser-fixture",
+    ],
+    {
+      cwd: join(root, "apps/backend"),
+      env: process.env,
+      stdio: ["ignore", "pipe", "ignore"],
+      detached: true,
+    },
+  );
+  const kill = () => {
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }
+  };
+  try {
+    const url = await new Promise<string>((complete, reject) => {
+      let output = "";
+      const timer = setTimeout(() => reject(new Error("Bearer fixture readiness failed")), 90000);
+      child.once("error", () => {
+        clearTimeout(timer);
+        reject(new Error("Bearer fixture startup failed"));
+      });
+      child.once("close", () => {
+        clearTimeout(timer);
+        reject(new Error("Bearer fixture exited"));
+      });
+      child.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+        if (output.length > 65536) {
+          clearTimeout(timer);
+          reject(new Error("Bearer fixture output limit"));
+        }
+        const ready = output.match(/(?:^|\n)FLUX_BROWSER_FIXTURE (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
+        if (ready?.[1]) {
+          clearTimeout(timer);
+          complete(ready[1]);
+        }
+      });
+    });
+    return {
+      url,
+      stop: async () => {
+        try {
+          await fetch(`${url}/stop`, { method: "POST", signal: AbortSignal.timeout(3000) });
+          await new Promise<void>((complete) => {
+            if (child.exitCode !== null) {
+              complete();
+              return;
+            }
+            const timer = setTimeout(() => {
+              kill();
+              complete();
+            }, 5000);
+            child.once("close", () => {
+              clearTimeout(timer);
+              complete();
+            });
+          });
+        } catch {
+          kill();
+        }
+      },
+    };
+  } catch {
+    kill();
+    throw new Error("Bearer fixture readiness failed");
+  }
+};
+
 export const runChecks = async (
   options: {
     root?: string;
@@ -496,7 +584,15 @@ export const runChecks = async (
   for (const stage of stages) {
     if (stage.browserTests) stage.command.push(...(options.browserArgs ?? []));
     options.progress?.(stage.id);
-    const result = await (options.runner ?? runCommand)(stage);
+    const fixture =
+      stage.browserTests && !options.runner ? await startBearerFixture(context.root) : undefined;
+    if (fixture) stage.env = { FLUX_BROWSER_FIXTURE: fixture.url };
+    let result: Result;
+    try {
+      result = await (options.runner ?? runCommand)(stage);
+    } finally {
+      await fixture?.stop();
+    }
     if (result.code !== 0 || (stage.emptyOutput && result.stdout.trim())) {
       const failedTests = (stage.expectedTests ?? []).filter((name) =>
         result.failedTests?.includes(name),

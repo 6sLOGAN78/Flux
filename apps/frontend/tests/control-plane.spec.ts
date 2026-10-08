@@ -284,3 +284,20 @@ test("sign-in exposes original auth heading and native provider controls", async
   await expect(page.getByRole("button", { name: /Google/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /GitHub/ })).toBeVisible();
 });
+
+test("bearer signed browser request reaches the production Go boundary", async ({ page, request }) => {
+  const protocol = process.env.FLUX_BROWSER_FIXTURE;
+  expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  const fixture = await (await request.get(`${protocol}/client`)).json();
+  await page.goto("/sign-in");
+  await expect(page.getByRole("heading", { name: "Sign in to Flux", exact: true })).toBeVisible();
+  const result = await page.evaluate(async ({ api, token }) => {
+    const response = await fetch(`${api}/api/v1/me`, {
+      headers: { Authorization: `Bearer ${token}` }, credentials: "omit", cache: "no-store",
+    });
+    return { status: response.status, body: await response.json(), cache: response.headers.get("cache-control") };
+  }, fixture);
+  expect(result.status).toBe(200);
+  expect(result.body).toEqual({ authenticated: true });
+  expect(result.cache).toBe("no-store");
+});
