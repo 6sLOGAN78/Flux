@@ -1,11 +1,19 @@
 import { expect, type Page, test } from "@playwright/test";
 
+const providerAssets = new WeakMap<Page, Set<Promise<void>>>();
+
 // Only the browser harness substitutes FAPI responses. The real SDK and native
 // UI still render; local transport proofs never count as live factor acceptance.
 export const installProviderTransport = async (
   page: Page,
   sessionClient?: Record<string, unknown>,
 ) => {
+  let pending = providerAssets.get(page);
+  if (!pending) {
+    pending = new Set();
+    providerAssets.set(page, pending);
+  }
+  const assets = pending;
   const attribute = (enabled = false, required = false) => ({
     enabled,
     required,
@@ -128,10 +136,19 @@ export const installProviderTransport = async (
     const url = new URL(route.request().url());
     if (url.pathname.startsWith("/npm/")) {
       // Fetch provider-owned SDK assets, not fake application auth controls.
-      const response = await route.fetch({
-        url: `https://cdn.jsdelivr.net${url.pathname.replace("@clerk/clerk-js@6/", "@clerk/clerk-js@6.38.1/").replace("@clerk/ui@1/", "@clerk/ui@1.39.1/")}${url.search}`,
-      });
-      await route.fulfill({ response });
+      const asset = (async () => {
+        const response = await route.fetch({
+          url: `https://cdn.jsdelivr.net${url.pathname.replace("@clerk/clerk-js@6/", "@clerk/clerk-js@6.38.1/").replace("@clerk/ui@1/", "@clerk/ui@1.39.1/")}${url.search}`,
+          timeout: 15000,
+        });
+        await route.fulfill({ response });
+      })();
+      assets.add(asset);
+      try {
+        await asset;
+      } finally {
+        assets.delete(asset);
+      }
       return;
     }
     if (url.pathname.includes("/client/sign_ins") && route.request().method() === "POST") {
@@ -199,13 +216,17 @@ export const installProviderTransport = async (
       };
       client.sign_up = signUp;
     }
-    const response = url.pathname.includes("/client/sign_ups")
-      ? signUp
-      : url.pathname === "/v1/environment"
-        ? environment
-        : url.pathname.includes("/client/sign_ins")
-          ? signIn
-          : client;
+    const sessions = client.sessions as Record<string, unknown>[] | undefined;
+    const response =
+      url.pathname.includes("/tokens") && sessions?.[0]
+        ? sessions[0].last_active_token
+        : url.pathname.includes("/client/sign_ups")
+          ? signUp
+          : url.pathname === "/v1/environment"
+            ? environment
+            : url.pathname.includes("/client/sign_ins")
+              ? signIn
+              : client;
     await route.fulfill({
       contentType: "application/json",
       headers: {
@@ -219,6 +240,16 @@ export const installProviderTransport = async (
 
 test.beforeEach(async ({ page }) => {
   await installProviderTransport(page);
+});
+
+test.afterEach(async ({ page }) => {
+  // Stop the document producing new requests, then finish only the fixture's
+  // provider assets. Next development traffic is not a fixture completion signal.
+  await page.goto("about:blank", { waitUntil: "commit" });
+  const assets = providerAssets.get(page);
+  while (assets?.size) await Promise.all([...assets]);
+  await page.unrouteAll({ behavior: "wait" });
+  providerAssets.delete(page);
 });
 
 test("sign-in reaches native password and recovery controls using isolated transport", async ({
@@ -285,19 +316,63 @@ test("sign-in exposes original auth heading and native provider controls", async
   await expect(page.getByRole("button", { name: /GitHub/ })).toBeVisible();
 });
 
-test("bearer signed browser request reaches the production Go boundary", async ({ page, request }) => {
+test("bearer signed browser request reaches the production Go boundary", async ({
+  page,
+  request,
+}) => {
   const protocol = process.env.FLUX_BROWSER_FIXTURE;
   expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   const fixture = await (await request.get(`${protocol}/client`)).json();
+  await installProviderTransport(page, fixture.client);
   await page.goto("/sign-in");
-  await expect(page.getByRole("heading", { name: "Sign in to Flux", exact: true })).toBeVisible();
-  const result = await page.evaluate(async ({ api, token }) => {
+  await expect(page.getByText("Your account is signed in.")).toBeVisible();
+  const result = await page.evaluate(async ({ api }) => {
+    const clerk = (window as unknown as { Clerk: { session: { getToken: () => Promise<string> } } })
+      .Clerk;
+    const token = await clerk.session.getToken();
     const response = await fetch(`${api}/api/v1/me`, {
-      headers: { Authorization: `Bearer ${token}` }, credentials: "omit", cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "omit",
+      cache: "no-store",
     });
-    return { status: response.status, body: await response.json(), cache: response.headers.get("cache-control") };
+    return {
+      status: response.status,
+      body: await response.json(),
+      cache: response.headers.get("cache-control"),
+    };
   }, fixture);
   expect(result.status).toBe(200);
   expect(result.body).toEqual({ authenticated: true });
   expect(result.cache).toBe("no-store");
+});
+
+test("bearer denies revoked expired foreign and cookie-only credentials safely", async ({
+  page,
+  request,
+}) => {
+  const protocol = process.env.FLUX_BROWSER_FIXTURE;
+  expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  const cases = await (await request.get(`${protocol}/cases`)).json();
+  await page.goto("/sign-in");
+  await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
+  for (const name of ["revoked", "expired", "foreign", "outage"]) {
+    const result = await page.evaluate(
+      async ({ api, token }) => {
+        const response = await fetch(`${api}/api/v1/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "omit",
+          cache: "no-store",
+        });
+        return { status: response.status, body: await response.text() };
+      },
+      { api: cases.api, token: cases[name] },
+    );
+    expect(result.status).toBe(name === "outage" ? 503 : 401);
+    expect(result.body).not.toContain(cases[name]);
+    expect(result.body).not.toContain("user_fixture");
+  }
+  const cookieOnly = await request.get(`${cases.api}/api/v1/me`, {
+    headers: { Cookie: "__session=ambient-cookie" },
+  });
+  expect(cookieOnly.status()).toBe(401);
 });

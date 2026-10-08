@@ -71,6 +71,95 @@
         ],
         "title": "transport.HealthReadyResponse",
         "type": "object"
+      },
+      "transport.IdentityError": {
+        "additionalProperties": false,
+        "description": "Safe authentication failure without token or provider diagnostics.",
+        "properties": {
+          "action": {
+            "additionalProperties": false,
+            "nullable": true,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "redirect"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "message",
+              "value"
+            ],
+            "type": "object"
+          },
+          "code": {
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "error"
+              ],
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          },
+          "override": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "status",
+          "override",
+          "errors",
+          "action"
+        ],
+        "title": "transport.IdentityError",
+        "type": "object"
+      },
+      "transport.IdentityResponse": {
+        "additionalProperties": false,
+        "description": "A verified active bearer session. Durable Flux identity is mapped separately.",
+        "properties": {
+          "authenticated": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "authenticated"
+        ],
+        "title": "transport.IdentityResponse",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -93,6 +182,64 @@
   },
   "openapi": "3.0.2",
   "paths": {
+    "/api/v1/me": {
+      "get": {
+        "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
+        "operationId": "getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Verify the current bearer session",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
     "/live": {
       "get": {
         "description": "Report that the process is alive without probing dependencies.",

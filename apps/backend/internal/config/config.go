@@ -120,7 +120,9 @@ type IntegrationConfig struct {
 
 // AuthConfig contains authentication provider settings.
 type AuthConfig struct {
-	SecretKey string `koanf:"secret_key" validate:"required"`
+	SecretKey         string   `koanf:"secret_key" validate:"required"`
+	Issuer            string   `koanf:"issuer"`
+	AuthorizedParties []string `koanf:"authorized_parties"`
 }
 
 // ConfigError identifies a failed stage without exposing provider diagnostics.

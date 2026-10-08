@@ -297,8 +297,7 @@ func defaultRoleRouter(role config.Role, srv *server.Server) (*echo.Echo, error)
 			middleware.NewContextEnhancer(srv).EnhanceContext(), global.RequestLogger(), global.Recover())
 		return e, nil
 	}
-	// No product route currently uses Clerk; do not initialize unused secrets.
-	services := &service.Services{Job: srv.Job}
+	services := &service.Services{Job: srv.Job, Auth: service.NewAuthService(srv)}
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, services), nil
 }
 

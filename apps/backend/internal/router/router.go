@@ -18,7 +18,7 @@ const (
 )
 
 // NewRouter installs middleware and registers the role-owned routes.
-func NewRouter(s *server.Server, h *handler.Handlers, _ *service.Services) *echo.Echo {
+func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services) *echo.Echo {
 	middlewares := middleware.NewMiddlewares(s)
 
 	router := echo.New()
@@ -28,6 +28,14 @@ func NewRouter(s *server.Server, h *handler.Handlers, _ *service.Services) *echo
 	// Correlation, tracing and recovery wrap early CORS/rate-limit responses.
 	router.Use(
 		middleware.RequestID(),
+		func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				if c.Path() == "/api/v1/me" {
+					c.Response().Header().Set("Cache-Control", "no-store")
+				}
+				return next(c)
+			}
+		},
 		middleware.NewTracingMiddleware(s, s.Telemetry).EnhanceTracing(),
 		middlewares.ContextEnhancer.EnhanceContext(),
 		middlewares.Global.RequestLogger(),
@@ -57,7 +65,12 @@ func NewRouter(s *server.Server, h *handler.Handlers, _ *service.Services) *echo
 	registerSystemRoutes(router, h)
 
 	// register versioned routes
-	router.Group("/api/v1")
+	var auth *service.AuthService
+	if services != nil {
+		auth = services.Auth
+	}
+	product := handler.NewProductHandler(auth)
+	router.Group("/api/v1").GET("/me", product.Me)
 
 	return router
 }

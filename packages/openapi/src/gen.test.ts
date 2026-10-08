@@ -115,7 +115,11 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   const document = JSON.parse(serializeOpenAPI());
   assert.equal(document.openapi, "3.0.2");
   assert.equal(document.info.version, "1.0.0");
-  assert.deepEqual(Object.keys(document.paths).sort(), ["/live", "/ready"]);
+  assert.deepEqual(Object.keys(document.paths).sort(), ["/api/v1/me", "/live", "/ready"]);
+  const me = document.paths["/api/v1/me"].get;
+  assert.deepEqual(me.security, [{ bearerAuth: [] }]);
+  assert.deepEqual(Object.keys(me.responses).sort(), ["200", "401", "429", "503"]);
+  assert.match(me.description, /Cache-Control: no-store/);
   assert.deepEqual(Object.keys(document.paths["/live"].get.responses), ["200"]);
   assert.deepEqual(Object.keys(document.paths["/ready"].get.responses), ["200", "503"]);
   const responseSchema = (path: string, status: string) => {
@@ -135,7 +139,15 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
       "state",
     ]);
   }
-  assert.doesNotMatch(serializeOpenAPI(), /"(error|environment|timestamp|response_time)"/);
+  assert.doesNotMatch(
+    JSON.stringify({
+      live: document.components.schemas["transport.HealthLiveResponse"],
+      ready: document.components.schemas["transport.HealthReadyResponse"],
+      livePath: document.paths["/live"],
+      readyPath: document.paths["/ready"],
+    }),
+    /"(error|environment|timestamp|response_time)"/,
+  );
 });
 
 test("serialization ignores object insertion order and preserves binary file conversion", async () => {

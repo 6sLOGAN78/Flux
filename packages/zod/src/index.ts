@@ -4,4 +4,5 @@ import { z } from "zod";
 extendZodWithOpenApi(z);
 
 export * from "./health.js";
+export * from "./identity.js";
 export * from "./utils.js";

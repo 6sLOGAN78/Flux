@@ -54,6 +54,36 @@ func (e TransportHealthReadyResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransportIdentityErrorActionType.
+const (
+	Redirect TransportIdentityErrorActionType = "redirect"
+)
+
+// Valid indicates whether the value is a known member of the TransportIdentityErrorActionType enum.
+func (e TransportIdentityErrorActionType) Valid() bool {
+	switch e {
+	case Redirect:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransportIdentityResponseAuthenticated.
+const (
+	True TransportIdentityResponseAuthenticated = true
+)
+
+// Valid indicates whether the value is a known member of the TransportIdentityResponseAuthenticated enum.
+func (e TransportIdentityResponseAuthenticated) Valid() bool {
+	switch e {
+	case True:
+		return true
+	default:
+		return false
+	}
+}
+
 // TransportHealthLiveResponse Process liveness, independent of external dependencies.
 //
 // Example: {"status":"alive"}
@@ -80,6 +110,34 @@ type TransportHealthReadyResponseChecksState string
 
 // TransportHealthReadyResponseStatus defines model for TransportHealthReadyResponse.Status.
 type TransportHealthReadyResponseStatus string
+
+// TransportIdentityError Safe authentication failure without token or provider diagnostics.
+type TransportIdentityError struct {
+	Action *struct {
+		Message string                           `json:"message"`
+		Type    TransportIdentityErrorActionType `json:"type"`
+		Value   string                           `json:"value"`
+	} `json:"action"`
+	Code   string `json:"code"`
+	Errors *[]struct {
+		Error string `json:"error"`
+		Field string `json:"field"`
+	} `json:"errors"`
+	Message  string `json:"message"`
+	Override bool   `json:"override"`
+	Status   int    `json:"status"`
+}
+
+// TransportIdentityErrorActionType defines model for TransportIdentityError.Action.Type.
+type TransportIdentityErrorActionType string
+
+// TransportIdentityResponse A verified active bearer session. Durable Flux identity is mapped separately.
+type TransportIdentityResponse struct {
+	Authenticated TransportIdentityResponseAuthenticated `json:"authenticated"`
+}
+
+// TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.
+type TransportIdentityResponseAuthenticated bool
 
 // HealthLiveResponse is the canonical liveness transport in this package.
 type HealthLiveResponse = TransportHealthLiveResponse
