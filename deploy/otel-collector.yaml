@@ -17,6 +17,8 @@ processors:
   transform/privacy:
     error_mode: propagate
     trace_statements:
+      - set(resource.schema_url, "")
+      - set(scope.schema_url, "")
       - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
       - keep_keys(scope.attributes, [])
       - set(scope.name, "github.com/6sLOGAN78/flux")
@@ -50,6 +52,8 @@ processors:
       - delete_key(resource.attributes, "process.role") where not IsString(resource.attributes["process.role"]) or not IsMatch(resource.attributes["process.role"], "^(api|redirector|worker|migrator)$")
       - delete_key(resource.attributes, "deployment.environment.name") where not IsString(resource.attributes["deployment.environment.name"]) or not IsMatch(resource.attributes["deployment.environment.name"], "^(local|development|test|staging|production)$")
     log_statements:
+      - set(resource.schema_url, "")
+      - set(scope.schema_url, "")
       - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
       - keep_keys(scope.attributes, [])
       - set(scope.name, "github.com/6sLOGAN78/flux")
@@ -79,6 +83,8 @@ processors:
       - delete_key(resource.attributes, "process.role") where not IsString(resource.attributes["process.role"]) or not IsMatch(resource.attributes["process.role"], "^(api|redirector|worker|migrator)$")
       - delete_key(resource.attributes, "deployment.environment.name") where not IsString(resource.attributes["deployment.environment.name"]) or not IsMatch(resource.attributes["deployment.environment.name"], "^(local|development|test|staging|production)$")
     metric_statements:
+      - set(resource.schema_url, "")
+      - set(scope.schema_url, "")
       - keep_keys(resource.attributes, ["service.name", "process.role", "deployment.environment.name"])
       - keep_keys(scope.attributes, [])
       - set(scope.name, "github.com/6sLOGAN78/flux")

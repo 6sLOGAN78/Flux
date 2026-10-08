@@ -787,6 +787,16 @@ func TestCollectorRedactsAllSignals(t *testing.T) {
 								Value: &metricpb.NumberDataPoint_AsInt{AsInt: 1}}}}}}}}}}}},
 	}
 	// Challenge values under allowed keys independently of the SDK sanitizer.
+	// Schema URLs belong to the envelopes, outside both attribute allowlists.
+	traces := messages["/v1/traces"].(*tracecollector.ExportTraceServiceRequest).GetResourceSpans()[0]
+	traces.SchemaUrl = "https://private.invalid/resource/" + secret
+	traces.GetScopeSpans()[0].SchemaUrl = "https://private.invalid/scope/" + secret
+	dirtyResourceLogs := messages["/v1/logs"].(*logcollector.ExportLogsServiceRequest).GetResourceLogs()[0]
+	dirtyResourceLogs.SchemaUrl = "https://private.invalid/resource/" + secret
+	dirtyResourceLogs.GetScopeLogs()[0].SchemaUrl = "https://private.invalid/scope/" + secret
+	metrics := messages["/v1/metrics"].(*metriccollector.ExportMetricsServiceRequest).GetResourceMetrics()[0]
+	metrics.SchemaUrl = "https://private.invalid/resource/" + secret
+	metrics.GetScopeMetrics()[0].SchemaUrl = "https://private.invalid/scope/" + secret
 	// A key-only collector allowlist would let every one of these values leak.
 	unsafeValues := func() []*commonpb.KeyValue {
 		var attrs []*commonpb.KeyValue
