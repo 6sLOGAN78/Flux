@@ -164,7 +164,7 @@ export const integrationTests: Record<string, string[]> = {
     "TestDatabaseTelemetryParameterizedPostgres",
     "TestMigrationEmptyDatabaseAndBinary",
   ],
-  "internal/handler": ["TestRoleHealthActualHTTP"],
+  "internal/handler": ["TestRoleHealthActualHTTP", "TestProductActualHTTP"],
   "internal/lib/job": ["TestCorrelationRetryLegacyRedis"],
   "internal/service": ["TestBearerBrowserFixture"],
 };

@@ -376,3 +376,37 @@ test("bearer denies revoked expired foreign and cookie-only credentials safely",
   });
   expect(cookieOnly.status()).toBe(401);
 });
+
+test("identity resolves the signed browser session to one stable internal UUID", async ({
+  page,
+  request,
+}) => {
+  const protocol = process.env.FLUX_BROWSER_FIXTURE;
+  expect(protocol).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  const fixture = await (await request.get(`${protocol}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  await page.goto("/sign-in");
+  await expect(page.getByText("Your account is signed in.")).toBeVisible();
+  const results = await page.evaluate(async ({ api }) => {
+    const clerk = (window as unknown as { Clerk: { session: { getToken: () => Promise<string> } } })
+      .Clerk;
+    const token = await clerk.session.getToken();
+    const results = [];
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(`${api}/api/v1/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "omit",
+        cache: "no-store",
+      });
+      results.push({ status: response.status, body: await response.json(), cache: response.headers.get("cache-control") });
+    }
+    return results;
+  }, fixture);
+  expect(results).toHaveLength(2);
+  expect(results[0].status).toBe(200);
+  expect(results[0].cache).toBe("no-store");
+  expect(results[0].body.user.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(results[1]).toEqual(results[0]);
+  expect(JSON.stringify(results)).not.toContain("user_fixture");
+  expect(JSON.stringify(results)).not.toContain(fixture.token);
+});
