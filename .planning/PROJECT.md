@@ -4,7 +4,7 @@
 
 Flux is the temporary internal codename for a production-grade, multi-tenant link attribution and marketing analytics SaaS. It gives marketers, growth teams, developers, agencies, and affiliate teams branded short links, reliable redirects, asynchronous click tracking, conversion attribution, analytics, developer APIs, and later partner and billing capabilities through an original Go-first implementation.
 
-The repository is brownfield: it contains a useful Go/Echo service foundation and TypeScript packages for API contracts and email templates, but the product domains, database schema, frontend, redirect data plane, and executable test suites are not implemented yet.
+The repository is brownfield, with a verified Go/Echo foundation and TypeScript packages for API contracts and email templates. API, redirector, worker, and migrator roles operate independently, with deterministic generation, embedded assets, sanitized health and observability, bounded lifecycle handling, and executable local/CI checks. Product domains, the product database schema, frontend, and redirect behavior remain assigned to later phases.
 
 ## Core Value
 
@@ -17,10 +17,10 @@ A marketer can create a link, send a visitor through a fast and reliable redirec
 - ✓ The existing Go service starts from a layered Echo-based HTTP foundation with configuration, structured logging, middleware, health and API-documentation routes — existing source foundation
 - ✓ PostgreSQL, Redis, migrations, and Asynq worker integrations have reusable initialization scaffolding — existing source foundation
 - ✓ TypeScript workspaces provide reusable Zod schemas, ts-rest/OpenAPI generation, and React Email templates — existing source foundation
+- ✓ Independently configured process roles, explicit migrations, liveness/readiness, bounded shutdown, deterministic contracts/assets, real integration tests, pinned quality gates, safe telemetry, and dependency/secret scans — validated in Phase 1: Foundation Stability & System Boundaries (PLAT-01 through PLAT-08, SAFE-01, SAFE-08)
 
 ### Active
 
-- [ ] Stabilize the existing foundation so configuration, health/readiness, lifecycle management, migrations, CI, tests, and observability are reliable.
 - [ ] Enforce identity, workspace membership, roles, invitations, and tenant isolation at service and persistence boundaries.
 - [ ] Deliver link creation and management with collision-safe keys, search/filtering, lifecycle operations, and workspace ownership.
 - [ ] Separate a latency-sensitive redirect data plane from the control-plane API, backed by PostgreSQL and a Redis cache.
@@ -44,12 +44,18 @@ A marketer can create a link, send a visitor through a fast and reliable redirec
 ## Context
 
 - `spec.md` is the authoritative product-intent document. It describes a long-term product with 20 domains and explicitly requires vertical delivery rather than simultaneous implementation.
-- `.planning/codebase/` records the source-inspected current state. The current backend exposes health, API documentation, and static routes; `/api/v1` and repositories are scaffolds and the initial migration contains no product DDL.
+- `.planning/codebase/` records the initial source-inspected baseline and is due for a refresh after the foundation changes. Current evidence is in the Phase 1 verification, review, security audit, and development runbook. The backend exposes health and API documentation; product API routes and repositories remain extension points, and bootstrap migrations contain no product DDL.
 - `apps/frontend/` is empty. Existing React usage is limited to email templates, so the dashboard remains greenfield.
-- The current implementation couples HTTP and email-worker startup, uses package globals in several areas, depends on working-directory assets, lacks executable application tests, and has source-confirmed health, signal handling, validation, and OpenAPI export issues.
+- Phase 1 separated HTTP and email-worker ownership, removed implicit API migrations, embedded runtime assets, established executable unit/integration suites, and repaired health, signal handling, validation, generated-contract, credential encoding, and quality-gate boundaries. Telemetry is injected through vendor-neutral OpenTelemetry and scrubbed before stdout and OTLP export.
 - The spec proposes Go binaries for API, redirector, worker, and migrations; PostgreSQL as the source of truth; Redis for redirect cache and transient coordination; NATS JetStream or Redis Streams for events; and ClickHouse when event volume justifies it.
 - Control-plane traffic (`web → API → PostgreSQL`) and data-plane traffic (`visitor → redirector → Redis/PostgreSQL → redirect`, with asynchronous events) must remain operationally independent.
 - The user-facing product should be original, minimalist, responsive, accessible, information-dense, keyboard-friendly, and professional.
+
+## Current State
+
+Phase 1 is complete: 22/22 plans, 53/53 verified must-haves, ten requirements and 19 locked decisions. The follow-up code review is clean, all 39 planned threats have verified dispositions, and the full local gate and hosted GitHub Actions run passed. Verification and audit artifacts are committed with the implementation.
+
+Phase 2 is the next planned slice and has not started. Execution stopped after Phase 1 as requested by `--no-transition`. The marketer's link-to-revenue core loop remains future work.
 
 ## Constraints
 
@@ -71,9 +77,9 @@ A marketer can create a link, send a visitor through a fast and reliable redirec
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Use `Flux` as the temporary internal codename | The repository already uses the name and the specification requires an independent temporary codename | — Pending |
-| Preserve the Go/Echo boilerplate where sound | Existing initialization, middleware, database, worker, and contract patterns provide a useful base | — Pending |
-| Separate control plane and redirect data plane | Redirect latency and availability must not depend on dashboard or analytics availability | — Pending |
-| Start modular with a few deployable binaries | Independent scaling matters, while early microservice sprawl would slow delivery | — Pending |
+| Preserve the Go/Echo boilerplate where sound | Existing initialization, middleware, database, worker, and contract patterns provide a useful base | Validated in Phase 1 |
+| Separate control plane and redirect data plane | Redirect latency and availability must not depend on dashboard or analytics availability | Independent role foundation verified in Phase 1; product redirects remain Phase 3 |
+| Start modular with a few deployable binaries | Independent scaling matters, while early microservice sprawl would slow delivery | Four independently operable roles verified in Phase 1 |
 | Keep PostgreSQL authoritative and Redis as cache/transient infrastructure | Strong consistency is required for ownership and link configuration | — Pending |
 | Introduce ClickHouse before high-scale analytics, not by default on day one | Early PostgreSQL event storage can reduce complexity if the abstraction preserves migration | — Pending |
 | Use first-click and last-click attribution initially | They are explainable, testable, and sufficient to validate the core attribution loop | — Pending |
@@ -97,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-05 after initialization*
+*Last updated: 2026-10-08 after Phase 1 verification and completion*
