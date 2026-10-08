@@ -42,9 +42,8 @@ func (e *HTTPError) Error() string {
 
 // Is matches HTTP errors by their stable error code.
 func (e *HTTPError) Is(target error) bool {
-	_, ok := target.(*HTTPError)
-
-	return ok
+	other, ok := target.(*HTTPError)
+	return ok && e != nil && other != nil && e.Code == other.Code
 }
 
 // WithMessage returns an error copy with an overridden public message.
