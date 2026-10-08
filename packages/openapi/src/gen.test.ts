@@ -14,6 +14,33 @@ const generatorPath = join(root, "packages/openapi/dist/gen.js");
 const canonicalPath = join(root, "packages/openapi/openapi.json");
 const servedPath = join(root, "apps/backend/static/openapi.json");
 
+test("exported OpenAPI resolves every local reference and equals the canonical document", async () => {
+  const { OpenAPI } = await import("./index.js");
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.$ref === "string" && record.$ref.startsWith("#/")) {
+      let target: unknown = OpenAPI;
+      for (const segment of record.$ref.slice(2).split("/")) {
+        assert.ok(target && typeof target === "object", `unresolved ${record.$ref}`);
+        target = (target as Record<string, unknown>)[
+          segment.replaceAll("~1", "/").replaceAll("~0", "~")
+        ];
+      }
+      assert.ok(target, `unresolved ${record.$ref}`);
+    }
+    for (const entry of Object.values(record)) visit(entry);
+  };
+  visit(OpenAPI);
+  const { serializeOpenAPI } = await loadGenerator();
+  assert.deepEqual(JSON.parse(serializeOpenAPI()), JSON.parse(JSON.stringify(OpenAPI)));
+  assert.equal(serializeOpenAPI(), await readFile(canonicalPath, "utf8"));
+});
+
 test("both OpenAPI adapters retain the secure merge implementation", () => {
   const require = createRequire(import.meta.url);
   const adapterRequires = [require, createRequire(require.resolve("@ts-rest/open-api"))];

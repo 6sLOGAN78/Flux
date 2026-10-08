@@ -28,42 +28,43 @@ const operationMapper: OperationMapper = (operation, appRoute) => ({
     : {}),
 });
 
-export const OpenAPI = Object.assign(
-  generateOpenApi(
-    apiContract,
-    {
-      openapi: "3.0.2",
-      info: {
-        version: "1.0.0",
-        title: "Flux REST API - Documentation",
-        description: "Flux REST API - Documentation",
-      },
-      servers: [
-        {
-          url: "http://localhost:8080",
-          description: "Local Server",
-        },
-      ],
-    },
-    {
-      operationMapper,
-      setOperationId: true,
-    },
-  ),
+const document = generateOpenApi(
+  apiContract,
   {
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
-        },
-        "x-service-token": {
-          type: "apiKey",
-          name: "x-service-token",
-          in: "header",
-        },
+    openapi: "3.0.2",
+    info: {
+      version: "1.0.0",
+      title: "Flux REST API - Documentation",
+      description: "Flux REST API - Documentation",
+    },
+    servers: [
+      {
+        url: "http://localhost:8080",
+        description: "Local Server",
+      },
+    ],
+  },
+  {
+    operationMapper,
+    setOperationId: true,
+  },
+);
+
+export const OpenAPI = {
+  ...document,
+  components: {
+    ...document.components,
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      },
+      "x-service-token": {
+        type: "apiKey",
+        name: "x-service-token",
+        in: "header",
       },
     },
   },
-);
+};

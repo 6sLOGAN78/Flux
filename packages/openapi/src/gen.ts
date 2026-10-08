@@ -1,20 +1,7 @@
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { generateOpenApi } from "@ts-rest/open-api";
-
-import { apiContract } from "./contracts/index.js";
 import { OpenAPI } from "./index.js";
-
-// The existing document builder replaces components when adding security schemes.
-// Recover named schemas from the same authored contract, preserving its operations.
-const canonicalDocument = {
-  ...OpenAPI,
-  components: {
-    ...OpenAPI.components,
-    schemas: generateOpenApi(apiContract, { info: OpenAPI.info }).components?.schemas,
-  },
-};
 
 const normalize = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(normalize);
@@ -39,7 +26,7 @@ const normalize = (value: unknown): unknown => {
   return normalized;
 };
 
-export const serializeOpenAPI = (document: unknown = canonicalDocument): string => {
+export const serializeOpenAPI = (document: unknown = OpenAPI): string => {
   return `${JSON.stringify(normalize(document), null, 2)}\n`;
 };
 
