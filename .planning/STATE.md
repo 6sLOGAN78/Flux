@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-10-09T06:15:20.018Z"
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-10-09T06:32:04.274Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 28
+  completed_plans: 29
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 7 of 35
+Plan: 8 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [█████░░░░░] 49%
+Progress: [█████░░░░░] 51%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [█████░░░░░] 49%
 | Phase 2 P04 | 24min | 2 tasks | 16 files |
 | Phase 2 P05 | 12min | 2 tasks | 15 files |
 | Phase 2 P06 | 26min | 2 tasks | 20 files |
+| Phase 2 P07 | 15min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Patch pinned Go to 1.26.9 and x/net to v0.60.0; reproduce govulncheck v1.8.0 binaries with unchanged source verification and deterministic recipe. — Clear newly published imported-package advisories without scanner exceptions, unrelated upgrades or phase advancement; full local check passed.
 - [Phase 2]: Workspace bootstrap serializes durable actor identity; replay drops that lock before fresh workspace-first membership authorization. — Keep atomic canonical retries and tenant isolation without lock-order inversion or provider organization authority.
 - [Phase 2]: Standalone browser execution builds its canonical schema dependency; the first-link CTA remains disabled until 02-14 implements creation. — Prevent stale dist from substituting for authored contracts and avoid inventing an absent production route.
+- [Phase 2]: Authorize current workspace membership before bootstrap hash comparison; actor-scoped cleanup removes only expired ledger records. — Preserve safe denial, database-enforced minimum 24-hour retention and workspace-first lock ordering.
+- [Phase 2]: Consume the explicit repository registry and show authorized Team availability without inventing an endpoint. — Native Links shell is reachable; actual Team operations remain plan 02-16, first-link creation 02-14 and live provider acceptance 02-35.
 
 ### Pending Todos
 
@@ -150,6 +153,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T06:15:20.008Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-10-09T06:32:04.260Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
