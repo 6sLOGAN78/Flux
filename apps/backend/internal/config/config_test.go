@@ -20,6 +20,7 @@ type configProvider struct {
 func TestLinksOperatorConfigOwnedByAPI(t *testing.T) {
 	for _, host := range []string{
 		"", "https://go.flux.test", "go.flux.test:443", "127.0.0.1", "localhost", "bad_host.example", "-bad.example",
+		"links.localhost", "links.local", "links.internal", "metadata.google.internal",
 	} {
 		values := configValues()
 		values["links"] = map[string]any{"managed_host": host}
@@ -37,6 +38,43 @@ func TestLinksOperatorConfigOwnedByAPI(t *testing.T) {
 	cfg, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
 	if err != nil || cfg.Links.ManagedHost != "go.flux.test" || cfg.Links.BlockedHosts[0] != "blocked.example" {
 		t.Fatal("operator host normalization failed")
+	}
+}
+
+func TestLinksEnvironmentPolicy(t *testing.T) {
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "FLUX_") {
+			t.Setenv(key, "")
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for section, value := range configValues() {
+		for key, field := range value.(map[string]any) {
+			if section != "links" {
+				t.Setenv("FLUX_"+strings.ToUpper(section+"."+key), fmt.Sprint(field))
+			}
+		}
+	}
+	t.Setenv("FLUX_LINKS.MANAGED_HOST", "BÜCHER.EXAMPLE.")
+	t.Setenv("FLUX_LINKS.BLOCKED_HOSTS", " BLOCKED.EXAMPLE., Bücher.EXAMPLE ")
+	cfg, err := LoadConfigForRole(RoleAPI)
+	if err != nil || cfg.Links.ManagedHost != "xn--bcher-kva.example" ||
+		strings.Join(cfg.Links.BlockedHosts, ",") != "blocked.example,xn--bcher-kva.example" {
+		t.Fatal("environment policy failed normalization")
+	}
+	t.Setenv("FLUX_LINKS.BLOCKED_HOSTS", "blocked.example,,other.example")
+	if _, err = LoadConfigForRole(RoleAPI); err == nil {
+		t.Fatal("empty blocked-host list entry accepted")
+	}
+	t.Setenv("FLUX_LINKS.MANAGED_HOST", "")
+	if _, err = LoadConfigForRole(RoleAPI); err == nil {
+		t.Fatal("missing owned host accepted")
+	}
+	if _, err = LoadConfigForRole(RoleRedirector); err != nil {
+		t.Fatal("unowned policy blocked redirector")
 	}
 }
 

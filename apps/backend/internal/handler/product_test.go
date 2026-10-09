@@ -413,7 +413,7 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	require.Equal(t, result, replay)
 	status, _ = workspaceRequest(t, api, token, "POST", path, "link-create-00001", `{"destination":"https://example.org"}`)
 	require.Equal(t, 409, status)
-	for i, destination := range []string{"//example.com", "https://user@example.com", "http://127.0.0.1", "http://169.254.169.254", "https://go.flux.test/a", "https://blocked.example", "https://example.com:99999", "https://example.com\\evil", "ftp://example.com", "http://[::ffff:127.0.0.1]"} {
+	for i, destination := range []string{"//example.com", "https://user@example.com", "http://127.0.0.1", "http://169.254.169.254", "https://go.flux.test/a", "https://blocked.example", "https://example.com:99999", "https://example.com\\evil", "ftp://example.com", "http://[::ffff:127.0.0.1]", "http://192.88.99.1", "http://[fec0::1]", "http://[2001:20::1]", "http://[3fff::1]", "https://sub.blocked.example", "https://example.com/%0a"} {
 		body, err := json.Marshal(map[string]string{"destination": destination})
 		require.NoError(t, err)
 		status, _ = workspaceRequest(t, api, token, "POST", path, "link-unsafe-0000"+string(rune('a'+i)), string(body))
