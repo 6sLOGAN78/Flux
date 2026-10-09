@@ -187,6 +187,7 @@ func productRouterWithRandom(cfg *config.Config, db *database.Database, p *signe
 	workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
 		Identity:  service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
+		Team:      service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace),
 		Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepositoryWithRandom(db.Pool, random), workspace, cfg.Links)})
 }
 

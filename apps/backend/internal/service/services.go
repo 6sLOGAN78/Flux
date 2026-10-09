@@ -13,6 +13,7 @@ type Services struct {
 	Identity  IdentityResolver
 	Workspace *WorkspaceService
 	Links     *LinkService
+	Team      *TeamService
 	Job       *job.JobService
 }
 
@@ -33,6 +34,7 @@ func NewServices(s *server.Server, stores *repository.Repositories) (*Services, 
 		Auth:      authService,
 		Identity:  NewIdentityService(stores.Users, authService),
 		Workspace: workspace,
+		Team:      NewTeamService(stores.Team, workspace),
 		Links:     NewLinkService(repository.NewLinkRepository(pool), workspace, s.Config.Links),
 	}, nil
 }

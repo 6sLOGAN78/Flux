@@ -6,10 +6,12 @@ export function AppShell({
   workspace,
   children,
   switcher,
+  section = "Links",
 }: {
   workspace: WorkspaceResponse["workspace"];
   children: ReactNode;
   switcher?: ReactNode;
+  section?: "Links" | "Team";
 }) {
   const capabilities = workspaceCapabilities(workspace.role);
   return (
@@ -19,23 +21,24 @@ export function AppShell({
         <h1>{workspace.name}</h1>
         {switcher}
         <nav aria-label="Workspace">
-          <a href={`/workspaces/${workspace.id}/links`} aria-current="page">
+          <a
+            href={`/workspaces/${workspace.id}/links`}
+            aria-current={section === "Links" ? "page" : undefined}
+          >
             Links
           </a>
           {capabilities.team && (
-            <span>
-              <button type="button" disabled aria-describedby="team-availability">
-                Team
-              </button>
-              <span id="team-availability">
-                Team management will be available in a later update.
-              </span>
-            </span>
+            <a
+              href={`/workspaces/${workspace.id}/team`}
+              aria-current={section === "Team" ? "page" : undefined}
+            >
+              Team
+            </a>
           )}
           <a href="/">Account</a>
         </nav>
       </header>
-      <main className="auth-panel" aria-label="Links">
+      <main className="auth-panel" aria-label={section}>
         {children}
       </main>
     </>

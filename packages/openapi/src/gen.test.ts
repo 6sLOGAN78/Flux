@@ -142,6 +142,7 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     "/api/v1/workspaces/{workspaceId}",
     "/api/v1/workspaces/{workspaceId}/links",
     "/api/v1/workspaces/{workspaceId}/links/{linkId}",
+    "/api/v1/workspaces/{workspaceId}/members",
     "/live",
     "/ready",
   ]);

@@ -10,6 +10,7 @@ import (
 type Repositories struct {
 	Users      *UserRepository
 	Workspaces *WorkspaceRepository
+	Team       *TeamRepository
 }
 
 // NewRepositories constructs the persistence registry.
@@ -18,5 +19,7 @@ func NewRepositories(s *server.Server) *Repositories {
 	if s.DB != nil {
 		pool = s.DB.Pool
 	}
-	return &Repositories{Users: NewUserRepository(pool), Workspaces: NewWorkspaceRepository(pool)}
+	return &Repositories{
+		Users: NewUserRepository(pool), Workspaces: NewWorkspaceRepository(pool), Team: NewTeamRepository(pool),
+	}
 }

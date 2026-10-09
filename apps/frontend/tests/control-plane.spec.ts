@@ -37,12 +37,13 @@ test("team inspects actual members with responsive roles and truthful retry then
   expect(await page.getByRole("button", { name: /Invite|Remove|Change role/ }).count()).toBe(0);
   fail = true;
   await page.getByRole("button", { name: "Reload team", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("We couldn't load team. Try again.");
+  const team = page.getByRole("main", { name: "Team", exact: true });
+  await expect(team.getByRole("alert")).toHaveText("We couldn't load team. Try again.");
   await expect(page.getByRole("table")).toBeVisible();
   await expect(page.getByText("No members", { exact: true })).toHaveCount(0);
   fail = false;
   await page.getByRole("button", { name: "Retry loading team", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(team.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(page.getByRole("list", { name: "Team members" })).toBeVisible();
   await expect(
@@ -747,8 +748,11 @@ test("workspace requires an explicit name and opens authorized Links after commi
     "aria-current",
     "page",
   );
-  await expect(navigation.getByRole("button", { name: "Team", exact: true })).toBeDisabled();
-  await expect(navigation.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: "Team", exact: true })).toHaveAttribute(
+    "href",
+    /\/team$/,
+  );
+  await expect(navigation.getByRole("button", { name: "Team", exact: true })).toHaveCount(0);
   await expect(
     page.getByText("Create a managed-domain link to organize its destination and status.", {
       exact: true,

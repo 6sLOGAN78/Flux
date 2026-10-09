@@ -108,6 +108,30 @@ func (e TransportLinkLifecycle) Valid() bool {
 	}
 }
 
+// Defines values for TransportTeamMemberRole.
+const (
+	TeamAdmin  TransportTeamMemberRole = "admin"
+	TeamMember TransportTeamMemberRole = "member"
+	TeamOwner  TransportTeamMemberRole = "owner"
+	TeamViewer TransportTeamMemberRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the TransportTeamMemberRole enum.
+func (e TransportTeamMemberRole) Valid() bool {
+	switch e {
+	case TeamAdmin:
+		return true
+	case TeamMember:
+		return true
+	case TeamOwner:
+		return true
+	case TeamViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransportWorkspaceRole.
 const (
 	Admin  TransportWorkspaceRole = "admin"
@@ -273,6 +297,25 @@ type TransportLinksResponse struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
+// TransportMembersResponse defines model for transport.MembersResponse.
+type TransportMembersResponse struct {
+	Items []TransportTeamMember `json:"items"`
+
+	// NextAfter Last user UUID continuation; null means authoritative exhaustion. Never grants workspace authority.
+	NextAfter *string `json:"nextAfter"`
+}
+
+// TransportTeamMember defines model for transport.TeamMember.
+type TransportTeamMember struct {
+	Email       string                  `json:"email"`
+	Id          string                  `json:"id"`
+	Role        TransportTeamMemberRole `json:"role"`
+	WorkspaceId string                  `json:"workspaceId"`
+}
+
+// TransportTeamMemberRole defines model for TransportTeamMember.Role.
+type TransportTeamMemberRole string
+
 // TransportWorkspace defines model for transport.Workspace.
 type TransportWorkspace struct {
 	Id   string                 `json:"id"`
@@ -326,6 +369,11 @@ type ListLinksParamsState string
 // CreateLinkParams defines parameters for CreateLink.
 type CreateLinkParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
+}
+
+// ListMembersParams defines parameters for ListMembers.
+type ListMembersParams struct {
+	After *string `form:"after,omitempty" json:"after,omitempty"`
 }
 
 // SelectWorkspaceJSONRequestBody defines body for SelectWorkspace for application/json ContentType.

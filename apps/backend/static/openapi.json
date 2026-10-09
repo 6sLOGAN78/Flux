@@ -395,6 +395,75 @@
         "title": "transport.LinksResponse",
         "type": "object"
       },
+      "transport.MembersResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/transport.TeamMember"
+            },
+            "maxItems": 25,
+            "type": "array"
+          },
+          "nextAfter": {
+            "description": "Last user UUID continuation; null means authoritative exhaustion. Never grants workspace authority.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextAfter"
+        ],
+        "title": "transport.MembersResponse",
+        "type": "object"
+      },
+      "transport.TeamMember": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 320,
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "TeamOwner",
+              "TeamAdmin",
+              "TeamMember",
+              "TeamViewer"
+            ]
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspaceId",
+          "email",
+          "role"
+        ],
+        "title": "transport.TeamMember",
+        "type": "object"
+      },
       "transport.Workspace": {
         "additionalProperties": false,
         "properties": {
@@ -1297,6 +1366,113 @@
           }
         ],
         "summary": "Inspect a freshly authorized scoped link",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/members": {
+      "get": {
+        "description": "Only current PostgreSQL owner/admin memberships grant Team access; provider organization claims never authorize. Workspace-first exclusive lock protects capability and member query in one transaction. Fixed 25-row pages ordered by durable user UUID, plus one lookahead. Optional after UUID is only a seek position; every page rechecks current membership. Unknown/duplicate/invalid query fields return 400; current members/viewers receive 403; foreign, missing or removed membership receives safe 404. Only durable user ID, verified email, workspace ID and current closed role are projected. No provider identifiers or history. At most 25 bounded 320-character emails keep success below the existing 64 KiB body budget. No totals. 429 includes Retry-After and rate-limit metadata. All responses are no-store.",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "format": "uuid",
+              "type": "string",
+              "x-go-type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.MembersResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Inspect freshly authorized workspace members",
         "tags": [
           "Identity"
         ]

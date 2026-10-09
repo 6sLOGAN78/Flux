@@ -60,6 +60,37 @@ export const ZCreateWorkspaceRequest = extendApi(
 );
 export type WorkspaceResponse = z.infer<typeof ZWorkspaceResponse>;
 
+export const ZTeamMember = extendApi(
+  z
+    .object({
+      id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      email: extendApi(z.string().email().max(320), { "x-go-type": "string" }),
+      role: extendApi(z.enum(["owner", "admin", "member", "viewer"]), {
+        "x-enum-varnames": ["TeamOwner", "TeamAdmin", "TeamMember", "TeamViewer"],
+      }),
+    })
+    .strict(),
+  { title: "transport.TeamMember" },
+);
+export const ZMembersResponse = extendApi(
+  z
+    .object({
+      items: z.array(ZTeamMember).max(25),
+      nextAfter: extendApi(z.string().uuid().nullable(), {
+        "x-go-type": "string",
+        description:
+          "Last user UUID continuation; null means authoritative exhaustion. Never grants workspace authority.",
+      }),
+    })
+    .strict(),
+  { title: "transport.MembersResponse" },
+);
+export type MembersResponse = z.infer<typeof ZMembersResponse>;
+export const ZMemberListQuery = z
+  .object({ after: extendApi(z.string().uuid(), { "x-go-type": "string" }).optional() })
+  .strict();
+
 export const ZIdentityResponse = extendApi(
   z
     .object({

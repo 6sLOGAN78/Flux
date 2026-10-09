@@ -23,14 +23,63 @@ type ProductHandler struct {
 	identity  service.IdentityResolver
 	workspace *service.WorkspaceService
 	links     *service.LinkService
+	team      *service.TeamService
 }
 
 // NewProductHandler injects the authentication boundary explicitly.
 func NewProductHandler(auth *service.AuthService, identity service.IdentityResolver,
-	workspace *service.WorkspaceService, links *service.LinkService,
+	workspace *service.WorkspaceService, links *service.LinkService, team *service.TeamService,
 ) *ProductHandler {
-	return &ProductHandler{auth: auth, identity: identity, workspace: workspace, links: links}
+	return &ProductHandler{auth: auth, identity: identity, workspace: workspace, links: links, team: team}
 }
+
+// ListMembers exposes only current workspace-bound identities and closed roles.
+func (h *ProductHandler) ListMembers(c echo.Context) error {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("workspaceId"))
+	if err != nil || id.String() != c.Param("workspaceId") {
+		return errs.NewNotFoundError("Workspace not found", false, nil)
+	}
+	if h.team == nil {
+		return workspaceUnavailable()
+	}
+	query, err := url.ParseQuery(c.Request().URL.RawQuery)
+	if err != nil || len(c.Request().URL.RawQuery) > 256 {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var after uuid.UUID
+	for name, values := range query {
+		if name != "after" || len(values) != 1 {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+		after, err = uuid.Parse(values[0])
+		if err != nil || after == uuid.Nil || after.String() != values[0] {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+	}
+	items, next, err := h.team.List(c.Request().Context(), repository.Scope{WorkspaceID: id, ActorID: user.ID}, after)
+	if err != nil {
+		return err
+	}
+	response := transport.TransportMembersResponse{
+		Items: make([]transport.TransportTeamMember, 0, len(items)), NextAfter: next,
+	}
+	for _, item := range items {
+		response.Items = append(response.Items, transport.TransportTeamMember{Id: item.ID.String(),
+			WorkspaceId: item.WorkspaceID.String(), Email: item.Email, Role: transport.TransportTeamMemberRole(item.Role)})
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+func workspaceUnavailable() error {
+	return &errs.HTTPError{Code: serviceUnavailableCode,
+		Message: "Workspace temporarily unavailable", Status: http.StatusServiceUnavailable}
+}
+
+const serviceUnavailableCode = "SERVICE_UNAVAILABLE"
 
 func (h *ProductHandler) workspaceActor(c echo.Context) (repository.User, error) {
 	actor, ok := c.Get("actor").(service.Actor)
@@ -38,7 +87,7 @@ func (h *ProductHandler) workspaceActor(c echo.Context) (repository.User, error)
 		return repository.User{}, errs.NewUnauthorizedError("Authentication required", false)
 	}
 	if h.identity == nil || h.workspace == nil {
-		return repository.User{}, &errs.HTTPError{Code: "SERVICE_UNAVAILABLE",
+		return repository.User{}, &errs.HTTPError{Code: serviceUnavailableCode,
 			Message: "Workspace temporarily unavailable", Status: http.StatusServiceUnavailable}
 	}
 	return h.identity.Resolve(c.Request().Context(), actor)
@@ -215,7 +264,7 @@ func (h *ProductHandler) Me(c echo.Context) error {
 		return errs.NewUnauthorizedError("Authentication required", false)
 	}
 	if h.identity == nil || h.workspace == nil {
-		return &errs.HTTPError{Code: "SERVICE_UNAVAILABLE", Message: "Authentication temporarily unavailable",
+		return &errs.HTTPError{Code: serviceUnavailableCode, Message: "Authentication temporarily unavailable",
 			Status: http.StatusServiceUnavailable}
 	}
 	user, err := h.identity.Resolve(c.Request().Context(), actor)

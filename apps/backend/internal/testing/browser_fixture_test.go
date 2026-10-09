@@ -46,6 +46,7 @@ func TestBrowserProductFixture(t *testing.T) {
 		workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 		return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
 			&service.Services{Auth: auth, Identity: identity,
+				Team:      service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace),
 				Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 	})
 }

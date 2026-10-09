@@ -9,6 +9,8 @@ import {
   ZLinkResponse,
   ZLinksResponse,
   ZLinkListQuery,
+  ZMembersResponse,
+  ZMemberListQuery,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -17,6 +19,25 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  listMembers: {
+    summary: "Inspect freshly authorized workspace members",
+    description:
+      "Only current PostgreSQL owner/admin memberships grant Team access; provider organization claims never authorize. Workspace-first exclusive lock protects capability and member query in one transaction. Fixed 25-row pages ordered by durable user UUID, plus one lookahead. Optional after UUID is only a seek position; every page rechecks current membership. Unknown/duplicate/invalid query fields return 400; current members/viewers receive 403; foreign, missing or removed membership receives safe 404. Only durable user ID, verified email, workspace ID and current closed role are projected. No provider identifiers or history. At most 25 bounded 320-character emails keep success below the existing 64 KiB body budget. No totals. 429 includes Retry-After and rate-limit metadata. All responses are no-store.",
+    path: "/api/v1/workspaces/:workspaceId/members",
+    method: "GET",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid() }),
+    query: ZMemberListQuery,
+    responses: {
+      200: ZMembersResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   listLinks: {
     summary: "List a freshly authorized newest-first link library",
     description:

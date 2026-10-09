@@ -96,7 +96,7 @@ describe("workspace capability presentation", () => {
     }
   });
 
-  test("shell exposes Team only to administrators without a fabricated route", () => {
+  test("shell links the actual Team page only for owners and admins", () => {
     for (const role of ["owner", "admin", "member", "viewer"] as const) {
       const html = renderToStaticMarkup(
         createElement(AppShell, {
@@ -107,8 +107,8 @@ describe("workspace capability presentation", () => {
       expect(html).toContain('aria-label="Workspace"');
       expect(html).toContain('aria-current="page"');
       expect(html).toContain("<main");
-      expect(html.includes('id="team-availability"')).toBe(["owner", "admin"].includes(role));
-      expect(html).not.toContain("/team");
+      expect(html.includes("/team")).toBe(["owner", "admin"].includes(role));
+      expect(html).not.toContain('id="team-availability"');
     }
   });
 });
