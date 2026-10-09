@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/idna"
+
 	"github.com/go-playground/validator/v10"
 	// Preserve legacy dotenv loading before environment-backed configuration is read.
 	_ "github.com/joho/godotenv/autoload"
@@ -45,6 +47,7 @@ const (
 type Config struct {
 	Observability *ObservabilityConfig `koanf:"observability"`
 	Primary       Primary              `koanf:"primary" validate:"required"`
+	Links         LinksConfig          `koanf:"links"`
 	Auth          AuthConfig           `koanf:"auth" validate:"required"`
 	Redis         RedisConfig          `koanf:"redis" validate:"required"`
 	Integration   IntegrationConfig    `koanf:"integration" validate:"required"`
@@ -53,6 +56,54 @@ type Config struct {
 	Redirector    RoleConfig           `koanf:"redirector"`
 	Worker        RoleConfig           `koanf:"worker"`
 	Database      DatabaseConfig       `koanf:"database" validate:"required"`
+}
+
+// LinksConfig binds only API-owned operator policy; no destination is fetched.
+type LinksConfig struct {
+	ManagedHost  string   `koanf:"managed_host"`
+	BlockedHosts []string `koanf:"blocked_hosts"`
+}
+
+// NormalizeLinkHost validates a DNS hostname without ports, IPs or URL syntax.
+func NormalizeLinkHost(value string) (string, error) {
+	host, err := idna.Lookup.ToASCII(strings.TrimSuffix(value, "."))
+	host = strings.ToLower(host)
+	if err != nil || len(host) > 253 || !strings.Contains(host, ".") || net.ParseIP(host) != nil {
+		return "", errors.New("invalid link hostname")
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) < 1 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", errors.New("invalid link hostname")
+		}
+		for _, c := range label {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return "", errors.New("invalid link hostname")
+			}
+		}
+	}
+	last := host[strings.LastIndexByte(host, '.')+1:]
+	if last[0] >= '0' && last[0] <= '9' || strings.HasPrefix(last, "0x") {
+		return "", errors.New("invalid link hostname")
+	}
+	return host, nil
+}
+
+func normalizeLinks(cfg *Config, role Role) error {
+	if role != RoleAPI {
+		return nil
+	}
+	host, err := NormalizeLinkHost(cfg.Links.ManagedHost)
+	if err != nil {
+		return err
+	}
+	cfg.Links.ManagedHost = host
+	for i, blocked := range cfg.Links.BlockedHosts {
+		cfg.Links.BlockedHosts[i], err = NormalizeLinkHost(blocked)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RoleConfig controls an independently owned listener and operation deadlines.
@@ -144,8 +195,18 @@ func LoadConfig() (*Config, error) {
 
 // LoadConfigForRole preserves FLUX environment names and validates owned resources.
 func LoadConfigForRole(role Role) (*Config, error) {
-	return loadConfigForRole(env.Provider("FLUX_", ".", func(s string) string {
-		return strings.ToLower(strings.TrimPrefix(s, "FLUX_"))
+	return loadConfigForRole(env.ProviderWithValue("FLUX_", ".", func(key, value string) (string, any) {
+		key = strings.ToLower(strings.TrimPrefix(key, "FLUX_"))
+		if key == "links.blocked_hosts" {
+			hosts := []string{}
+			if value != "" {
+				for _, host := range strings.Split(value, ",") {
+					hosts = append(hosts, strings.TrimSpace(host))
+				}
+			}
+			return key, hosts
+		}
+		return key, value
 	}), role)
 }
 
@@ -176,6 +237,9 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if role == RoleMigrator {
 		k.Delete("server")
 	}
+	if role != RoleAPI {
+		k.Delete("links")
+	}
 
 	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
 	if role == RoleMigrator {
@@ -188,14 +252,15 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if err := k.Unmarshal("", mainConfig); err != nil {
 		return nil, &ConfigError{Stage: "unmarshal", cause: err}
 	}
-	if role != RoleMigrator {
-		if err := normalizeRole(mainConfig, role, k); err != nil {
-			return nil, &ConfigError{Stage: stageValidate, cause: err}
-		}
+	if err := normalizeHTTPRole(mainConfig, role, k); err != nil {
+		return nil, &ConfigError{Stage: stageValidate, cause: err}
 	}
 
 	if err := validateRoleSections(mainConfig, role); err != nil {
 		return nil, err
+	}
+	if err := normalizeLinks(mainConfig, role); err != nil {
+		return nil, &ConfigError{Stage: stageValidate, cause: err}
 	}
 
 	// Override service name and environment from primary config
@@ -218,6 +283,13 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	}
 
 	return mainConfig, nil
+}
+
+func normalizeHTTPRole(cfg *Config, role Role, k *koanf.Koanf) error {
+	if role == RoleMigrator {
+		return nil
+	}
+	return normalizeRole(cfg, role, k)
 }
 
 func normalizeRole(cfg *Config, role Role, k *koanf.Koanf) error {

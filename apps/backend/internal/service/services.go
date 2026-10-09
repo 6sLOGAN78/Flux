@@ -4,6 +4,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lib/job"
 	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/6sLOGAN78/flux/internal/server"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Services collects explicitly injected application services.
@@ -11,6 +12,7 @@ type Services struct {
 	Auth      *AuthService
 	Identity  IdentityResolver
 	Workspace *WorkspaceService
+	Links     *LinkService
 	Job       *job.JobService
 }
 
@@ -21,10 +23,16 @@ func NewServices(s *server.Server, stores *repository.Repositories) (*Services, 
 		stores = repository.NewRepositories(s)
 	}
 
+	workspace := NewWorkspaceService(stores.Workspaces)
+	var pool *pgxpool.Pool
+	if s.DB != nil {
+		pool = s.DB.Pool
+	}
 	return &Services{
 		Job:       s.Job,
 		Auth:      authService,
 		Identity:  NewIdentityService(stores.Users, authService),
-		Workspace: NewWorkspaceService(stores.Workspaces),
+		Workspace: workspace,
+		Links:     NewLinkService(repository.NewLinkRepository(pool), workspace, s.Config.Links),
 	}, nil
 }

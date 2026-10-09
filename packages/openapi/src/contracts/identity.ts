@@ -5,6 +5,8 @@ import {
   ZWorkspacesResponse,
   ZCreateWorkspaceRequest,
   ZWorkspacePreferenceRequest,
+  ZCreateLinkRequest,
+  ZLinkResponse,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -13,6 +15,45 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  createLink: {
+    summary: "Create a safe generated-key managed-domain link",
+    description:
+      "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
+    path: "/api/v1/workspaces/:workspaceId/links",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZCreateLinkRequest,
+    responses: {
+      201: ZLinkResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
+  getLink: {
+    summary: "Inspect a freshly authorized scoped link",
+    description:
+      "All current Flux members may read. Foreign, missing and removed access returns safe 404. Durable creator identity remains after membership removal. No-store; lifecycle does not prove redirect availability.",
+    path: "/api/v1/workspaces/:workspaceId/links/:linkId",
+    method: "GET",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), linkId: z.string().uuid() }),
+    responses: {
+      200: ZLinkResponse,
+      401: ZIdentityError,
+      404: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   selectWorkspace: {
     summary: "Select a currently authorized workspace",
     description:

@@ -832,7 +832,7 @@ func binaryTestEnv() []string {
 			env = append(env, item)
 		}
 	}
-	return append(env, "FLUX_PRIMARY.ENV=test")
+	return append(env, "FLUX_PRIMARY.ENV=test", "FLUX_LINKS.MANAGED_HOST=go.flux.test")
 }
 
 func binaryDatabaseEnv(cfg config.DatabaseConfig) []string {

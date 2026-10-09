@@ -1,0 +1,184 @@
+package repository
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base32"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Link is an authoritative scoped link and its durable creator projection.
+type Link struct {
+	SuspendedAt      *time.Time `json:"suspendedAt"`
+	SuspendedBy      *uuid.UUID `json:"suspendedBy"`
+	SuspensionReason *string    `json:"suspensionReason"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
+	Host             string     `json:"host"`
+	Key              string     `json:"key"`
+	Destination      string     `json:"destination"`
+	Title            string     `json:"title"`
+	CreatorEmail     string     `json:"creatorEmail"`
+	Lifecycle        string     `json:"lifecycle"`
+	ID               uuid.UUID  `json:"id"`
+	WorkspaceID      uuid.UUID  `json:"workspaceId"`
+	CreatorID        uuid.UUID  `json:"creatorId"`
+	Version          int64      `json:"version"`
+}
+
+// LinkRepository owns transactional links; authorization is injected explicitly.
+type LinkRepository struct{ pool *pgxpool.Pool }
+
+// NewLinkRepository injects the PostgreSQL authority.
+func NewLinkRepository(pool *pgxpool.Pool) *LinkRepository { return &LinkRepository{pool: pool} }
+
+// LinkAuthorize runs inside the effect transaction before any replay or link read.
+type LinkAuthorize func(context.Context, pgx.Tx, Scope) error
+
+// Create commits the effect and exact replay snapshot together, after fresh
+// workspace authorization. Actor serialization follows the shared workspace lock.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destination, title, key string,
+	hash []byte, authorize LinkAuthorize,
+) (result Link, err error) {
+	if r == nil || r.pool == nil {
+		return result, errors.New("link store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	if err = authorize(ctx, tx, scope); err != nil {
+		return result, err
+	}
+	var actor uuid.UUID
+	if err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", scope.ActorID).Scan(&actor); err != nil {
+		return result, err
+	}
+	if _, err = tx.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation='link.create' AND retain_until < now()", scope.WorkspaceID, scope.ActorID); err != nil {
+		return result, err
+	}
+	var storedHash, snapshot []byte
+	err = tx.QueryRow(ctx, "SELECT request_hash,result FROM mutation_requests WHERE workspace_id=$1 "+
+		"AND actor_id=$2 AND operation='link.create' AND request_key=$3", scope.WorkspaceID, scope.ActorID, key).
+		Scan(&storedHash, &snapshot)
+	switch {
+	case err == nil:
+		if err = matchRequest(hash, storedHash); err != nil {
+			return result, err
+		}
+		if err = json.Unmarshal(snapshot, &result); err != nil {
+			return Link{}, err
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		result, err = insertGeneratedLink(ctx, tx, scope, host, destination, title)
+		if err != nil {
+			return Link{}, err
+		}
+		snapshot, err = json.Marshal(result)
+		if err != nil {
+			return Link{}, err
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO mutation_requests "+
+			"(workspace_id,actor_id,operation,request_key,request_hash,result) "+
+			"VALUES($1,$2,'link.create',$3,$4,$5)", scope.WorkspaceID, scope.ActorID, key, hash, snapshot)
+		if err != nil {
+			return Link{}, err
+		}
+	default:
+		return Link{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Link{}, err
+	}
+	return result, nil
+}
+
+func insertGeneratedLink(ctx context.Context, tx pgx.Tx, scope Scope, host, destination, title string) (Link, error) {
+	for range 5 {
+		var entropy [12]byte
+		if _, err := rand.Read(entropy[:]); err != nil {
+			return Link{}, err
+		}
+		key := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(entropy[:]))
+		// A failed INSERT aborts PostgreSQL transactions. Savepoints allow only
+		// the named host/key conflict to retry without losing authority locks.
+		attempt, err := tx.Begin(ctx)
+		if err != nil {
+			return Link{}, err
+		}
+		var id uuid.UUID
+		err = attempt.QueryRow(ctx, "INSERT INTO links "+
+			"(workspace_id,creator_user_id,managed_host,short_key,destination,title) "+
+			"VALUES($1,$2,$3,$4,$5,$6) RETURNING id", scope.WorkspaceID, scope.ActorID, host, key, destination, title).
+			Scan(&id)
+		if err == nil {
+			if err = attempt.Commit(ctx); err != nil {
+				return Link{}, err
+			}
+			return readLink(ctx, tx, scope, id)
+		}
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), identityRollbackTimeout)
+		rollbackErr := attempt.Rollback(cleanup)
+		cancel()
+		if rollbackErr != nil {
+			return Link{}, errors.Join(err, rollbackErr)
+		}
+		var constraint *pgconn.PgError
+		if !errors.As(err, &constraint) || constraint.Code != "23505" ||
+			constraint.ConstraintName != "links_managed_host_short_key_unique" {
+			return Link{}, err
+		}
+	}
+	return Link{}, errors.New("generated link key attempts exhausted")
+}
+
+func readLink(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID) (Link, error) {
+	var result Link
+	err := tx.QueryRow(ctx, "SELECT l.id,l.workspace_id,l.creator_user_id,l.managed_host,l.short_key,"+
+		"l.destination,l.title,u.verified_email,l.lifecycle,l.created_at,l.updated_at,l.version,"+
+		"l.suspended_at,l.suspended_by,l.suspension_reason FROM links l JOIN users u ON u.id=l.creator_user_id "+
+		"WHERE l.workspace_id=$1 AND l.id=$2 FOR SHARE OF l", scope.WorkspaceID, id).
+		Scan(&result.ID, &result.WorkspaceID, &result.CreatorID, &result.Host, &result.Key, &result.Destination,
+			&result.Title, &result.CreatorEmail, &result.Lifecycle, &result.CreatedAt, &result.UpdatedAt,
+			&result.Version, &result.SuspendedAt, &result.SuspendedBy, &result.SuspensionReason)
+	return result, err
+}
+
+// Detail always authorizes membership before reading the tenant-qualified row.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *LinkRepository) Detail(ctx context.Context, scope Scope, id uuid.UUID,
+	authorize LinkAuthorize,
+) (result Link, err error) {
+	if r == nil || r.pool == nil {
+		return result, errors.New("link store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	if err = authorize(ctx, tx, scope); err != nil {
+		return result, err
+	}
+	result, err = readLink(ctx, tx, scope, id)
+	if err != nil {
+		return Link{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Link{}, err
+	}
+	return result, nil
+}

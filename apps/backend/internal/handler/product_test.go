@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -166,14 +167,16 @@ func productRouter(cfg *config.Config, db *database.Database, p *signedProvider)
 	log := zerolog.New(zerolog.SyncWriter(&p.logs))
 	srv := &server.Server{Config: cfg, Logger: &log, DB: db}
 	cfg.Auth = config.AuthConfig{SecretKey: "test-only", Issuer: p.issuer, AuthorizedParties: []string{fixtureParty}}
+	cfg.Links = config.LinksConfig{ManagedHost: "go.flux.test", BlockedHosts: []string{"blocked.example"}}
 	clients := &clerk.ClientConfig{BackendConfig: clerk.BackendConfig{
 		URL: clerk.String(p.server.URL), Key: clerk.String(cfg.Auth.SecretKey),
 		HTTPClient: &http.Client{Timeout: 3 * time.Second}}}
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
+	workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
 		Identity:  service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
-		Workspace: service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))})
+		Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 }
 
 func requestMe(t *testing.T, api string, token string, _ bool) (int, string, string) {
@@ -419,6 +422,10 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	status, detail := workspaceRequest(t, api, token, "GET", path+"/"+link["id"].(string), "", "")
 	require.Equal(t, 200, status)
 	require.Equal(t, result, detail)
+	for _, invalidBody := range []string{`null`, `{"destination":"https://example.com","title":null}`, `{"destination":"https://example.com","extra":true}`, `{"destination":"https://example.com"} {}`, `{"destination":"https://example.com","title":"` + strings.Repeat("x", 201) + `"}`} {
+		status, _ = workspaceRequest(t, api, token, "POST", path, "link-invalid-0001", invalidBody)
+		require.Equal(t, 400, status)
+	}
 	t.Run("concurrent-replay", func(t *testing.T) {
 		var group sync.WaitGroup
 		responses := make(chan map[string]any, 4)
@@ -433,38 +440,76 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 		close(responses)
 		var first map[string]any
 		for response := range responses {
-			if first == nil { first = response }
+			if first == nil {
+				first = response
+			}
 			require.Equal(t, first, response)
 		}
 	})
 	t.Run("atomic-commit-rollback", func(t *testing.T) {
 		_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_link_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-LINK-COMMIT'; END $$; CREATE CONSTRAINT TRIGGER reject_link_commit AFTER INSERT ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_link_commit()`)
 		require.NoError(t, err)
-		defer func() { _, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER reject_link_commit ON links; DROP FUNCTION reject_link_commit()"); require.NoError(t, dropErr) }()
-		status, response := workspaceRequest(t, api, token, "POST", path, "link-rollback-0001", payload)
-		require.Equal(t, 503, status)
+		defer func() {
+			_, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER reject_link_commit ON links; DROP FUNCTION reject_link_commit()")
+			require.NoError(t, dropErr)
+		}()
+		code, response := workspaceRequest(t, api, token, "POST", path, "link-rollback-0001", payload)
+		require.Equal(t, 503, code)
 		require.NotContains(t, response, "PRIVATE-LINK-COMMIT")
 		var count int
 		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE request_key=$1", "link-rollback-0001").Scan(&count))
 		require.Zero(t, count)
 	})
 	t.Run("global-key-collision-retries", func(t *testing.T) {
+		_, updateErr := db.Pool.Exec(ctx, "UPDATE links SET lifecycle='deleted' WHERE workspace_id=$1 AND id=$2", workspace, link["id"])
+		require.NoError(t, updateErr)
 		_, err := db.Pool.Exec(ctx, `CREATE SEQUENCE link_collision_attempt; CREATE FUNCTION collide_link_key() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('link_collision_attempt') <= 2 THEN NEW.short_key := '`+strings.TrimPrefix(link["shortUrl"].(string), "https://go.flux.test/")+`'; END IF; RETURN NEW; END $$; CREATE TRIGGER collide_link_key BEFORE INSERT ON links FOR EACH ROW EXECUTE FUNCTION collide_link_key()`)
 		require.NoError(t, err)
-		defer func() { _, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER collide_link_key ON links; DROP FUNCTION collide_link_key(); DROP SEQUENCE link_collision_attempt"); require.NoError(t, dropErr) }()
-		status, response := workspaceRequest(t, api, token, "POST", path, "link-collision-01", payload)
-		require.Equal(t, 201, status)
+		defer func() {
+			_, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER collide_link_key ON links; DROP FUNCTION collide_link_key(); DROP SEQUENCE link_collision_attempt")
+			require.NoError(t, dropErr)
+		}()
+		code, response := workspaceRequest(t, api, token, "POST", path, "link-collision-01", payload)
+		require.Equal(t, 201, code)
 		require.NotEqual(t, link["shortUrl"], response["link"].(map[string]any)["shortUrl"])
 		var attempts int
 		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT last_value FROM link_collision_attempt").Scan(&attempts))
 		require.Equal(t, 3, attempts)
 	})
+	t.Run("collision-exhaustion-bounded-to-five", func(t *testing.T) {
+		_, err := db.Pool.Exec(ctx, `CREATE SEQUENCE link_exhaust_attempt; CREATE FUNCTION exhaust_link_key() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM nextval('link_exhaust_attempt'); NEW.short_key := '`+strings.TrimPrefix(link["shortUrl"].(string), "https://go.flux.test/")+`'; RETURN NEW; END $$; CREATE TRIGGER exhaust_link_key BEFORE INSERT ON links FOR EACH ROW EXECUTE FUNCTION exhaust_link_key()`)
+		require.NoError(t, err)
+		defer func() {
+			_, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER exhaust_link_key ON links; DROP FUNCTION exhaust_link_key(); DROP SEQUENCE link_exhaust_attempt")
+			require.NoError(t, dropErr)
+		}()
+		code, _ := workspaceRequest(t, api, token, "POST", path, "link-exhaust-0001", payload)
+		require.Equal(t, 503, code)
+		var attempts, ledger int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT last_value FROM link_exhaust_attempt").Scan(&attempts))
+		require.Equal(t, 5, attempts)
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE request_key='link-exhaust-0001'").Scan(&ledger))
+		require.Zero(t, ledger)
+	})
+	t.Run("unrelated-unique-constraint-not-retried", func(t *testing.T) {
+		_, err := db.Pool.Exec(ctx, `CREATE SEQUENCE link_other_attempt; CREATE FUNCTION reject_other_link_key() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM nextval('link_other_attempt'); RAISE EXCEPTION 'PRIVATE-OTHER-CONSTRAINT' USING ERRCODE='23505', CONSTRAINT='unrelated_unique'; END $$; CREATE TRIGGER reject_other_link_key BEFORE INSERT ON links FOR EACH ROW EXECUTE FUNCTION reject_other_link_key()`)
+		require.NoError(t, err)
+		defer func() {
+			_, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER reject_other_link_key ON links; DROP FUNCTION reject_other_link_key(); DROP SEQUENCE link_other_attempt")
+			require.NoError(t, dropErr)
+		}()
+		code, _ := workspaceRequest(t, api, token, "POST", path, "link-other-constraint-01", payload)
+		require.Equal(t, 503, code)
+		var attempts int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT last_value FROM link_other_attempt").Scan(&attempts))
+		require.Equal(t, 1, attempts)
+	})
 	t.Run("foreign-link-detail", func(t *testing.T) {
-		status, other := workspaceRequest(t, api, token, "POST", "/workspaces", "link-other-ws-001", `{"name":"Other link tenant"}`)
-		require.Equal(t, 201, status)
+		code, other := workspaceRequest(t, api, token, "POST", "/workspaces", "link-other-ws-001", `{"name":"Other link tenant"}`)
+		require.Equal(t, 201, code)
 		otherID := other["workspace"].(map[string]any)["id"].(string)
-		status, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+otherID+"/links/"+link["id"].(string), "", "")
-		require.Equal(t, 404, status)
+		code, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+otherID+"/links/"+link["id"].(string), "", "")
+		require.Equal(t, 404, code)
 	})
 	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1", workspace)
 	require.NoError(t, err)
@@ -481,6 +526,18 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	var creator string
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT creator_user_id::text FROM links WHERE workspace_id=$1 AND id=$2", workspace, link["id"]).Scan(&creator))
 	require.Equal(t, link["creator"].(map[string]any)["id"], creator)
+	otherToken := p.token(t, map[string]any{"sub": "user_link_reader", "sid": "sess_user_link_reader"})
+	status, identity := workspaceRequest(t, api, otherToken, "GET", "/me", "", "")
+	require.Equal(t, 200, status)
+	reader := identity["user"].(map[string]any)["id"]
+	_, err = db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'viewer',$2)", workspace, reader)
+	require.NoError(t, err)
+	status, detail = workspaceRequest(t, api, otherToken, "GET", path+"/"+link["id"].(string), "", "")
+	require.Equal(t, 200, status)
+	require.Equal(t, link["creator"], detail["link"].(map[string]any)["creator"], "authorized readers retain durable creator projection after removal")
+	for _, marker := range []string{"PRIVATE-LINK-COMMIT", "PRIVATE-OTHER-CONSTRAINT", "<script>protected</script>", "https://example.com/path?q=ok"} {
+		require.NotContains(t, p.logs.String(), marker)
+	}
 }
 
 func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
@@ -588,6 +645,8 @@ func workspaceRequest(t *testing.T, api, token, method, path, key, body string) 
 	req.Header.Set("Origin", fixtureParty)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", key)
+	// Separate test clients keep business assertions independent of burst limits.
+	req.Header.Set("X-Forwarded-For", netip.AddrFrom16(uuid.New()).String())
 	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	require.NoError(t, err)
 	defer response.Body.Close()
@@ -619,7 +678,8 @@ func checkWorkspaceBootstrap(t *testing.T, api string, db *fluxTesting.TestDB, p
 	require.Len(t, listed["workspaces"], 1)
 	status, summary := workspaceRequest(t, api, token, "GET", "/workspaces/"+id, "", "")
 	require.Equal(t, 200, status)
-	require.Equal(t, first, summary)
+	require.Equal(t, first["workspace"], summary["workspace"])
+	require.Equal(t, "go.flux.test", summary["managedHost"])
 	other := p.token(t, map[string]any{"sub": "user_other", "sid": "sess_other"})
 	status, denied := workspaceRequest(t, api, other, "GET", "/workspaces/"+id, "", "")
 	require.Equal(t, 404, status)

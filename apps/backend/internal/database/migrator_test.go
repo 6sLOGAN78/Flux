@@ -295,6 +295,22 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 		Scan(&preferences); queryErr != nil || !preferences {
 		t.Fatal("forward upgrade did not create the preference table")
 	}
+	if prefixErr := migrator.MigrateTo(ctx, 4); prefixErr != nil {
+		t.Fatal(prefixErr)
+	}
+	var links bool
+	if queryErr := conn.QueryRow(ctx, "SELECT to_regclass('public.links') IS NOT NULL").
+		Scan(&links); queryErr != nil || links {
+		t.Fatal("005 rollback did not remove links")
+	}
+	upgraded, upgradeErr = MigrateWithResult(ctx, cfg)
+	if upgradeErr != nil || upgraded.StartVersion != 4 || upgraded.EndVersion != want {
+		t.Fatal("existing preference prefix did not upgrade to links")
+	}
+	if queryErr := conn.QueryRow(ctx, "SELECT to_regclass('public.links') IS NOT NULL").
+		Scan(&links); queryErr != nil || !links {
+		t.Fatal("forward upgrade did not create links")
+	}
 	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
 		t.Fatal(downErr)
 	}

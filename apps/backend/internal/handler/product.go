@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/repository"
@@ -19,13 +21,14 @@ type ProductHandler struct {
 	auth      *service.AuthService
 	identity  service.IdentityResolver
 	workspace *service.WorkspaceService
+	links     *service.LinkService
 }
 
 // NewProductHandler injects the authentication boundary explicitly.
 func NewProductHandler(auth *service.AuthService, identity service.IdentityResolver,
-	workspace *service.WorkspaceService,
+	workspace *service.WorkspaceService, links *service.LinkService,
 ) *ProductHandler {
-	return &ProductHandler{auth: auth, identity: identity, workspace: workspace}
+	return &ProductHandler{auth: auth, identity: identity, workspace: workspace, links: links}
 }
 
 func (h *ProductHandler) workspaceActor(c echo.Context) (repository.User, error) {
@@ -99,7 +102,101 @@ func (h *ProductHandler) WorkspaceSummary(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)})
+	response := transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)}
+	if h.links != nil {
+		host := h.links.ManagedHost()
+		response.ManagedHost = &host
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+func (h *ProductHandler) linkScope(c echo.Context) (repository.Scope, error) {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return repository.Scope{}, err
+	}
+	id, err := uuid.Parse(c.Param("workspaceId"))
+	if err != nil || id.String() != c.Param("workspaceId") {
+		return repository.Scope{}, errs.NewNotFoundError("Link not found", false, nil)
+	}
+	if h.links == nil {
+		return repository.Scope{}, &errs.HTTPError{Code: errs.MakeUpperCaseWithUnderscores(
+			http.StatusText(http.StatusServiceUnavailable)), Message: "Links temporarily unavailable",
+			Status: http.StatusServiceUnavailable}
+	}
+	return repository.Scope{WorkspaceID: id, ActorID: user.ID}, nil
+}
+
+// CreateLink accepts only canonical DTO fields; service policy remains authority.
+func (h *ProductHandler) CreateLink(c echo.Context) error {
+	scope, err := h.linkScope(c)
+	if err != nil {
+		return err
+	}
+	var body transport.TransportCreateLinkRequest
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	var fields map[string]json.RawMessage
+	if err = decoder.Decode(&fields); err != nil || fields == nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	for name, value := range fields {
+		if (name != "destination" && name != "title") || string(value) == "null" {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+	}
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if err = json.Unmarshal(payload, &body); err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	title := ""
+	if body.Title != nil {
+		title = *body.Title
+	}
+	item, err := h.links.Create(c.Request().Context(), scope, body.Destination, title,
+		c.Request().Header.Get("Idempotency-Key"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusCreated, transport.TransportLinkResponse{Link: linkTransport(item)})
+}
+
+// LinkDetail reauthorizes before exposing any scoped protected values.
+func (h *ProductHandler) LinkDetail(c echo.Context) error {
+	scope, err := h.linkScope(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("linkId"))
+	if err != nil || id.String() != c.Param("linkId") {
+		return errs.NewNotFoundError("Link not found", false, nil)
+	}
+	item, err := h.links.Detail(c.Request().Context(), scope, id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportLinkResponse{Link: linkTransport(item)})
+}
+
+func linkTransport(item repository.Link) transport.TransportLink {
+	result := transport.TransportLink{Id: item.ID.String(), WorkspaceId: item.WorkspaceID.String(),
+		ShortUrl: "https://" + item.Host + "/" + item.Key, Destination: item.Destination, Title: item.Title,
+		Lifecycle: transport.TransportLinkLifecycle(item.Lifecycle), Version: strconv.FormatInt(item.Version, 10),
+		CreatedAt: item.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: item.UpdatedAt.Format(time.RFC3339Nano)}
+	result.Creator.Id = item.CreatorID.String()
+	result.Creator.Email = item.CreatorEmail
+	if item.SuspendedAt != nil && item.SuspendedBy != nil && item.SuspensionReason != nil {
+		result.Suspension = &transport.TransportLinkSuspension{ActorId: item.SuspendedBy.String(),
+			At: item.SuspendedAt.Format(time.RFC3339Nano), Reason: *item.SuspensionReason}
+	}
+	return result
 }
 
 // Me returns the committed internal identity for an actively verified bearer.

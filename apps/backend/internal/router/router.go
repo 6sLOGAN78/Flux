@@ -23,10 +23,12 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	var auth *service.AuthService
 	var identity service.IdentityResolver
 	var workspace *service.WorkspaceService
+	var links *service.LinkService
 	if services != nil {
 		auth = services.Auth
 		identity = services.Identity
 		workspace = services.Workspace
+		links = services.Links
 	}
 	middlewares := middleware.NewMiddlewares(s)
 
@@ -77,13 +79,15 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	registerSystemRoutes(router, h)
 
 	// register versioned routes
-	product := handler.NewProductHandler(auth, identity, workspace)
+	product := handler.NewProductHandler(auth, identity, workspace, links)
 	group := router.Group("/api/v1")
 	group.GET("/me", product.Me)
 	group.PUT("/me/last-workspace", product.SelectWorkspace)
 	group.GET("/workspaces", product.ListWorkspaces)
 	group.POST("/workspaces", product.CreateWorkspace)
 	group.GET("/workspaces/:workspaceId", product.WorkspaceSummary)
+	group.POST("/workspaces/:workspaceId/links", product.CreateLink)
+	group.GET("/workspaces/:workspaceId/links/:linkId", product.LinkDetail)
 
 	return router
 }

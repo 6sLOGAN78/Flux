@@ -40,8 +40,10 @@ func TestBrowserProductFixture(t *testing.T) {
 		auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 			JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
 		identity := service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)
+		cfg.Links = config.LinksConfig{ManagedHost: "go.flux.test", BlockedHosts: []string{"blocked.example"}}
+		workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 		return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
 			&service.Services{Auth: auth, Identity: identity,
-				Workspace: service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))})
+				Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 	})
 }

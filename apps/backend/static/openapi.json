@@ -1,6 +1,26 @@
 {
   "components": {
     "schemas": {
+      "transport.CreateLinkRequest": {
+        "additionalProperties": false,
+        "description": "Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.",
+        "properties": {
+          "destination": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination"
+        ],
+        "title": "transport.CreateLinkRequest",
+        "type": "object"
+      },
       "transport.CreateWorkspaceRequest": {
         "additionalProperties": false,
         "description": "Explicit workspace name; the server trims Unicode whitespace and validates 1–100 Unicode characters.",
@@ -215,6 +235,137 @@
         "title": "transport.IdentityResponse",
         "type": "object"
       },
+      "transport.Link": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "creator": {
+            "additionalProperties": false,
+            "properties": {
+              "email": {
+                "format": "email",
+                "type": "string",
+                "x-go-type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string",
+                "x-go-type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "email"
+            ],
+            "type": "object"
+          },
+          "destination": {
+            "format": "uri",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "disabled",
+              "archived",
+              "deleted"
+            ],
+            "type": "string"
+          },
+          "shortUrl": {
+            "format": "uri",
+            "type": "string"
+          },
+          "suspension": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/transport.LinkSuspension"
+              }
+            ],
+            "nullable": true
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "version": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspaceId",
+          "shortUrl",
+          "destination",
+          "title",
+          "creator",
+          "createdAt",
+          "updatedAt",
+          "version",
+          "lifecycle",
+          "suspension"
+        ],
+        "title": "transport.Link",
+        "type": "object"
+      },
+      "transport.LinkResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "link": {
+            "$ref": "#/components/schemas/transport.Link"
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "title": "transport.LinkResponse",
+        "type": "object"
+      },
+      "transport.LinkSuspension": {
+        "additionalProperties": false,
+        "properties": {
+          "actorId": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actorId",
+          "reason",
+          "at"
+        ],
+        "title": "transport.LinkSuspension",
+        "type": "object"
+      },
       "transport.Workspace": {
         "additionalProperties": false,
         "properties": {
@@ -265,6 +416,9 @@
       "transport.WorkspaceResponse": {
         "additionalProperties": false,
         "properties": {
+          "managedHost": {
+            "type": "string"
+          },
           "workspace": {
             "$ref": "#/components/schemas/transport.Workspace"
           }
@@ -754,6 +908,240 @@
           }
         ],
         "summary": "Read a freshly authorized workspace summary",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/links": {
+      "post": {
+        "description": "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
+        "operationId": "createLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.CreateLinkRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.LinkResponse"
+                }
+              }
+            },
+            "description": "201"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a safe generated-key managed-domain link",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/links/{linkId}": {
+      "get": {
+        "description": "All current Flux members may read. Foreign, missing and removed access returns safe 404. Durable creator identity remains after membership removal. No-store; lifecycle does not prove redirect availability.",
+        "operationId": "getLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "linkId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.LinkResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Inspect a freshly authorized scoped link",
         "tags": [
           "Identity"
         ]

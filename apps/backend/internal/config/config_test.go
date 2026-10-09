@@ -17,6 +17,29 @@ type configProvider struct {
 	err    error
 }
 
+func TestLinksOperatorConfigOwnedByAPI(t *testing.T) {
+	for _, host := range []string{
+		"", "https://go.flux.test", "go.flux.test:443", "127.0.0.1", "localhost", "bad_host.example", "-bad.example",
+	} {
+		values := configValues()
+		values["links"] = map[string]any{"managed_host": host}
+		if _, err := loadConfigForRole(configProvider{values: values}, RoleAPI); err == nil {
+			t.Fatal("invalid managed host accepted")
+		}
+		for _, role := range []Role{RoleRedirector, RoleWorker, RoleMigrator} {
+			if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
+				t.Fatal("unowned links configuration blocked role")
+			}
+		}
+	}
+	values := configValues()
+	values["links"] = map[string]any{"managed_host": "GO.FLUX.TEST.", "blocked_hosts": []string{"BLOCKED.EXAMPLE."}}
+	cfg, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
+	if err != nil || cfg.Links.ManagedHost != "go.flux.test" || cfg.Links.BlockedHosts[0] != "blocked.example" {
+		t.Fatal("operator host normalization failed")
+	}
+}
+
 func TestObservabilityCompatibleKeysAndSettings(t *testing.T) {
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
@@ -94,6 +117,7 @@ func (p configProvider) ReadBytes() ([]byte, error)    { return nil, p.err }
 func configValues() map[string]any {
 	return map[string]any{
 		"primary": map[string]any{"env": "test"},
+		"links":   map[string]any{"managed_host": "go.flux.test", "blocked_hosts": []string{"blocked.example"}},
 		"server": map[string]any{"port": "8080",
 			"read_timeout":         5,
 			"write_timeout":        5,
@@ -171,9 +195,7 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 	}
 	for section, fields := range configValues() {
 		for field, value := range fields.(map[string]any) {
-			if field == "cors_allowed_origins" {
-				value = "https://example.test"
-			}
+			value = environmentFixtureValue(field, value)
 			t.Setenv("FLUX_"+strings.ToUpper(section+"."+field), fmt.Sprint(value))
 		}
 	}
@@ -189,6 +211,19 @@ func TestConfigExistingEnvironmentKeys(t *testing.T) {
 	if cfg.Observability.Environment != "test" || cfg.Observability.ServiceName != "flux" {
 		t.Fatalf("primary metadata not preserved")
 	}
+	if cfg.Links.ManagedHost != "go.flux.test" || len(cfg.Links.BlockedHosts) != 2 {
+		t.Fatal("links environment policy did not bind")
+	}
+}
+
+func environmentFixtureValue(field string, value any) any {
+	if field == "cors_allowed_origins" {
+		return "https://example.test"
+	}
+	if field == "blocked_hosts" {
+		return "blocked.example,another.example"
+	}
+	return value
 }
 
 func TestConfigMigratorRole(t *testing.T) {

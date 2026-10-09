@@ -38,9 +38,12 @@ export const ZWorkspace = extendApi(
   { title: "transport.Workspace" },
 );
 
-export const ZWorkspaceResponse = extendApi(z.object({ workspace: ZWorkspace }).strict(), {
-  title: "transport.WorkspaceResponse",
-});
+export const ZWorkspaceResponse = extendApi(
+  z.object({ workspace: ZWorkspace, managedHost: z.string().optional() }).strict(),
+  {
+    title: "transport.WorkspaceResponse",
+  },
+);
 export const ZWorkspacesResponse = extendApi(
   z.object({ workspaces: z.array(ZWorkspace) }).strict(),
   {
@@ -87,3 +90,60 @@ export const ZWorkspacePreferenceRequest = extendApi(
     description: "Selection must be reauthorized against current Flux membership.",
   },
 );
+
+export const ZCreateLinkRequest = extendApi(
+  z
+    .object({
+      destination: z.string().min(1).max(8192),
+      title: extendApi(
+        z.string().refine((value) => [...value].length <= 200),
+        { maxLength: 200 },
+      ).optional(),
+    })
+    .strict(),
+  {
+    title: "transport.CreateLinkRequest",
+    description:
+      "Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.",
+  },
+);
+export const ZLinkSuspension = extendApi(
+  z
+    .object({
+      actorId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      reason: z.string(),
+      at: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+    })
+    .strict(),
+  { title: "transport.LinkSuspension" },
+);
+export const ZLink = extendApi(
+  z
+    .object({
+      id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      shortUrl: z.string().url(),
+      destination: z.string().url(),
+      title: extendApi(
+        z.string().refine((value) => [...value].length <= 200),
+        { maxLength: 200 },
+      ),
+      creator: z
+        .object({
+          id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+          email: extendApi(z.string().email(), { "x-go-type": "string" }),
+        })
+        .strict(),
+      createdAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+      updatedAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+      version: z.string().regex(/^[1-9][0-9]*$/),
+      lifecycle: z.enum(["active", "disabled", "archived", "deleted"]),
+      suspension: ZLinkSuspension.nullable(),
+    })
+    .strict(),
+  { title: "transport.Link" },
+);
+export const ZLinkResponse = extendApi(z.object({ link: ZLink }).strict(), {
+  title: "transport.LinkResponse",
+});
+export type LinkResponse = z.infer<typeof ZLinkResponse>;

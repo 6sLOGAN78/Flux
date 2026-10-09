@@ -140,10 +140,26 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     "/api/v1/me/last-workspace",
     "/api/v1/workspaces",
     "/api/v1/workspaces/{workspaceId}",
+    "/api/v1/workspaces/{workspaceId}/links",
+    "/api/v1/workspaces/{workspaceId}/links/{linkId}",
     "/live",
     "/ready",
   ]);
   const createWorkspace = document.paths["/api/v1/workspaces"].post;
+  const createLink = document.paths["/api/v1/workspaces/{workspaceId}/links"].post;
+  assert.deepEqual(createLink.security, [{ bearerAuth: [] }]);
+  for (const status of [201, 400, 401, 403, 404, 409, 413, 415, 429, 503])
+    assert.ok(createLink.responses[status]);
+  assert.ok(
+    createLink.parameters.some(
+      (parameter: { name: string; required?: boolean }) =>
+        parameter.name === "idempotency-key" && parameter.required,
+    ),
+  );
+  const getLink = document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}"].get;
+  assert.deepEqual(getLink.security, [{ bearerAuth: [] }]);
+  assert.ok(getLink.responses["200"]);
+  assert.ok(getLink.responses["404"]);
   assert.deepEqual(createWorkspace.security, [{ bearerAuth: [] }]);
   assert.ok(createWorkspace.responses["201"]);
   assert.ok(createWorkspace.responses["409"]);

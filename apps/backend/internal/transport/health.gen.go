@@ -84,6 +84,30 @@ func (e TransportIdentityResponseAuthenticated) Valid() bool {
 	}
 }
 
+// Defines values for TransportLinkLifecycle.
+const (
+	Active   TransportLinkLifecycle = "active"
+	Archived TransportLinkLifecycle = "archived"
+	Deleted  TransportLinkLifecycle = "deleted"
+	Disabled TransportLinkLifecycle = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the TransportLinkLifecycle enum.
+func (e TransportLinkLifecycle) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Archived:
+		return true
+	case Deleted:
+		return true
+	case Disabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransportWorkspaceRole.
 const (
 	Admin  TransportWorkspaceRole = "admin"
@@ -106,6 +130,12 @@ func (e TransportWorkspaceRole) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// TransportCreateLinkRequest Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.
+type TransportCreateLinkRequest struct {
+	Destination string  `json:"destination"`
+	Title       *string `json:"title,omitempty"`
 }
 
 // TransportCreateWorkspaceRequest Explicit workspace name; the server trims Unicode whitespace and validates 1–100 Unicode characters.
@@ -174,6 +204,39 @@ type TransportIdentityResponse struct {
 // TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.
 type TransportIdentityResponseAuthenticated bool
 
+// TransportLink defines model for transport.Link.
+type TransportLink struct {
+	CreatedAt string `json:"createdAt"`
+	Creator   struct {
+		Email string `json:"email"`
+		Id    string `json:"id"`
+	} `json:"creator"`
+	Destination string                   `json:"destination"`
+	Id          string                   `json:"id"`
+	Lifecycle   TransportLinkLifecycle   `json:"lifecycle"`
+	ShortUrl    string                   `json:"shortUrl"`
+	Suspension  *TransportLinkSuspension `json:"suspension"`
+	Title       string                   `json:"title"`
+	UpdatedAt   string                   `json:"updatedAt"`
+	Version     string                   `json:"version"`
+	WorkspaceId string                   `json:"workspaceId"`
+}
+
+// TransportLinkLifecycle defines model for TransportLink.Lifecycle.
+type TransportLinkLifecycle string
+
+// TransportLinkResponse defines model for transport.LinkResponse.
+type TransportLinkResponse struct {
+	Link TransportLink `json:"link"`
+}
+
+// TransportLinkSuspension defines model for transport.LinkSuspension.
+type TransportLinkSuspension struct {
+	ActorId string `json:"actorId"`
+	At      string `json:"at"`
+	Reason  string `json:"reason"`
+}
+
 // TransportWorkspace defines model for transport.Workspace.
 type TransportWorkspace struct {
 	Id   string                 `json:"id"`
@@ -191,7 +254,8 @@ type TransportWorkspacePreferenceRequest struct {
 
 // TransportWorkspaceResponse defines model for transport.WorkspaceResponse.
 type TransportWorkspaceResponse struct {
-	Workspace TransportWorkspace `json:"workspace"`
+	ManagedHost *string            `json:"managedHost,omitempty"`
+	Workspace   TransportWorkspace `json:"workspace"`
 }
 
 // TransportWorkspacesResponse defines model for transport.WorkspacesResponse.
@@ -210,8 +274,16 @@ type CreateWorkspaceParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
 
+// CreateLinkParams defines parameters for CreateLink.
+type CreateLinkParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // SelectWorkspaceJSONRequestBody defines body for SelectWorkspace for application/json ContentType.
 type SelectWorkspaceJSONRequestBody = TransportWorkspacePreferenceRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest
+
+// CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
+type CreateLinkJSONRequestBody = TransportCreateLinkRequest

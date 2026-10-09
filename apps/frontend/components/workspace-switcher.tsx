@@ -15,6 +15,7 @@ import {
 } from "../lib/workspace";
 import { AppShell } from "./app-shell";
 import { WorkspaceChooser } from "./workspace-chooser";
+import { ConfirmDialog } from "./confirm-dialog";
 
 type Workspace = WorkspaceResponse["workspace"];
 
@@ -22,9 +23,11 @@ type Workspace = WorkspaceResponse["workspace"];
 export function WorkspaceSwitcher({
   workspaceId,
   children,
+  dirty = false,
 }: {
   workspaceId: string;
-  children: (workspace: Workspace) => ReactNode;
+  children: (workspace: Workspace, accessLost: (status: number) => void) => ReactNode;
+  dirty?: boolean;
 }) {
   const { isLoaded, isSignedIn, sessionId, getToken } = useAuth();
   const { signOut } = useClerk();
@@ -43,6 +46,7 @@ export function WorkspaceSwitcher({
   const [closing, setClosing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmSwitch, setConfirmSwitch] = useState(false);
   const submitting = useRef(false);
 
   const scrub = () => {
@@ -116,6 +120,14 @@ export function WorkspaceSwitcher({
 
   const open = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (dirty) {
+      setConfirmSwitch(true);
+      return;
+    }
+    await openWorkspace();
+  };
+
+  const openWorkspace = async () => {
     if (submitting.current || !selection || !snapshot || snapshot.session !== sessionId) return;
     const target = selection;
     submitting.current = true;
@@ -214,7 +226,25 @@ export function WorkspaceSwitcher({
             </button>
           </>
         )}
-        {children(workspace)}
+        {confirmSwitch && (
+          <ConfirmDialog
+            onStay={() => setConfirmSwitch(false)}
+            onDiscard={() => {
+              setConfirmSwitch(false);
+              void openWorkspace();
+            }}
+          />
+        )}
+        {children(workspace, (status) => {
+          scrub();
+          invalidateWorkspaces(channel.current);
+          if (status === 401) setClosing(true);
+          else {
+            setChanged(true);
+            setChooser(true);
+            router.replace("/workspaces?access=changed");
+          }
+        })}
       </AppShell>
     );
   return (

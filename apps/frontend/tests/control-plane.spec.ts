@@ -4,16 +4,23 @@ test("link-create commits a generated link and opens escaped detail", async ({ p
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   await installProviderTransport(page, fixture.client);
   const response = await request.post(`${fixture.api}/api/v1/workspaces`, {
-    headers: { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100", "Idempotency-Key": "browser-link-create-01" },
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-link-create-01",
+    },
     data: { name: "Link browser tenant" },
   });
   expect(response.status()).toBe(201);
   const { workspace } = await response.json();
   await page.route("**/api/v1/**", async (route) => {
-    const response = await route.fetch({ url: `${fixture.api}${new URL(route.request().url()).pathname}` });
+    const response = await route.fetch({
+      url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+    });
     await route.fulfill({ response });
   });
   await page.goto(`/workspaces/${workspace.id}/links/new`);
+  await expect(page.getByText("Managed hostname: go.flux.test", { exact: true })).toBeVisible();
   await page.getByLabel("Destination URL", { exact: true }).fill("https://example.com/campaign");
   await page.getByLabel("Title", { exact: true }).fill("<script>protected</script>");
   await page.getByRole("button", { name: "Create link", exact: true }).click();
@@ -21,8 +28,91 @@ test("link-create commits a generated link and opens escaped detail", async ({ p
   await expect(page.getByText("<script>protected</script>", { exact: true })).toBeVisible();
   await expect(page.getByText("https://example.com/campaign", { exact: true })).toBeVisible();
   await expect(page.getByText(/https:\/\/go.flux.test\/[a-z2-7]{20}/)).toBeVisible();
-  await expect(page.getByText("Link management is available. Redirects and analytics are not available yet.")).toBeVisible();
+  await expect(
+    page.getByText("Link management is available. Redirects and analytics are not available yet."),
+  ).toBeVisible();
   expect(await page.locator("main script").count()).toBe(0);
+});
+
+test("link-create dirty draft confirms workspace switch and disposes fields", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const workspaces = [];
+  for (const [index, name] of ["Link draft Alpha", "Link draft Beta"].entries()) {
+    const response = await request.post(`${fixture.api}/api/v1/workspaces`, {
+      headers: {
+        Authorization: `Bearer ${fixture.token}`,
+        Origin: "http://127.0.0.1:3100",
+        "Idempotency-Key": `browser-link-draft-${index}`,
+      },
+      data: { name },
+    });
+    expect(response.status()).toBe(201);
+    workspaces.push((await response.json()).workspace);
+  }
+  await page.route("**/api/v1/**", async (route) => {
+    const response = await route.fetch({
+      url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+    });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspaces[0].id}/links/new`);
+  await page
+    .getByLabel("Destination URL", { exact: true })
+    .fill("https://example.com/private-draft");
+  await page.getByLabel("Switch workspace", { exact: true }).selectOption(workspaces[1].id);
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Discard unsaved changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Stay", exact: true }).click();
+  await expect(page.getByLabel("Destination URL", { exact: true })).toHaveValue(
+    "https://example.com/private-draft",
+  );
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Link draft Beta", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Destination URL", { exact: true })).toHaveCount(0);
+  expect(await page.getByRole("main").innerHTML()).not.toContain("private-draft");
+});
+
+test("link-create missing detail preserves authorized workspace and removal disposes content", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const response = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-link-missing-01",
+    },
+    data: { name: "Link missing tenant" },
+  });
+  expect(response.status()).toBe(201);
+  const { workspace } = await response.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const response = await route.fetch({
+      url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+    });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links/00000000-0000-4000-8000-000000000000`);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("Link not found");
+  await expect(
+    page.getByRole("heading", { name: "Link missing tenant", exact: true }),
+  ).toBeVisible();
+  const removed = await request.post(
+    `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
+  );
+  expect(removed.status()).toBe(204);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(
+    page.getByRole("heading", { name: "Choose a workspace", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toHaveCount(0);
 });
 
 test("switching commits selection and clears old content before the next workspace", async ({
