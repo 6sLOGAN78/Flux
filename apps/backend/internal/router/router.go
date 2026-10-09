@@ -22,9 +22,11 @@ const (
 func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services) *echo.Echo {
 	var auth *service.AuthService
 	var identity service.IdentityResolver
+	var workspace *service.WorkspaceService
 	if services != nil {
 		auth = services.Auth
 		identity = services.Identity
+		workspace = services.Workspace
 	}
 	middlewares := middleware.NewMiddlewares(s)
 
@@ -75,8 +77,12 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	registerSystemRoutes(router, h)
 
 	// register versioned routes
-	product := handler.NewProductHandler(auth, identity)
-	router.Group("/api/v1").GET("/me", product.Me)
+	product := handler.NewProductHandler(auth, identity, workspace)
+	group := router.Group("/api/v1")
+	group.GET("/me", product.Me)
+	group.GET("/workspaces", product.ListWorkspaces)
+	group.POST("/workspaces", product.CreateWorkspace)
+	group.GET("/workspaces/:workspaceId", product.WorkspaceSummary)
 
 	return router
 }

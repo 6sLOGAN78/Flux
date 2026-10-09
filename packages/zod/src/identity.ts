@@ -41,3 +41,39 @@ export const ZIdentityError = extendApi(
 );
 
 export type IdentityResponse = z.infer<typeof ZIdentityResponse>;
+
+export const ZWorkspace = extendApi(
+  z
+    .object({
+      id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      name: extendApi(
+        z.string().refine((value) => [...value].length >= 1 && [...value].length <= 100),
+        {
+          minLength: 1,
+          maxLength: 100,
+        },
+      ),
+      role: z.enum(["owner", "admin", "member", "viewer"]),
+    })
+    .strict(),
+  { title: "transport.Workspace" },
+);
+
+export const ZWorkspaceResponse = extendApi(z.object({ workspace: ZWorkspace }).strict(), {
+  title: "transport.WorkspaceResponse",
+});
+export const ZWorkspacesResponse = extendApi(
+  z.object({ workspaces: z.array(ZWorkspace) }).strict(),
+  {
+    title: "transport.WorkspacesResponse",
+  },
+);
+export const ZCreateWorkspaceRequest = extendApi(
+  z.object({ name: z.string().min(1).max(400) }).strict(),
+  {
+    title: "transport.CreateWorkspaceRequest",
+    description:
+      "Explicit workspace name; the server trims Unicode whitespace and validates 1–100 Unicode characters.",
+  },
+);
+export type WorkspaceResponse = z.infer<typeof ZWorkspaceResponse>;

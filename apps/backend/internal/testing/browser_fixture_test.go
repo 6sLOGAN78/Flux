@@ -41,6 +41,7 @@ func TestBrowserProductFixture(t *testing.T) {
 			JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
 		identity := service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)
 		return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
-			&service.Services{Auth: auth, Identity: identity})
+			&service.Services{Auth: auth, Identity: identity,
+				Workspace: service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))})
 	})
 }

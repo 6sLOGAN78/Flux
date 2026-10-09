@@ -84,6 +84,35 @@ func (e TransportIdentityResponseAuthenticated) Valid() bool {
 	}
 }
 
+// Defines values for TransportWorkspaceRole.
+const (
+	Admin  TransportWorkspaceRole = "admin"
+	Member TransportWorkspaceRole = "member"
+	Owner  TransportWorkspaceRole = "owner"
+	Viewer TransportWorkspaceRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the TransportWorkspaceRole enum.
+func (e TransportWorkspaceRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Member:
+		return true
+	case Owner:
+		return true
+	case Viewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// TransportCreateWorkspaceRequest Explicit workspace name; the server trims Unicode whitespace and validates 1–100 Unicode characters.
+type TransportCreateWorkspaceRequest struct {
+	Name string `json:"name"`
+}
+
 // TransportHealthLiveResponse Process liveness, independent of external dependencies.
 //
 // Example: {"status":"alive"}
@@ -143,8 +172,36 @@ type TransportIdentityResponse struct {
 // TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.
 type TransportIdentityResponseAuthenticated bool
 
+// TransportWorkspace defines model for transport.Workspace.
+type TransportWorkspace struct {
+	Id   string                 `json:"id"`
+	Name string                 `json:"name"`
+	Role TransportWorkspaceRole `json:"role"`
+}
+
+// TransportWorkspaceRole defines model for TransportWorkspace.Role.
+type TransportWorkspaceRole string
+
+// TransportWorkspaceResponse defines model for transport.WorkspaceResponse.
+type TransportWorkspaceResponse struct {
+	Workspace TransportWorkspace `json:"workspace"`
+}
+
+// TransportWorkspacesResponse defines model for transport.WorkspacesResponse.
+type TransportWorkspacesResponse struct {
+	Workspaces []TransportWorkspace `json:"workspaces"`
+}
+
 // HealthLiveResponse is the canonical liveness transport in this package.
 type HealthLiveResponse = TransportHealthLiveResponse
 
 // HealthReadyResponse is the canonical readiness transport in this package.
 type HealthReadyResponse = TransportHealthReadyResponse
+
+// CreateWorkspaceParams defines parameters for CreateWorkspace.
+type CreateWorkspaceParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
+// CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
+type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest

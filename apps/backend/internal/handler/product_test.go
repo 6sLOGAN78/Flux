@@ -17,6 +17,7 @@ import (
 
 	"github.com/6sLOGAN78/flux/internal/config"
 	"github.com/6sLOGAN78/flux/internal/database"
+	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/handler"
 	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/6sLOGAN78/flux/internal/router"
@@ -169,7 +170,8 @@ func productRouter(cfg *config.Config, db *database.Database, p *signedProvider)
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
-		Identity: service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)})
+		Identity:  service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
+		Workspace: service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))})
 }
 
 func requestMe(t *testing.T, api string, token string, _ bool) (int, string, string) {
@@ -374,7 +376,9 @@ func TestProductActualHTTP(t *testing.T) {
 		}
 	})
 	t.Run("workspace-bootstrap", func(t *testing.T) {
-		checkWorkspaceBootstrap(t, api.URL, db, p, token)
+		workspaceAPI := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, p))
+		defer workspaceAPI.Close()
+		checkWorkspaceBootstrap(t, workspaceAPI.URL, db, p, token)
 	})
 }
 
@@ -425,8 +429,8 @@ func checkWorkspaceBootstrap(t *testing.T, api string, db *fluxTesting.TestDB, p
 	var group sync.WaitGroup
 	for range 4 {
 		group.Go(func() {
-			status, result := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-concurrent-0001", `{"name":"Concurrent"}`)
-			require.Equal(t, 201, status)
+			requestStatus, result := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-concurrent-0001", `{"name":"Concurrent"}`)
+			require.Equal(t, 201, requestStatus)
 			require.Equal(t, "Concurrent", result["workspace"].(map[string]any)["name"])
 		})
 	}
@@ -434,6 +438,68 @@ func checkWorkspaceBootstrap(t *testing.T, api string, db *fluxTesting.TestDB, p
 	var rows int
 	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM workspaces WHERE name=$1", "Concurrent").Scan(&rows))
 	require.Equal(t, 1, rows)
+	var owners int
+	var durableActor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT user_id FROM memberships WHERE workspace_id=$1 AND role='owner'", id).Scan(&durableActor))
+	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND role='owner'", id).Scan(&owners))
+	require.Equal(t, 1, owners)
+	var retention bool
+	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT retain_until >= created_at + interval '24 hours' AND octet_length(request_hash)=32 FROM workspace_bootstrap_requests WHERE workspace_id=$1", id).Scan(&retention))
+	require.True(t, retention)
+	t.Run("rollback-at-commit", func(t *testing.T) {
+		_, err := db.Pool.Exec(context.Background(), `CREATE FUNCTION reject_workspace_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-WORKSPACE-COMMIT'; END $$;
+CREATE CONSTRAINT TRIGGER reject_workspace_commit AFTER INSERT ON memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_workspace_commit()`)
+		require.NoError(t, err)
+		defer func() {
+			_, dropErr := db.Pool.Exec(context.Background(), "DROP TRIGGER reject_workspace_commit ON memberships; DROP FUNCTION reject_workspace_commit()")
+			require.NoError(t, dropErr)
+		}()
+		requestStatus, body := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-rollback-0001", `{"name":"Rolled back"}`)
+		require.Equal(t, 503, requestStatus)
+		require.NotContains(t, body, "workspace")
+		require.NotContains(t, p.logs.String(), "PRIVATE-WORKSPACE-COMMIT")
+		for _, statement := range []string{
+			"SELECT count(*) FROM workspaces WHERE name='Rolled back'",
+			"SELECT count(*) FROM workspace_bootstrap_requests WHERE request_key='workspace-rollback-0001'",
+			"SELECT count(*) FROM memberships WHERE workspace_id NOT IN (SELECT id FROM workspaces)",
+		} {
+			require.NoError(t, db.Pool.QueryRow(context.Background(), statement).Scan(&rows))
+			require.Zero(t, rows)
+		}
+	})
+	t.Run("identity-key-scope-and-foreign-list", func(t *testing.T) {
+		requestStatus, result := workspaceRequest(t, api, other, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Other team"}`)
+		require.Equal(t, 201, requestStatus)
+		require.NotEqual(t, id, result["workspace"].(map[string]any)["id"])
+		requestStatus, result = workspaceRequest(t, api, other, "GET", "/workspaces", "", "")
+		require.Equal(t, 200, requestStatus)
+		require.Len(t, result["workspaces"], 1)
+		require.Equal(t, "Other team", result["workspaces"].([]any)[0].(map[string]any)["name"])
+	})
+	t.Run("viewer-denied-write-and-removed-membership", func(t *testing.T) {
+		var viewer uuid.UUID
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE issuer=$1 AND subject=$2", fixtureIssuer, "user_other").Scan(&viewer))
+		_, err := db.Pool.Exec(context.Background(), "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'viewer',$3)", id, viewer, durableActor)
+		require.NoError(t, err)
+		svc := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
+		tx, err := db.Pool.Begin(context.Background())
+		require.NoError(t, err)
+		scope := repository.Scope{WorkspaceID: uuid.MustParse(id), ActorID: viewer}
+		err = svc.RequireWrite(context.Background(), tx, scope)
+		var denied *errs.HTTPError
+		require.ErrorAs(t, err, &denied)
+		require.Equal(t, 403, denied.Status)
+		require.NoError(t, tx.Rollback(context.Background()))
+		requestStatus, result := workspaceRequest(t, api, other, "GET", "/workspaces/"+id, "", "")
+		require.Equal(t, 200, requestStatus)
+		require.Equal(t, "viewer", result["workspace"].(map[string]any)["role"])
+		_, err = db.Pool.Exec(context.Background(), "DELETE FROM memberships WHERE workspace_id=$1", id)
+		require.NoError(t, err)
+		requestStatus, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+id, "", "")
+		require.Equal(t, 404, requestStatus)
+		requestStatus, _ = workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Growth 🚀"}`)
+		require.Equal(t, 404, requestStatus, "replay must reauthorize current membership")
+	})
 }
 
 func checkSessionMutations(t *testing.T, e *echo.Echo, token string) {

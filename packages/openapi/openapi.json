@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "transport.CreateWorkspaceRequest": {
+        "additionalProperties": false,
+        "description": "Explicit workspace name; the server trims Unicode whitespace and validates 1–100 Unicode characters.",
+        "properties": {
+          "name": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "transport.CreateWorkspaceRequest",
+        "type": "object"
+      },
       "transport.HealthLiveResponse": {
         "additionalProperties": false,
         "description": "Process liveness, independent of external dependencies.",
@@ -182,6 +198,66 @@
         ],
         "title": "transport.IdentityResponse",
         "type": "object"
+      },
+      "transport.Workspace": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ],
+        "title": "transport.Workspace",
+        "type": "object"
+      },
+      "transport.WorkspaceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "$ref": "#/components/schemas/transport.Workspace"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "title": "transport.WorkspaceResponse",
+        "type": "object"
+      },
+      "transport.WorkspacesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/transport.Workspace"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "title": "transport.WorkspacesResponse",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -257,6 +333,277 @@
           }
         ],
         "summary": "Resolve the current internal user",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "operationId": "listWorkspaces",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.WorkspacesResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List current workspace memberships",
+        "tags": [
+          "Identity"
+        ]
+      },
+      "post": {
+        "description": "Requires exact allowed Origin, JSON and Idempotency-Key. Canonical trimmed Unicode name is hashed with SHA-256; identity-scoped retries replay the committed workspace after fresh membership authorization, conflicting content returns 409. Ledger retention is at least 24 hours. All responses are no-store.",
+        "operationId": "createWorkspace",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.CreateWorkspaceRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.WorkspaceResponse"
+                }
+              }
+            },
+            "description": "201"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a named workspace and owner atomically",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}": {
+      "get": {
+        "description": "Workspace and durable actor scope are required; foreign, unknown or removed memberships return the same 404. Provider organization claims confer no authority. All responses are no-store.",
+        "operationId": "getWorkspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.WorkspaceResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read a freshly authorized workspace summary",
         "tags": [
           "Identity"
         ]

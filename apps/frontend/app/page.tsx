@@ -114,6 +114,7 @@ function Account() {
     <>
       <h1>Your account</h1>
       <p>{state.identity.user.email}</p>
+      <a href="/onboarding">Create workspace</a>
       <button type="button" disabled={signingOut} onClick={() => void logout()}>
         Sign out
       </button>

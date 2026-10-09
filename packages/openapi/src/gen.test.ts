@@ -133,7 +133,48 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   const document = JSON.parse(serializeOpenAPI());
   assert.equal(document.openapi, "3.0.2");
   assert.equal(document.info.version, "1.0.0");
-  assert.deepEqual(Object.keys(document.paths).sort(), ["/api/v1/me", "/live", "/ready"]);
+  assert.deepEqual(Object.keys(document.paths).sort(), [
+    "/api/v1/me",
+    "/api/v1/workspaces",
+    "/api/v1/workspaces/{workspaceId}",
+    "/live",
+    "/ready",
+  ]);
+  const createWorkspace = document.paths["/api/v1/workspaces"].post;
+  assert.deepEqual(createWorkspace.security, [{ bearerAuth: [] }]);
+  assert.ok(createWorkspace.responses["201"]);
+  assert.ok(createWorkspace.responses["409"]);
+  assert.ok(
+    createWorkspace.parameters.some(
+      (parameter: { name: string; required: boolean }) =>
+        parameter.name === "idempotency-key" && parameter.required,
+    ),
+  );
+  assert.deepEqual(document.paths["/api/v1/workspaces/{workspaceId}"].get.security, [
+    { bearerAuth: [] },
+  ]);
+  const workspace = (schemas as unknown as Record<string, ZodType>).ZWorkspaceResponse;
+  assert.ok(workspace);
+  assert.equal(
+    workspace.safeParse({
+      workspace: {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "🚀".repeat(100),
+        role: "owner",
+      },
+    }).success,
+    true,
+  );
+  assert.equal(
+    workspace.safeParse({
+      workspace: {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "🚀".repeat(101),
+        role: "owner",
+      },
+    }).success,
+    false,
+  );
   const me = document.paths["/api/v1/me"].get;
   assert.deepEqual(me.security, [{ bearerAuth: [] }]);
   assert.deepEqual(Object.keys(me.responses).sort(), ["200", "401", "429", "503"]);
