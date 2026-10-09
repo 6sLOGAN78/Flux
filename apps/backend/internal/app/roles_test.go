@@ -941,6 +941,10 @@ func assertBinaryRoutes(t *testing.T, address string, api bool) {
 		if api && path != "/api/v1/links" {
 			want = http.StatusOK
 		}
+		if api && path == "/api/v1/links" {
+			// The versioned product boundary authenticates before route dispatch.
+			want = http.StatusUnauthorized
+		}
 		if response.StatusCode != want {
 			t.Fatalf("role route %s returned %d, want %d", path, response.StatusCode, want)
 		}
