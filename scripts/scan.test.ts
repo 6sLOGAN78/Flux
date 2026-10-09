@@ -13,14 +13,14 @@ const goConfig = {
   scanner_version: "v1.8.0",
   scan_level: "package",
   scan_mode: "source",
-  go_version: "go1.26.8",
+  go_version: "go1.26.9",
 };
 const goReport = (findings: unknown[] = [], config = goConfig) =>
   [
     { config },
     {
       SBOM: {
-        go_version: "go1.26.8",
+        go_version: "go1.26.9",
         modules: [{ path: "example.test/dependency", version: "v1.0.0" }],
         roots: ["example.test/fixture"],
       },
@@ -458,7 +458,7 @@ test("wrong Go protocol, scope, toolchain and incomplete or malformed findings f
       goReport([], { ...goConfig, scanner_version: "v0.0.0" }),
       goReport([], { ...goConfig, protocol_version: "invalid" }),
       goReport([], { ...goConfig, go_version: "go1.25.5" }),
-      JSON.stringify({ SBOM: { go_version: "go1.26.8", modules: [] } }),
+      JSON.stringify({ SBOM: { go_version: "go1.26.9", modules: [] } }),
       goReport([{ osv: "GO-2026-0001", trace: [] }]),
       goReport([
         { osv: "GO-2026-0001", trace: [{ module: "example.test/dependency", package: 42 }] },

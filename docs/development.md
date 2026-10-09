@@ -6,7 +6,7 @@ tenant entities, and a dashboard belong to later phases.
 
 ## Acceptance contract
 
-Use `.tool-versions` for Go 1.26.8, Node 22.23.3, and Bun 1.3.14.
+Use `.tool-versions` for Go 1.26.9, Node 22.23.3, and Bun 1.3.14.
 `tools.lock.json` is the source for standalone quality tools, the Go generator,
 and collector version, including the required Task 3.54.0 runtime for backend
 task parity tests. `bun run tools:install` provisions it without a host Task
@@ -32,7 +32,7 @@ support, or the official [Go](https://go.dev/dl/), [Node](https://nodejs.org/en/
 and [Bun](https://github.com/oven-sh/bun/releases) distributions. Confirm
 `go version` from `apps/backend`, `node --version`, and `bun --version` match the
 manifest. A supported older Go launcher may download the selected toolchain;
-for the same runtime throughout root scripts set `GOTOOLCHAIN=go1.26.8`.
+for the same runtime throughout root scripts set `GOTOOLCHAIN=go1.26.9`.
 Go module commands use `GOFLAGS=-mod=readonly` and `GOWORK=off` in CI.
 
 The root frozen install also applies `patches/ts-deepmerge@8.0.0.patch` through

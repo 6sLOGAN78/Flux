@@ -10,10 +10,10 @@
     "govulncheck": {
       "version": "v1.8.0",
       "command": ["-json", "-scan=package", "-test", "./..."],
-      "toolchain": "go1.26.8",
+      "toolchain": "go1.26.9",
       "source": "https://go.googlesource.com/vuln/+/refs/tags/v1.8.0",
       "scope": "All backend roles and tests; every vulnerable imported package fails, unused module inventory remains explicitly visible; no advisory exception",
-      "verification": "Pinned protocol/config, SBOM Go1.26.8, real all-package test analysis and runtime legacy OpenPGP import mutation"
+      "verification": "Pinned protocol/config, SBOM Go1.26.9, real all-package test analysis and runtime legacy OpenPGP import mutation"
     },
     "gitleaks": {
       "version": "8.30.1",
@@ -395,38 +395,38 @@
       "versionArgs": ["-version"],
       "versionOutput": "Scanner: govulncheck@v1.8.0",
       "source": "https://go.googlesource.com/vuln/+/refs/tags/v1.8.0",
-      "verified": "2026-10-07",
+      "verified": "2026-10-09",
       "build": {
-        "toolchain": "go1.26.8",
+        "toolchain": "go1.26.9",
         "module": "golang.org/x/vuln",
         "sum": "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=",
         "goModSum": "h1:Fzm4XK3Hbl1ZvZ7JpNTEWb7CJWOZ7m2LX0GLu4Fsrwo=",
-        "goMod": "module flux.tools\n\ngo 1.26.8\n\nrequire golang.org/x/vuln v1.8.0\n",
+        "goMod": "module flux.tools\n\ngo 1.26.9\n\nrequire golang.org/x/vuln v1.8.0\n",
         "goSum": "golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=\ngolang.org/x/mod v0.41.0/go.mod h1:Ek9pY8RKWXwsWvd3rQiHYtMqkjSUV+s1Rj7j4H5Ur6o=\ngolang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=\ngolang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=\ngolang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 h1:F5BWKvW126NXR74uxkxuc1jQHhm/rwm/J3rSiFyuRs4=\ngolang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518/go.mod h1:i+ivNqjDnTF3WTElsdk5g9V5DTSBYgdNo7xTU9SDwYA=\ngolang.org/x/tools v0.50.0 h1:c2ifzfcuY7L90lZ2aKd8S4K2NpASF08SZx9ZuJkHmSU=\ngolang.org/x/tools v0.50.0/go.mod h1:7ulVMw3831Mwi5EZD6RomGyffr4VFjuNYXf2BbCEAV0=\ngolang.org/x/vuln v1.8.0 h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=\ngolang.org/x/vuln v1.8.0/go.mod h1:Fzm4XK3Hbl1ZvZ7JpNTEWb7CJWOZ7m2LX0GLu4Fsrwo=\n"
       },
       "platforms": {
         "linux-x64": {
           "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
           "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
-          "binarySha256": "f417d39b256c1a73c83d64fbcd8b063547d4cf67e151502e2340456003feecc8",
+          "binarySha256": "cd3cb4bb5fb83a54f27f8bfee66f4b93dd9677c166089170b7ab2f3e5ea99b64",
           "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
         },
         "linux-arm64": {
           "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
           "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
-          "binarySha256": "8acb3fb970c59d7198112350ba6f5ee9fa0feaa010df474f62d3cf3acd632915",
+          "binarySha256": "fb652a05669792284189d045d54bd6e37895b110b90f36f4073db3b97c696b9b",
           "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
         },
         "darwin-x64": {
           "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
           "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
-          "binarySha256": "57889c79da8305e862f212367f61fd3275e82e0d6cee98422f65c4d197243123",
+          "binarySha256": "05a520745c06363982f3c4239ceff82ed2393ce861ef0dcd5bfde8074d99dfff",
           "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
         },
         "darwin-arm64": {
           "url": "https://proxy.golang.org/golang.org/x/vuln/@v/v1.8.0.zip",
           "sha256": "396b780e8e9cf35cd5b0c481fed8e841cff89a21bf4f1b61556d1694f42fb572",
-          "binarySha256": "5d27e22cd1fc3ef22b9b0b3773cbf7769cbd95b59829e9cc6a0718e1b6a7e827",
+          "binarySha256": "c2d4c9ee9a497e3e8b4d33c5a13f4369c0905190fe3b7b2fd8ed9cc0b6546a54",
           "checksumSource": "https://sum.golang.org/lookup/golang.org/x/vuln@v1.8.0"
         }
       }

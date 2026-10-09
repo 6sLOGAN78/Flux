@@ -24,7 +24,7 @@ export const capture = (
       ...process.env,
       GOFLAGS: "-mod=readonly",
       GOWORK: "off",
-      GOTOOLCHAIN: "go1.26.8",
+      GOTOOLCHAIN: "go1.26.9",
       NO_COLOR: "1",
     },
     timeoutMs,
@@ -222,7 +222,7 @@ export const runScans = async (
               config.scanner_version !== "v1.8.0" ||
               config.scan_level !== "package" ||
               config.scan_mode !== "source" ||
-              config.go_version !== "go1.26.8"
+              config.go_version !== "go1.26.9"
             )
               throw new Error("invalid scanner protocol/scope");
             configured = true;
@@ -241,7 +241,7 @@ export const runScans = async (
                   typeof m.path === "string" && (!("version" in m) || typeof m.version === "string")
                 );
               }) ||
-              sbom.go_version !== "go1.26.8"
+              sbom.go_version !== "go1.26.9"
             )
               throw new Error("invalid SBOM/toolchain");
             complete = true;
