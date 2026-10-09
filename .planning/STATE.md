@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-15-PLAN.md
-last_updated: "2026-10-09T18:15:48.195Z"
+stopped_at: Completed 02-16-PLAN.md
+last_updated: "2026-10-09T23:31:52.852Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 37
+  completed_plans: 38
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 16 of 35
+Plan: 17 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [███████░░░] 65%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Progress: [███████░░░] 65%
 | Phase 2 P13 | 20min | 2 tasks | 16 files |
 | Phase 2 P14 | 34min | 2 tasks | 23 files |
 | Phase 2 P15 | 20min | 2 tasks | 14 files |
+| Phase 2 P16 | 10min | 2 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Connect the approved library creation CTA to the existing real create route and verify its committed browser flow.
 - [Phase 2]: Validate raw UTF-8 search at 200 Unicode characters before trimming Unicode whitespace; bind exact normalized search and closed lifecycle into signed cursors.
 - [Phase 2]: Use fixed parameterized ILIKE with explicit literal pattern escaping; native committed search/filter changes abort older generations and reset scoped page history while preserving drafts on transient failures.
+- [Phase 2]: Read Team under current SQL owner/admin capability in the same workspace-first transaction as its fixed 25-row query; UUID continuation never grants authority.
+- [Phase 2]: Treat Team 403 as capability loss: dispose rows and refresh current workspace role without broadcasting membership removal; preserve valid Links access.
+- [Phase 2]: Keep Team role enum names distinct in canonical schema metadata and regenerate both OpenAPI copies and Go transport together.
 
 ### Pending Todos
 
@@ -184,6 +188,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T18:15:48.184Z
-Stopped at: Completed 02-15-PLAN.md
+Last session: 2026-10-09T23:31:52.835Z
+Stopped at: Completed 02-16-PLAN.md
 Resume file: None
