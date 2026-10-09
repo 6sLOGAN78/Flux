@@ -116,6 +116,8 @@ test("identity schema requires a strict internal UUID and verified email respons
   const valid = {
     authenticated: true,
     user: { id: "00000000-0000-4000-8000-000000000001", email: "local@example.test" },
+    workspaces: [],
+    lastWorkspace: null,
   };
   assert.deepEqual(identity.parse(valid), valid);
   for (const invalid of [
@@ -135,6 +137,7 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   assert.equal(document.info.version, "1.0.0");
   assert.deepEqual(Object.keys(document.paths).sort(), [
     "/api/v1/me",
+    "/api/v1/me/last-workspace",
     "/api/v1/workspaces",
     "/api/v1/workspaces/{workspaceId}",
     "/live",
@@ -180,7 +183,12 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   assert.deepEqual(Object.keys(me.responses).sort(), ["200", "401", "429", "503"]);
   assert.match(me.description, /Cache-Control: no-store/);
   const identity = document.components.schemas["transport.IdentityResponse"];
-  assert.deepEqual(identity.required.sort(), ["authenticated", "user"]);
+  assert.deepEqual(identity.required.sort(), [
+    "authenticated",
+    "lastWorkspace",
+    "user",
+    "workspaces",
+  ]);
   assert.equal(identity.additionalProperties, false);
   assert.equal(identity.properties.user.additionalProperties, false);
   assert.deepEqual(identity.properties.user.required.sort(), ["email", "id"]);

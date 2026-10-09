@@ -1,25 +1,6 @@
 import { extendApi } from "@anatine/zod-openapi";
 import { z } from "zod";
 
-export const ZIdentityResponse = extendApi(
-  z
-    .object({
-      authenticated: z.literal(true),
-      user: z
-        .object({
-          id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
-          email: extendApi(z.string().email().max(320), { "x-go-type": "string" }),
-        })
-        .strict(),
-    })
-    .strict(),
-  {
-    title: "transport.IdentityResponse",
-    description:
-      "Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.",
-  },
-);
-
 export const ZIdentityError = extendApi(
   z
     .object({
@@ -39,8 +20,6 @@ export const ZIdentityError = extendApi(
     description: "Safe authentication failure without token or provider diagnostics.",
   },
 );
-
-export type IdentityResponse = z.infer<typeof ZIdentityResponse>;
 
 export const ZWorkspace = extendApi(
   z
@@ -77,3 +56,34 @@ export const ZCreateWorkspaceRequest = extendApi(
   },
 );
 export type WorkspaceResponse = z.infer<typeof ZWorkspaceResponse>;
+
+export const ZIdentityResponse = extendApi(
+  z
+    .object({
+      authenticated: z.literal(true),
+      workspaces: z.array(ZWorkspace),
+      lastWorkspace: ZWorkspace.nullable(),
+      user: z
+        .object({
+          id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+          email: extendApi(z.string().email().max(320), { "x-go-type": "string" }),
+        })
+        .strict(),
+    })
+    .strict(),
+  {
+    title: "transport.IdentityResponse",
+    description:
+      "Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.",
+  },
+);
+
+export type IdentityResponse = z.infer<typeof ZIdentityResponse>;
+
+export const ZWorkspacePreferenceRequest = extendApi(
+  z.object({ workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }) }).strict(),
+  {
+    title: "transport.WorkspacePreferenceRequest",
+    description: "Selection must be reauthorized against current Flux membership.",
+  },
+);

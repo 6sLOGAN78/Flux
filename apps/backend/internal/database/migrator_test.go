@@ -279,6 +279,22 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 			t.Fatalf("forward upgrade missing workspace table: %s", table)
 		}
 	}
+	if prefixErr := migrator.MigrateTo(ctx, 3); prefixErr != nil {
+		t.Fatal(prefixErr)
+	}
+	var preferences bool
+	if queryErr := conn.QueryRow(ctx, "SELECT to_regclass('public.workspace_preferences') IS NOT NULL").
+		Scan(&preferences); queryErr != nil || preferences {
+		t.Fatal("004 rollback did not remove the preference table")
+	}
+	upgraded, upgradeErr = MigrateWithResult(ctx, cfg)
+	if upgradeErr != nil || upgraded.StartVersion != 3 || upgraded.EndVersion != want {
+		t.Fatal("existing workspace prefix did not upgrade to preferences")
+	}
+	if queryErr := conn.QueryRow(ctx, "SELECT to_regclass('public.workspace_preferences') IS NOT NULL").
+		Scan(&preferences); queryErr != nil || !preferences {
+		t.Fatal("forward upgrade did not create the preference table")
+	}
 	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
 		t.Fatal(downErr)
 	}

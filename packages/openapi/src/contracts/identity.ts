@@ -4,6 +4,7 @@ import {
   ZWorkspaceResponse,
   ZWorkspacesResponse,
   ZCreateWorkspaceRequest,
+  ZWorkspacePreferenceRequest,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -12,6 +13,26 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  selectWorkspace: {
+    summary: "Select a currently authorized workspace",
+    description:
+      "Requires exact allowed Origin and JSON. Locks the workspace and rechecks Flux membership before committing the identity-owned preference. All roles may select. Unknown, foreign and removed memberships return the same 404. The preference never authorizes subsequent access. All responses use Cache-Control: no-store.",
+    path: "/api/v1/me/last-workspace",
+    method: "PUT",
+    metadata: getSecurityMetadata(),
+    body: ZWorkspacePreferenceRequest,
+    responses: {
+      200: ZWorkspaceResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   createWorkspace: {
     summary: "Create a named workspace and owner atomically",
     description:
@@ -65,7 +86,7 @@ export const identityContract = c.router({
   getMe: {
     summary: "Resolve the current internal user",
     description:
-      "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
+      "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. Returns current Flux memberships and lastWorkspace only when authorized in the same membership snapshot, otherwise null without former workspace identifiers or names. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
     path: "/api/v1/me",
     method: "GET",
     metadata: getSecurityMetadata(),

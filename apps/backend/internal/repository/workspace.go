@@ -90,7 +90,72 @@ func (r *WorkspaceRepository) Create(ctx context.Context, actor uuid.UUID,
 			return Workspace{}, err
 		}
 		result.Role = "owner"
+		if err = saveWorkspacePreference(ctx, tx, actor, result.ID); err != nil {
+			return Workspace{}, err
+		}
 	default:
+		return Workspace{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Workspace{}, err
+	}
+	return result, nil
+}
+
+// Bootstrap derives restore selection only from the same current membership
+// snapshot as the chooser. A stale preference never exposes its stored UUID.
+func (r *WorkspaceRepository) Bootstrap(ctx context.Context, actor uuid.UUID) ([]Workspace, *Workspace, error) {
+	if r == nil || r.pool == nil || actor == uuid.Nil {
+		return nil, nil, errors.New("workspace store unavailable")
+	}
+	rows, err := r.pool.Query(ctx, "SELECT w.id,w.name,m.role,COALESCE(p.last_workspace_id=w.id,false) "+
+		"FROM memberships m JOIN workspaces w ON w.id=m.workspace_id "+
+		"LEFT JOIN workspace_preferences p ON p.user_id=m.user_id "+
+		"WHERE m.user_id=$1 ORDER BY w.created_at,w.id", actor)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	items := make([]Workspace, 0)
+	var last *Workspace
+	for rows.Next() {
+		var item Workspace
+		var selected bool
+		if err = rows.Scan(&item.ID, &item.Name, &item.Role, &selected); err != nil {
+			return nil, nil, err
+		}
+		items = append(items, item)
+		if selected {
+			last = &item
+		}
+	}
+	return items, last, rows.Err()
+}
+
+func saveWorkspacePreference(ctx context.Context, tx pgx.Tx, actor, workspace uuid.UUID) error {
+	_, err := tx.Exec(ctx, "INSERT INTO workspace_preferences(user_id,last_workspace_id) VALUES($1,$2) "+
+		"ON CONFLICT(user_id) DO UPDATE SET last_workspace_id=EXCLUDED.last_workspace_id", actor, workspace)
+	return err
+}
+
+// Select commits only while current membership is protected by the workspace
+// lock. Preference writes follow workspace authorization, never lock users.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *WorkspaceRepository) Select(ctx context.Context, scope Scope) (result Workspace, err error) {
+	if r == nil || r.pool == nil {
+		return result, errors.New("workspace store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	result, err = r.LockScope(ctx, tx, scope, false)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if err = saveWorkspacePreference(ctx, tx, scope.ActorID, scope.WorkspaceID); err != nil {
 		return Workspace{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

@@ -80,6 +80,7 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	product := handler.NewProductHandler(auth, identity, workspace)
 	group := router.Group("/api/v1")
 	group.GET("/me", product.Me)
+	group.PUT("/me/last-workspace", product.SelectWorkspace)
 	group.GET("/workspaces", product.ListWorkspaces)
 	group.POST("/workspaces", product.CreateWorkspace)
 	group.GET("/workspaces/:workspaceId", product.WorkspaceSummary)

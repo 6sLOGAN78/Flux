@@ -29,6 +29,24 @@ func NewWorkspaceService(store *repository.WorkspaceRepository) *WorkspaceServic
 
 const workspaceTimeout = 3 * time.Second
 
+// Bootstrap returns only current memberships and an authorized restore hint.
+func (s *WorkspaceService) Bootstrap(ctx context.Context, actor uuid.UUID) (
+	[]repository.Workspace, *repository.Workspace, error,
+) {
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	items, last, err := s.store.Bootstrap(ctx, actor)
+	return items, last, workspaceFailure(err)
+}
+
+// Select requires fresh membership for every role, including read-only viewers.
+func (s *WorkspaceService) Select(ctx context.Context, scope repository.Scope) (repository.Workspace, error) {
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	result, err := s.store.Select(ctx, scope)
+	return result, workspaceFailure(err)
+}
+
 // Create requires an explicit Unicode name and identity-scoped durable retry key.
 func (s *WorkspaceService) Create(ctx context.Context, actor uuid.UUID,
 	name, key string,

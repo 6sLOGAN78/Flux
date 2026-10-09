@@ -163,10 +163,12 @@ type TransportIdentityErrorActionType string
 // TransportIdentityResponse Committed internal UUID and verified primary email for an active bearer session. Provider identity is never merged by email.
 type TransportIdentityResponse struct {
 	Authenticated TransportIdentityResponseAuthenticated `json:"authenticated"`
+	LastWorkspace *TransportWorkspace                    `json:"lastWorkspace"`
 	User          struct {
 		Email string `json:"email"`
 		Id    string `json:"id"`
 	} `json:"user"`
+	Workspaces []TransportWorkspace `json:"workspaces"`
 }
 
 // TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.
@@ -181,6 +183,11 @@ type TransportWorkspace struct {
 
 // TransportWorkspaceRole defines model for TransportWorkspace.Role.
 type TransportWorkspaceRole string
+
+// TransportWorkspacePreferenceRequest Selection must be reauthorized against current Flux membership.
+type TransportWorkspacePreferenceRequest struct {
+	WorkspaceId string `json:"workspaceId"`
+}
 
 // TransportWorkspaceResponse defines model for transport.WorkspaceResponse.
 type TransportWorkspaceResponse struct {
@@ -202,6 +209,9 @@ type HealthReadyResponse = TransportHealthReadyResponse
 type CreateWorkspaceParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
+
+// SelectWorkspaceJSONRequestBody defines body for SelectWorkspace for application/json ContentType.
+type SelectWorkspaceJSONRequestBody = TransportWorkspacePreferenceRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest

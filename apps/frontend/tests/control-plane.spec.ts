@@ -39,6 +39,15 @@ test("restore uses committed authorized selection and never trusts browser value
   await page.goto("/");
   await expect(page).toHaveURL(new RegExp(`/workspaces/${workspace.id}/links$`));
   await expect(page.getByRole("heading", { name: "Restore browser" })).toBeVisible();
+  const removed = await request.post(
+    `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
+  );
+  expect(removed.status()).toBe(204);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/workspaces$/);
+  await expect(page.getByRole("heading", { name: "Choose a workspace" })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Restore browser/ })).toHaveCount(0);
+  expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
 test("workspace requires an explicit name and opens authorized Links after commit", async ({
@@ -336,7 +345,9 @@ export const installProviderTransport = async (
   });
 };
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request }) => {
+  const reset = await request.post(`${process.env.FLUX_BROWSER_FIXTURE}/restore-reset`);
+  expect(reset.status()).toBe(204);
   await installProviderTransport(page);
 });
 
@@ -353,7 +364,10 @@ test("session root loads committed identity and signout clears private data", as
     await route.fulfill({ response });
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/workspaces$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose a workspace", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("local@example.test", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 640 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(

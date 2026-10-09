@@ -433,10 +433,20 @@ func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *
 		defer func() { _ = lock.Rollback(context.Background()) }()
 		_, err = repository.NewWorkspaceRepository(db.Pool).LockScope(ctx, lock, repository.Scope{WorkspaceID: uuid.MustParse(id), ActorID: actor}, true)
 		require.NoError(t, err)
-		finished := make(chan int, 1)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, api+"/api/v1/me/last-workspace",
+			strings.NewReader(`{"workspaceId":"`+id+`"}`))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Origin", fixtureParty)
+		req.Header.Set("Content-Type", "application/json")
+		type outcome struct {
+			response *http.Response
+			err      error
+		}
+		finished := make(chan outcome, 1)
 		go func() {
-			requestStatus, _ := workspaceRequest(t, api, token, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+id+`"}`)
-			finished <- requestStatus
+			response, requestErr := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+			finished <- outcome{response: response, err: requestErr}
 		}()
 		require.Eventually(t, func() bool {
 			var waiting int
@@ -445,7 +455,11 @@ func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *
 		_, err = lock.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", id, actor)
 		require.NoError(t, err)
 		require.NoError(t, lock.Commit(ctx))
-		require.Equal(t, 404, <-finished)
+		result := <-finished
+		require.NoError(t, result.err)
+		defer result.response.Body.Close()
+		require.Equal(t, 404, result.response.StatusCode)
+		require.Equal(t, "no-store", result.response.Header.Get("Cache-Control"))
 	})
 	status, bootstrap = workspaceRequest(t, api, token, "GET", "/me", "", "")
 	require.Equal(t, 200, status)

@@ -152,6 +152,27 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 			w.WriteHeader(http.StatusNoContent)
 		case "/client":
 			_ = json.NewEncoder(w).Encode(map[string]any{"api": api.URL, "token": token, "client": BrowserSessionClient(token)})
+		case "/restore-reset", "/restore-remove":
+			// Local harness only: mutate real PostgreSQL below application layers.
+			// No test route, key or authorization bypass enters a production router.
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			var err error
+			if r.URL.Path == "/restore-reset" {
+				_, err = db.Pool.Exec(r.Context(), "DELETE FROM workspace_preferences WHERE user_id IN "+
+					"(SELECT id FROM users WHERE issuer=$1 AND subject=$2)", fixtureIssuer, "user_fixture")
+			} else {
+				_, err = db.Pool.Exec(r.Context(), "DELETE FROM memberships WHERE workspace_id::text=$1 AND user_id IN "+
+					"(SELECT id FROM users WHERE issuer=$2 AND subject=$3)",
+					r.URL.Query().Get("workspace"), fixtureIssuer, "user_fixture")
+			}
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "/cases":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"api": api.URL, "revoked": p.Token(t, map[string]any{"sid": "sess_revoked"}),

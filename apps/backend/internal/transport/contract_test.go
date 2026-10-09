@@ -37,6 +37,9 @@ func readJSON(t *testing.T, path string) map[string]any {
 //
 //nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func validateSchema(schema map[string]any, value any) error {
+	if value == nil && schema["nullable"] == true {
+		return nil
+	}
 	switch schema["type"] {
 	case "boolean":
 		if _, ok := value.(bool); !ok {
@@ -201,8 +204,19 @@ func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
 	document := readJSON(t, "../../../../packages/openapi/openapi.json")
 	schema := responseSchema(t, document, "/api/v1/me", "200", "IdentityResponse")
+	// Resolve the canonical workspace references for populated bootstrap proof.
+	schemas := document["components"].(map[string]any)["schemas"].(map[string]any)
+	workspace := schemas["transport.Workspace"].(map[string]any)
+	properties := schema["properties"].(map[string]any)
+	properties["workspaces"].(map[string]any)["items"] = workspace
+	selected := make(map[string]any, len(workspace)+1)
+	for key, value := range workspace {
+		selected[key] = value
+	}
+	selected["nullable"] = true
+	properties["lastWorkspace"] = selected
 	fixture := []byte(`{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001",` +
-		`"email":"local@example.test"}}`)
+		`"email":"local@example.test"},"workspaces":[],"lastWorkspace":null}`)
 	var value transport.TransportIdentityResponse
 	if err := json.Unmarshal(fixture, &value); err != nil {
 		t.Fatal(err)
@@ -215,6 +229,20 @@ func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	var decoded any
+	if decodeErr := json.Unmarshal(encoded, &decoded); decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	if schemaErr := validateSchema(schema, decoded); schemaErr != nil {
+		t.Fatal(schemaErr)
+	}
+	value.Workspaces = []transport.TransportWorkspace{{
+		Id: "00000000-0000-4000-8000-000000000002", Name: "Current", Role: transport.Viewer,
+	}}
+	value.LastWorkspace = &value.Workspaces[0]
+	encoded, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if decodeErr := json.Unmarshal(encoded, &decoded); decodeErr != nil {
 		t.Fatal(decodeErr)
 	}

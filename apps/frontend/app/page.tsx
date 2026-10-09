@@ -3,6 +3,7 @@
 import { ClerkFailed, ClerkLoaded, ClerkLoading, useAuth, useClerk } from "@clerk/nextjs";
 import { ZIdentityResponse, type IdentityResponse } from "@flux/zod";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ApiError, createAPI } from "../lib/api";
 
 type AccountState =
@@ -13,6 +14,7 @@ type AccountState =
   | { kind: "ready"; identity: IdentityResponse; sessionId: string };
 
 function Account() {
+  const router = useRouter();
   const { isLoaded, isSignedIn, sessionId, getToken } = useAuth();
   const { signOut } = useClerk();
   const [state, setState] = useState<AccountState>({ kind: "loading" });
@@ -20,6 +22,12 @@ function Account() {
   const [signingOut, setSigningOut] = useState(false);
   const active = useRef<AbortController | null>(null);
   const closingSession = useRef(false);
+
+  useEffect(() => {
+    if (state.kind !== "ready" || state.sessionId !== sessionId || closingSession.current) return;
+    const last = state.identity.lastWorkspace;
+    router.replace(last ? `/workspaces/${last.id}/links` : "/workspaces");
+  }, [state, sessionId, router]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !sessionId || signingOut || closingSession.current) return;
@@ -113,11 +121,7 @@ function Account() {
   return (
     <>
       <h1>Your account</h1>
-      <p>{state.identity.user.email}</p>
-      <a href="/onboarding">Create workspace</a>
-      <button type="button" disabled={signingOut} onClick={() => void logout()}>
-        Sign out
-      </button>
+      <p role="status">Opening your workspace…</p>
     </>
   );
 }

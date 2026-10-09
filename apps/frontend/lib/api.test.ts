@@ -6,13 +6,15 @@ import { ZIdentityResponse } from "@flux/zod";
 
 test("identity contract rejects provider fields, false authentication and malformed durable identity", () => {
   const user = { id: "00000000-0000-4000-8000-000000000001", email: "local@example.test" };
-  expect(ZIdentityResponse.safeParse({ authenticated: true, user }).success).toBe(true);
+  const valid = { authenticated: true, user, workspaces: [], lastWorkspace: null };
+  expect(ZIdentityResponse.safeParse(valid).success).toBe(true);
   for (const payload of [
-    { authenticated: false, user },
-    { authenticated: true, user: { ...user, id: "user_fixture" } },
-    { authenticated: true, user: { ...user, email: "invalid" } },
-    { authenticated: true, user: { ...user, subject: "provider-private" } },
-    { authenticated: true, user, token: "provider-private" },
+    { ...valid, authenticated: false },
+    { ...valid, user: { ...user, id: "user_fixture" } },
+    { ...valid, user: { ...user, email: "invalid" } },
+    { ...valid, user: { ...user, subject: "provider-private" } },
+    { ...valid, token: "provider-private" },
+    { authenticated: true, user },
   ])
     expect(ZIdentityResponse.safeParse(payload).success).toBe(false);
 });

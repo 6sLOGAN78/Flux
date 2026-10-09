@@ -109,7 +109,7 @@ func (h *ProductHandler) Me(c echo.Context) error {
 	if !ok {
 		return errs.NewUnauthorizedError("Authentication required", false)
 	}
-	if h.identity == nil {
+	if h.identity == nil || h.workspace == nil {
 		return &errs.HTTPError{Code: "SERVICE_UNAVAILABLE", Message: "Authentication temporarily unavailable",
 			Status: http.StatusServiceUnavailable}
 	}
@@ -120,5 +120,44 @@ func (h *ProductHandler) Me(c echo.Context) error {
 	response := transport.TransportIdentityResponse{Authenticated: true}
 	response.User.Id = user.ID.String()
 	response.User.Email = user.Email
+	items, last, err := h.workspace.Bootstrap(c.Request().Context(), user.ID)
+	if err != nil {
+		return err
+	}
+	response.Workspaces = make([]transport.TransportWorkspace, 0, len(items))
+	for _, item := range items {
+		response.Workspaces = append(response.Workspaces, workspaceTransport(item))
+	}
+	if last != nil {
+		selected := workspaceTransport(*last)
+		response.LastWorkspace = &selected
+	}
 	return c.JSON(http.StatusOK, response)
+}
+
+// SelectWorkspace validates the canonical selection body and commits fresh authority.
+func (h *ProductHandler) SelectWorkspace(c echo.Context) error {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return err
+	}
+	var body transport.TransportWorkspacePreferenceRequest
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&body); err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	id, err := uuid.Parse(body.WorkspaceId)
+	if err != nil || id == uuid.Nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	item, err := h.workspace.Select(c.Request().Context(), repository.Scope{WorkspaceID: id, ActorID: user.ID})
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)})
 }

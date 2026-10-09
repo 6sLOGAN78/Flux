@@ -170,6 +170,14 @@
             ],
             "type": "boolean"
           },
+          "lastWorkspace": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/transport.Workspace"
+              }
+            ],
+            "nullable": true
+          },
           "user": {
             "additionalProperties": false,
             "properties": {
@@ -190,10 +198,18 @@
               "email"
             ],
             "type": "object"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/transport.Workspace"
+            },
+            "type": "array"
           }
         },
         "required": [
           "authenticated",
+          "workspaces",
+          "lastWorkspace",
           "user"
         ],
         "title": "transport.IdentityResponse",
@@ -228,6 +244,22 @@
           "role"
         ],
         "title": "transport.Workspace",
+        "type": "object"
+      },
+      "transport.WorkspacePreferenceRequest": {
+        "additionalProperties": false,
+        "description": "Selection must be reauthorized against current Flux membership.",
+        "properties": {
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ],
+        "title": "transport.WorkspacePreferenceRequest",
         "type": "object"
       },
       "transport.WorkspaceResponse": {
@@ -282,7 +314,7 @@
   "paths": {
     "/api/v1/me": {
       "get": {
-        "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
+        "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. Returns current Flux memberships and lastWorkspace only when authorized in the same membership snapshot, otherwise null without former workspace identifiers or names. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",
         "operationId": "getMe",
         "parameters": [],
         "responses": {
@@ -333,6 +365,124 @@
           }
         ],
         "summary": "Resolve the current internal user",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/me/last-workspace": {
+      "put": {
+        "description": "Requires exact allowed Origin and JSON. Locks the workspace and rechecks Flux membership before committing the identity-owned preference. All roles may select. Unknown, foreign and removed memberships return the same 404. The preference never authorizes subsequent access. All responses use Cache-Control: no-store.",
+        "operationId": "selectWorkspace",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.WorkspacePreferenceRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.WorkspaceResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Select a currently authorized workspace",
         "tags": [
           "Identity"
         ]

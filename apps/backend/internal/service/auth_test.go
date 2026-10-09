@@ -18,11 +18,13 @@ import (
 	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/6sLOGAN78/flux/internal/service"
 	fluxTesting "github.com/6sLOGAN78/flux/internal/testing"
+	"github.com/6sLOGAN78/flux/internal/transport"
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/jwks"
 	"github.com/clerk/clerk-sdk-go/v2/session"
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -43,11 +45,34 @@ func fixtureRouter(cfg *config.Config, db *database.Database, p *fluxTesting.Sig
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
 	var identity service.IdentityResolver = authCorpusIdentity{}
+	var workspace *service.WorkspaceService
 	if db != nil {
 		identity = service.NewIdentityService(repository.NewUserRepository(db.Pool), auth)
+		workspace = service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 	}
-	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
-		&service.Services{Auth: auth, Identity: identity})
+	api := router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
+		&service.Services{Auth: auth, Identity: identity, Workspace: workspace})
+	if db == nil {
+		// Provider-only units exercise the installed production middleware without
+		// a database. Only this test-local probe supplies an empty bootstrap;
+		// actual product/browser cases always consume the migrated store above.
+		api.GET("/api/v1/me", func(c echo.Context) error {
+			actor, ok := c.Get("actor").(service.Actor)
+			if !ok {
+				return echo.NewHTTPError(http.StatusUnauthorized)
+			}
+			resolved, err := identity.Resolve(c.Request().Context(), actor)
+			if err != nil {
+				return err
+			}
+			response := transport.TransportIdentityResponse{
+				Authenticated: true, Workspaces: []transport.TransportWorkspace{},
+			}
+			response.User.Id, response.User.Email = resolved.ID.String(), resolved.Email
+			return c.JSON(http.StatusOK, response)
+		})
+	}
+	return api
 }
 
 // Only the provider-boundary unit corpus uses this explicit resolver. The browser
@@ -121,7 +146,7 @@ func TestBearerSignedHTTPCorpus(t *testing.T) {
 			require.Less(t, time.Since(started), 3*time.Second)
 			if status == 200 {
 				require.JSONEq(t, `{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001",`+
-					`"email":"local@example.test"}}`, body)
+					`"email":"local@example.test"},"workspaces":[],"lastWorkspace":null}`, body)
 			} else {
 				require.NotContains(t, body, "user_fixture")
 				require.NotContains(t, body, "sess_")
