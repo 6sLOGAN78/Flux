@@ -1098,3 +1098,140 @@ test("identity resolves the signed browser session to one stable internal UUID",
   expect(JSON.stringify(results)).not.toContain("user_fixture");
   expect(JSON.stringify(results)).not.toContain(fixture.token);
 });
+
+test("library lists real newest-first rows with recovery and immediate membership disposal", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-library-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Library browser tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const links = [];
+  for (const index of [0, 1]) {
+    const result = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+      headers: { ...headers, "Idempotency-Key": `browser-library-link-${index}` },
+      data: {
+        destination: `https://example.com/library-${index}?a=1&b=2`,
+        title: `Library title ${index}`,
+      },
+    });
+    expect(result.status()).toBe(201);
+    links.push((await result.json()).link);
+  }
+  let fail = false;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let hold = true;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/workspaces/${workspace.id}/links`)) {
+      if (hold) await held;
+      if (fail) {
+        await route.fulfill({ status: 503, json: { message: "PRIVATE-LIBRARY-FAILURE" } });
+        return;
+      }
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(page.getByText("Loading links…", { exact: true })).toBeVisible();
+  hold = false;
+  release?.();
+  const table = page.getByRole("table", { name: "Links library" });
+  await expect(table).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(3);
+  await expect(table.getByRole("row").nth(1)).toContainText("Library title 1");
+  await expect(table.getByRole("link", { name: "Library title 1", exact: true })).toHaveAttribute(
+    "href",
+    `/workspaces/${workspace.id}/links/${links[1].id}`,
+  );
+  await expect(
+    table.getByRole("link", { name: links[1].destination, exact: true }),
+  ).toHaveAttribute("href", links[1].destination);
+  await expect(table.locator("time").first()).toHaveAttribute("datetime", links[1].createdAt);
+  await expect(table.getByRole("row").nth(1)).toContainText("Active");
+  fail = true;
+  await page.getByRole("button", { name: "Reload links", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("We couldn't load links. Try again.");
+  await expect(table).toBeVisible();
+  await expect(page.getByText("PRIVATE-LIBRARY-FAILURE")).toHaveCount(0);
+  fail = false;
+  await page.getByRole("button", { name: "Retry loading links", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(table).toBeHidden();
+  const cards = page.getByRole("list", { name: "Links library" });
+  await expect(cards).toBeVisible();
+  await expect(cards.getByRole("listitem")).toHaveCount(2);
+  await expect(cards.getByRole("listitem").first()).toContainText("Library title 1");
+  await expect(cards.getByRole("listitem").first()).toContainText("Created");
+  const removed = await request.post(
+    `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
+  );
+  expect(removed.status()).toBe(204);
+  await page.getByRole("button", { name: "Reload links", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Choose a workspace", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Library title 1", { exact: true })).toHaveCount(0);
+});
+
+test("library empty viewer presentation and initial failure never claim empty before success", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-library-empty",
+    },
+    data: { name: "Empty viewer library" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  let fail = true;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (fail && url.pathname.endsWith(`/workspaces/${workspace.id}/links`)) {
+      await route.fulfill({ status: 503, json: {} });
+      return;
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    // Test-local presentation projection only; actual viewer SQL authority is
+    // independently verified by the registered real-PG HTTP library test.
+    if (url.pathname.endsWith(`/workspaces/${workspace.id}`)) {
+      const body = await response.json();
+      body.workspace.role = "viewer";
+      await route.fulfill({ response, json: body });
+    } else await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(page.getByRole("alert")).toHaveText("We couldn't load links. Try again.");
+  await expect(page.getByRole("heading", { name: "No links yet" })).toHaveCount(0);
+  fail = false;
+  await page.getByRole("button", { name: "Retry loading links", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "No links yet" })).toBeVisible();
+  await expect(
+    page.getByText("You have view-only access. Ask an owner or admin to change your role.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create your first link" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Create link", exact: true })).toHaveCount(0);
+});

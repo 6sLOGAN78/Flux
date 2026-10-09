@@ -399,6 +399,10 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("custom-key", func(t *testing.T) {
 		checkCustomKey(t, api.URL, db, p)
 	})
+	t.Run("link-library", func(t *testing.T) {
+		checkLinkLibrary(t, api.URL, db, p)
+	})
+
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
@@ -1170,4 +1174,62 @@ func checkSessionRecoveryHeaders(t *testing.T, e *echo.Echo, token string) {
 	require.Equal(t, "20", response.Header().Get("X-Ratelimit-Limit"))
 	require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 	require.NotEmpty(t, response.Header().Get("X-Request-ID"))
+}
+
+func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, nil)
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "library-workspace-01", `{"name":"Library tenant"}`)
+	require.Equal(t, 201, status)
+	workspace := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + workspace + "/links"
+	status, empty := workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 200, status, "collection must be registered on the production router")
+	require.Empty(t, empty["items"])
+	require.Nil(t, empty["nextCursor"])
+	var actor string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id::text FROM users WHERE subject='user_fixture'").Scan(&actor))
+	for i := range 105 {
+		_, err := db.Pool.Exec(ctx, "INSERT INTO links (workspace_id,id,creator_user_id,managed_host,short_key,destination,title,created_at,lifecycle) VALUES($1,$2,$3,'go.flux.test',$4,'https://example.com/library',$5,'2026-01-01T12:00:00Z',$6)", workspace, fmt.Sprintf("00000000-0000-4000-8000-%012d", i+1), actor, fmt.Sprintf("library-key-%03d", i), fmt.Sprintf("Library %03d", i), map[bool]string{true: "deleted", false: "active"}[i == 104])
+		require.NoError(t, err)
+	}
+	status, listed := workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 200, status)
+	items := listed["items"].([]any)
+	require.Len(t, items, 25)
+	require.Len(t, listed, 2)
+	require.Nil(t, listed["nextCursor"], "pagination is not yet supported")
+	for i, item := range items {
+		link := item.(map[string]any)
+		require.Equal(t, workspace, link["workspaceId"])
+		require.Equal(t, fmt.Sprintf("Library %03d", 103-i), link["title"], "equal timestamps must sort by descending UUID")
+		require.NotEqual(t, "deleted", link["lifecycle"])
+	}
+	for query, count := range map[string]int{"?limit=1": 1, "?limit=100": 100} {
+		code, response := workspaceRequest(t, api, token, "GET", path+query, "", "")
+		require.Equal(t, 200, code)
+		require.Len(t, response["items"], count)
+	}
+	for _, query := range []string{"?limit=0", "?limit=101", "?limit=-1", "?limit=1.5", "?limit=abc", "?limit=1&limit=2", "?cursor=foreign", "?cursor=", "?workspaceId=" + uuid.NewString(), "?search=%27%20OR%201%3D1--", "?state=active"} {
+		code, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
+		require.Equal(t, 400, code, query)
+	}
+	status, foreign := workspaceRequest(t, api, token, "POST", "/workspaces", "library-foreign-01", `{"name":"Foreign library"}`)
+	require.Equal(t, 201, status)
+	foreignID := foreign["workspace"].(map[string]any)["id"].(string)
+	status, foreignList := workspaceRequest(t, api, token, "GET", "/workspaces/"+foreignID+"/links", "", "")
+	require.Equal(t, 200, status)
+	require.Empty(t, foreignList["items"], "foreign tenant rows never leak")
+	status, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+foreignID+"/links/"+items[0].(map[string]any)["id"].(string), "", "")
+	require.Equal(t, 404, status)
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1", workspace)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 200, status, "viewers may list")
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", workspace)
+	require.NoError(t, err)
+	status, denied := workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 404, status, "fresh membership precedes listing")
+	require.NotContains(t, fmt.Sprint(denied), "Library 103")
 }
