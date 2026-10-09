@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-11-PLAN.md
-last_updated: "2026-10-09T11:50:31.774Z"
+stopped_at: Completed 02-12-PLAN.md
+last_updated: "2026-10-09T12:07:57.867Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 33
+  completed_plans: 34
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 12 of 35
+Plan: 13 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [██████░░░░] 58%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [██████░░░░] 58%
 | Phase 2 P09 | 23min | 2 tasks | 11 files |
 | Phase 2 P10 | 38min | 2 tasks | 22 files |
 | Phase 2 P11 | 25min | 2 tasks | 17 files |
+| Phase 2 P12 | 15min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Preserve network-free creation and conservatively deny special IPv4/IPv6 literals; syntactic host acceptance never proves public DNS answers.
 - [Phase 2]: Keep crypto/rand.Reader in the original repository constructor; explicit io.Reader injection verifies entropy failure and bounded collision rollback without runtime toggles.
 - [Phase 2]: Consume extracted form/detail components through existing scoped routes while preserving canonical DTOs, dirty confirmation and request disposal.
+- [Phase 2]: Validate ASCII before lowercase custom-key hashing and preserve global host/key uniqueness including deleted links.
+- [Phase 2]: Omit empty customKey from canonical create hashes to preserve existing generated-key replay compatibility.
+- [Phase 2]: Project only recognized matching-status canonical constraint codes through a bounded browser error reader; never render server messages.
 
 ### Pending Todos
 
@@ -168,6 +172,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T11:50:31.764Z
-Stopped at: Completed 02-11-PLAN.md
+Last session: 2026-10-09T12:07:57.849Z
+Stopped at: Completed 02-12-PLAN.md
 Resume file: None
