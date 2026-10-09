@@ -421,7 +421,7 @@ func TestProductActualHTTP(t *testing.T) {
 func checkTeam(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
 	t.Helper()
 	ctx := context.Background()
-	token := p.token(t, map[string]any{"sub": "user_team", "sid": "sess_user_team", "org_role": "org:admin"})
+	token := p.token(t, map[string]any{"sub": "user_team", "sid": "sess_user_team", "org_role": "org:owner"})
 	foreignToken := p.token(t, map[string]any{"sub": "user_team_foreign", "sid": "sess_user_team_foreign"})
 	code, created := workspaceRequest(t, api, token, "POST", "/workspaces", "team-workspace-0001", `{"name":"Team inspection"}`)
 	require.Equal(t, 201, code)
