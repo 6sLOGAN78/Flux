@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -31,6 +32,7 @@ import (
 	"github.com/go-jose/go-jose/v3"
 	josejwt "github.com/go-jose/go-jose/v3/jwt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -476,6 +478,37 @@ CREATE CONSTRAINT TRIGGER reject_workspace_commit AFTER INSERT ON memberships DE
 		require.Len(t, result["workspaces"], 1)
 		require.Equal(t, "Other team", result["workspaces"].([]any)[0].(map[string]any)["name"])
 	})
+	t.Run("capabilities-and-composite-tenant-constraints", func(t *testing.T) {
+		checkWorkspaceCapabilities(t, db, uuid.MustParse(id), durableActor)
+	})
+	t.Run("expired-cleanup-is-actor-scoped", func(t *testing.T) {
+		_, err := db.Pool.Exec(context.Background(), "UPDATE workspace_bootstrap_requests SET "+
+			"created_at=now()-interval '49 hours',retain_until=now()-interval '25 hours' WHERE request_key=$1", "workspace-bootstrap-0001")
+		require.NoError(t, err)
+		requestStatus, result := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"After retention"}`)
+		require.Equal(t, 201, requestStatus)
+		require.NotEqual(t, id, result["workspace"].(map[string]any)["id"], "expired key may start a new operation")
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM workspace_bootstrap_requests "+
+			"WHERE actor_id<>$1 AND request_key=$2 AND retain_until<now()", durableActor, "workspace-bootstrap-0001").Scan(&rows))
+		require.Equal(t, 1, rows, "cleanup cannot delete another actor's expired key")
+		// Restore the original retry mapping for the following removal-denial corpus.
+		_, err = db.Pool.Exec(context.Background(), "UPDATE workspace_bootstrap_requests SET workspace_id=$1,request_hash=$2 "+
+			"WHERE actor_id=$3 AND request_key=$4", id, bootstrapHash("Growth 🚀"), durableActor, "workspace-bootstrap-0001")
+		require.NoError(t, err)
+	})
+	t.Run("unverified-bootstrap-creates-no-workspace", func(t *testing.T) {
+		provider := newSignedProvider(t)
+		provider.profileMode = "unverified"
+		unverifiedAPI := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, provider))
+		defer unverifiedAPI.Close()
+		requestStatus, body := workspaceRequest(t, unverifiedAPI.URL,
+			provider.token(t, map[string]any{"sub": "user_bootstrap_unverified", "sid": "sess_user_bootstrap_unverified"}),
+			"POST", "/workspaces", "workspace-unverified-01", `{"name":"Unverified"}`)
+		require.Equal(t, 401, requestStatus)
+		require.NotContains(t, body, "workspace")
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM workspaces WHERE name=$1", "Unverified").Scan(&rows))
+		require.Zero(t, rows)
+	})
 	t.Run("viewer-denied-write-and-removed-membership", func(t *testing.T) {
 		var viewer uuid.UUID
 		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE issuer=$1 AND subject=$2", fixtureIssuer, "user_other").Scan(&viewer))
@@ -503,6 +536,107 @@ CREATE CONSTRAINT TRIGGER reject_workspace_commit AFTER INSERT ON memberships DE
 		require.Equal(t, 404, requestStatus, "removed actor cannot use a hash conflict to inspect the ledger")
 		require.NotContains(t, result, "workspace")
 	})
+}
+
+func bootstrapHash(name string) []byte {
+	encoded, _ := json.Marshal(struct {
+		Name string `json:"name"`
+	}{name})
+	hash := sha256.Sum256(encoded)
+	return hash[:]
+}
+
+func checkWorkspaceCapabilities(t *testing.T, db *fluxTesting.TestDB, workspace, owner uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	var actor, foreignWorkspace uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE issuer=$1 AND subject=$2", fixtureIssuer, "user_other").Scan(&actor))
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id FROM workspaces WHERE name=$1", "Other team").Scan(&foreignWorkspace))
+	_, err := db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'member',$3)", workspace, actor, owner)
+	require.NoError(t, err)
+	svc := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
+	_, err = db.Pool.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation) VALUES($1,$2,$3)", workspace, actor, "membership.provenance")
+	require.NoError(t, err)
+	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=$1 WHERE workspace_id=$2 AND user_id=$3", "unknown", workspace, actor)
+	var invalidRole *pgconn.PgError
+	require.ErrorAs(t, err, &invalidRole)
+	require.Equal(t, "23514", invalidRole.Code)
+	for _, role := range []string{"owner", "admin", "member", "viewer"} {
+		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=$1 WHERE workspace_id=$2 AND user_id=$3", role, workspace, actor)
+		require.NoError(t, err)
+		for _, capability := range []service.Capability{service.CapabilityRead, service.CapabilityWrite, service.CapabilityTeam} {
+			tx, beginErr := db.Pool.Begin(ctx)
+			require.NoError(t, beginErr)
+			permissionErr := svc.RequireCapability(ctx, tx, repository.Scope{WorkspaceID: workspace, ActorID: actor}, capability)
+			if service.Allows(role, capability) {
+				require.NoError(t, permissionErr)
+			} else {
+				var denied *errs.HTTPError
+				require.ErrorAs(t, permissionErr, &denied)
+				require.Equal(t, 403, denied.Status)
+			}
+			require.NoError(t, tx.Rollback(ctx))
+		}
+	}
+	checkWorkspaceRevocationLock(t, db, svc, repository.Scope{WorkspaceID: workspace, ActorID: actor})
+	// Composite keys reject a valid membership ID paired with a foreign tenant.
+	tx, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	_, err = tx.Exec(ctx, "CREATE TABLE tenant_constraint_probe (workspace_id uuid,id uuid, "+
+		"FOREIGN KEY(workspace_id,id) REFERENCES memberships(workspace_id,id))")
+	require.NoError(t, err)
+	var membership uuid.UUID
+	require.NoError(t, tx.QueryRow(ctx, "SELECT id FROM memberships WHERE workspace_id=$1 AND user_id=$2", workspace, actor).Scan(&membership))
+	_, err = tx.Exec(ctx, "INSERT INTO tenant_constraint_probe VALUES($1,$2)", workspace, membership)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "INSERT INTO tenant_constraint_probe VALUES($1,$2)", foreignWorkspace, membership)
+	var constraint *pgconn.PgError
+	require.ErrorAs(t, err, &constraint)
+	require.Equal(t, "23503", constraint.Code)
+	require.NoError(t, tx.Rollback(ctx))
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", workspace, actor)
+	require.NoError(t, err)
+	// Historical creator identity is durable independently of removable membership.
+	var creator uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT created_by FROM workspaces WHERE id=$1", foreignWorkspace).Scan(&creator))
+	require.Equal(t, actor, creator)
+	var auditActor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT actor_id FROM audit_events WHERE workspace_id=$1 AND operation=$2", workspace, "membership.provenance").Scan(&auditActor))
+	require.Equal(t, actor, auditActor, "membership removal cannot delete durable audit provenance")
+}
+
+func checkWorkspaceRevocationLock(t *testing.T, db *fluxTesting.TestDB, svc *service.WorkspaceService, scope repository.Scope) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='member' WHERE workspace_id=$1 AND user_id=$2", scope.WorkspaceID, scope.ActorID)
+	require.NoError(t, err)
+	lock, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = lock.Rollback(context.Background()) }()
+	_, err = repository.NewWorkspaceRepository(db.Pool).LockScope(ctx, lock, scope, true)
+	require.NoError(t, err)
+	finished := make(chan error, 1)
+	go func() {
+		tx, beginErr := db.Pool.Begin(ctx)
+		if beginErr != nil {
+			finished <- beginErr
+			return
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		finished <- svc.RequireWrite(ctx, tx, scope)
+	}()
+	require.Eventually(t, func() bool {
+		var waiting int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'").Scan(&waiting) == nil && waiting > 0
+	}, time.Second, 10*time.Millisecond)
+	_, err = lock.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1 AND user_id=$2", scope.WorkspaceID, scope.ActorID)
+	require.NoError(t, err)
+	require.NoError(t, lock.Commit(ctx))
+	var denied *errs.HTTPError
+	require.ErrorAs(t, <-finished, &denied)
+	require.Equal(t, 403, denied.Status, "blocked write must re-read the committed revocation")
 }
 
 func checkSessionMutations(t *testing.T, e *echo.Echo, token string) {

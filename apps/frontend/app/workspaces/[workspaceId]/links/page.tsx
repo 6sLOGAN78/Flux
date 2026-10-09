@@ -5,7 +5,9 @@ import { ZWorkspaceResponse, type WorkspaceResponse } from "@flux/zod";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { EmptyState } from "../../../../components/empty-state";
+import { AppShell } from "../../../../components/app-shell";
 import { ApiError, createAPI } from "../../../../lib/api";
+import { workspaceCapabilities } from "../../../../lib/workspace";
 
 export default function LinksPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -55,6 +57,21 @@ export default function LinksPage() {
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
+  if (
+    isLoaded &&
+    isSignedIn &&
+    state.workspace &&
+    state.session === sessionId &&
+    state.id === workspaceId
+  ) {
+    return (
+      <AppShell workspace={state.workspace}>
+        <p>Links</p>
+        <EmptyState canCreate={workspaceCapabilities(state.workspace.role).create} />
+      </AppShell>
+    );
+  }
+
   return (
     <main className="auth-panel">
       <p className="wordmark">Flux</p>
@@ -70,12 +87,6 @@ export default function LinksPage() {
             Retry
           </button>
           <a href="/onboarding">Create workspace</a>
-        </>
-      ) : state.workspace && state.session === sessionId && state.id === workspaceId ? (
-        <>
-          <h1>{state.workspace.name}</h1>
-          <p>Links</p>
-          <EmptyState canCreate={state.workspace.role !== "viewer"} />
         </>
       ) : (
         <p role="status">Loading workspace…</p>

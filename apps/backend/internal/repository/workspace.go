@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -59,19 +58,22 @@ func (r *WorkspaceRepository) Create(ctx context.Context, actor uuid.UUID,
 		return result, err
 	}
 	var storedHash []byte
-	err = tx.QueryRow(ctx, "SELECT workspace_id, request_hash FROM workspace_bootstrap_requests "+
-		"WHERE actor_id=$1 AND request_key=$2", actor, key).Scan(&result.ID, &storedHash)
+	result.ID, storedHash, err = bootstrapRequest(ctx, tx, actor, key)
 	switch {
 	case err == nil:
-		if !bytes.Equal(hash, storedHash) {
-			return Workspace{}, ErrWorkspaceConflict
-		}
 		// Release bootstrap actor lock before taking an existing workspace lock.
 		// Replay authorization follows the normal workspace-first ordering.
 		if err = tx.Commit(ctx); err != nil {
 			return Workspace{}, err
 		}
-		return r.Summary(ctx, Scope{WorkspaceID: result.ID, ActorID: actor})
+		result, err = r.Summary(ctx, Scope{WorkspaceID: result.ID, ActorID: actor})
+		if err != nil {
+			return Workspace{}, err
+		}
+		if err = matchRequest(hash, storedHash); err != nil {
+			return Workspace{}, err
+		}
+		return result, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, "INSERT INTO workspaces(name,created_by) VALUES($1,$2) RETURNING id,name",
 			name, actor).Scan(&result.ID, &result.Name)
@@ -83,8 +85,7 @@ func (r *WorkspaceRepository) Create(ctx context.Context, actor uuid.UUID,
 		if err != nil {
 			return Workspace{}, err
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO workspace_bootstrap_requests "+
-			"(actor_id,request_key,request_hash,workspace_id) VALUES($1,$2,$3,$4)", actor, key, hash, result.ID)
+		err = recordBootstrap(ctx, tx, actor, result.ID, key, hash)
 		if err != nil {
 			return Workspace{}, err
 		}

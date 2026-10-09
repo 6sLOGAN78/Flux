@@ -71,16 +71,22 @@ func (s *WorkspaceService) Summary(ctx context.Context, scope repository.Scope) 
 
 // RequireWrite applies the closed role matrix inside the caller's locked transaction.
 func (s *WorkspaceService) RequireWrite(ctx context.Context, tx pgx.Tx, scope repository.Scope) error {
-	workspace, err := s.store.LockScope(ctx, tx, scope, false)
+	return s.RequireCapability(ctx, tx, scope, CapabilityWrite)
+}
+
+// RequireCapability authorizes within the effect transaction. Team operations
+// serialize on the workspace before reading membership; links use shared locks.
+func (s *WorkspaceService) RequireCapability(ctx context.Context, tx pgx.Tx,
+	scope repository.Scope, capability Capability,
+) error {
+	workspace, err := s.store.LockScope(ctx, tx, scope, capability == CapabilityTeam)
 	if err != nil {
 		return workspaceFailure(err)
 	}
-	switch workspace.Role {
-	case "owner", "admin", "member":
+	if Allows(workspace.Role, capability) {
 		return nil
-	default:
-		return errs.NewForbiddenError("You have view-only access.", false)
 	}
+	return errs.NewForbiddenError("You do not have permission for this action.", false)
 }
 
 func workspaceFailure(err error) error {

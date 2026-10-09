@@ -263,6 +263,22 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 	if noOpErr != nil || noOp.StartVersion != want || noOp.EndVersion != want {
 		t.Fatal("upgraded product schema was not an exact no-op")
 	}
+	if prefixErr := migrator.MigrateTo(ctx, 2); prefixErr != nil {
+		t.Fatal(prefixErr)
+	}
+	upgraded, upgradeErr = MigrateWithResult(ctx, cfg)
+	if upgradeErr != nil || upgraded.StartVersion != 2 || upgraded.EndVersion != want {
+		t.Fatal("existing identity prefix did not upgrade to the exact latest workspace schema")
+	}
+	for _, table := range []string{
+		"workspaces", "memberships", "workspace_bootstrap_requests", "mutation_requests", "audit_events",
+	} {
+		var exists bool
+		if queryErr := conn.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "public."+table).
+			Scan(&exists); queryErr != nil || !exists {
+			t.Fatalf("forward upgrade missing workspace table: %s", table)
+		}
+	}
 	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
 		t.Fatal(downErr)
 	}
