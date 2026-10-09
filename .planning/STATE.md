@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-09-PLAN.md
-last_updated: "2026-10-09T10:38:04.297Z"
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-10-09T11:23:37.519Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 31
+  completed_plans: 32
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 10 of 35
+Plan: 11 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [█████░░░░░] 54%
+Progress: [██████░░░░] 56%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [█████░░░░░] 54%
 | Phase 2 P07 | 15min | 2 tasks | 16 files |
 | Phase 2 P08 | 15min | 2 tasks | 22 files |
 | Phase 2 P09 | 23min | 2 tasks | 11 files |
+| Phase 2 P10 | 38min | 2 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Broadcast only a fixed invalidation signal; server bootstrap and committed selection remain workspace authority.
 - [Phase 2]: Dispose the scoped subtree before switching, signout or access loss; retain valid same-workspace content during transient refresh failure.
 - [Phase 2]: Consume native unsaved confirmation in the existing onboarding name flow; future link drafts must use the same scoped disposal and confirmation boundaries.
+- [Phase 2]: Fresh membership precedes link idempotency replay; link effect and response ledger commit atomically. — Membership removal must deny replay without erasing durable creator provenance.
+- [Phase 2]: Generated managed-host keys stay reserved after soft deletion; retry only the named global key constraint at most five times. — Bounded savepoints preserve atomicity and never hide unrelated database failures.
 
 ### Pending Todos
 
@@ -161,6 +164,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T10:38:04.287Z
-Stopped at: Completed 02-09-PLAN.md
+Last session: 2026-10-09T11:23:37.508Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
