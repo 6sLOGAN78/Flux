@@ -23,13 +23,19 @@ type LinkService struct {
 	store     *repository.LinkRepository
 	workspace *WorkspaceService
 	policy    config.LinksConfig
+	cursorKey []byte
 }
 
 // NewLinkService injects transactional storage and validated operator policy.
 func NewLinkService(store *repository.LinkRepository, workspace *WorkspaceService,
 	policy config.LinksConfig,
 ) *LinkService {
-	return &LinkService{store: store, workspace: workspace, policy: policy}
+	key, err := policy.CursorSigningKey()
+	if err != nil {
+		// API startup validates this policy. Direct callers still fail closed in List.
+		return &LinkService{store: store, workspace: workspace, policy: policy}
+	}
+	return &LinkService{store: store, workspace: workspace, policy: policy, cursorKey: key}
 }
 
 // ManagedHost exposes only the fixed operator-configured management hostname.
@@ -118,16 +124,44 @@ func linkFailure(err error) error {
 		Status: http.StatusServiceUnavailable}, err)
 }
 
-// List returns a bounded first page; cursors and filters are not implemented yet.
-func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit int) ([]repository.Link, error) {
+// List freshly authorizes caller scope and seeks using a verified query-bound position.
+func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit int,
+	cursor string,
+) ([]repository.Link, *string, error) {
 	if limit < 1 || limit > 100 {
-		return nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		return nil, nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if len(s.cursorKey) != sha256.Size {
+		return nil, nil, linkFailure(errors.New("cursor signing unavailable"))
+	}
+	filters := CursorFilters{State: "nondeleted"}
+	var position *repository.LinkPosition
+	var err error
+	if cursor != "" {
+		position, err = decodeCursor(s.cursorKey, cursor, scope.WorkspaceID, filters)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
 	defer cancel()
 	authorize := func(ctx context.Context, tx pgx.Tx, scope repository.Scope) error {
 		return s.workspace.RequireCapability(ctx, tx, scope, CapabilityRead)
 	}
-	items, err := s.store.List(ctx, scope, limit, authorize)
-	return items, linkFailure(err)
+	items, err := s.store.List(ctx, scope, limit+1, position, authorize)
+	if err != nil {
+		return nil, nil, linkFailure(err)
+	}
+	var next *string
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[len(items)-1]
+		token, signErr := encodeCursor(s.cursorKey, scope.WorkspaceID, filters,
+			repository.LinkPosition{CreatedAt: last.CreatedAt, ID: last.ID})
+		if signErr != nil {
+			return nil, nil, linkFailure(signErr)
+		}
+		next = &token
+	}
+	return items, next, nil
 }

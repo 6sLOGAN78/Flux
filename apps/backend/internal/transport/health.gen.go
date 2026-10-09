@@ -240,8 +240,10 @@ type TransportLinkSuspension struct {
 
 // TransportLinksResponse defines model for transport.LinksResponse.
 type TransportLinksResponse struct {
-	Items      []TransportLink `json:"items"`
-	NextCursor *string         `json:"nextCursor"`
+	Items []TransportLink `json:"items"`
+
+	// NextCursor Opaque signed workspace/query-bound continuation; null means authoritative exhaustion.
+	NextCursor *string `json:"nextCursor"`
 }
 
 // TransportWorkspace defines model for transport.Workspace.

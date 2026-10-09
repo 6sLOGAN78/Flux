@@ -5,6 +5,8 @@ import {
   destinationSyntaxOK,
   invalidDestination,
   localLinkTime,
+  LinkPages,
+  invalidCursor,
 } from "./links";
 
 describe("link presentation uses safe syntax and exact feedback", () => {
@@ -32,4 +34,29 @@ describe("link presentation uses safe syntax and exact feedback", () => {
       new Date(value).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" }),
     );
   });
+});
+
+test("pagination remembers successful positions and resets on exact scope changes", () => {
+  const pages = new LinkPages();
+  pages.accept("workspace-a|all|search", undefined, "next-a");
+  expect(pages.canPrevious).toBe(false);
+  expect(pages.next).toBe("next-a");
+  pages.accept("workspace-a|all|search", "next-a", "next-b");
+  expect(pages.canPrevious).toBe(true);
+  expect(pages.previous).toBeUndefined();
+  pages.accept("workspace-a|all|search", "next-b", null);
+  expect(pages.previous).toBe("next-a");
+  expect(pages.next).toBeNull();
+  pages.accept("workspace-a|all|search", "next-a", "next-b");
+  expect(pages.previous).toBeUndefined();
+  for (const scope of [
+    "workspace-b|all|search",
+    "workspace-b|active|search",
+    "workspace-b|active|changed",
+  ]) {
+    pages.bind(scope);
+    expect(pages.canPrevious).toBe(false);
+    expect(pages.next).toBeNull();
+  }
+  expect(invalidCursor).toBe("This page is no longer available. Return to the first page.");
 });

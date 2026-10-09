@@ -154,7 +154,13 @@ export type LinkResponse = z.infer<typeof ZLinkResponse>;
 
 export const ZLinksResponse = extendApi(
   z
-    .object({ items: z.array(ZLink).max(100), nextCursor: z.string().max(2048).nullable() })
+    .object({
+      items: z.array(ZLink).max(100),
+      nextCursor: extendApi(z.string().min(1).max(2048).nullable(), {
+        description:
+          "Opaque signed workspace/query-bound continuation; null means authoritative exhaustion.",
+      }),
+    })
     .strict(),
   { title: "transport.LinksResponse" },
 );

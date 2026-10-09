@@ -19,7 +19,10 @@ type configProvider struct {
 }
 
 func TestLinksCursorConfigOwnedByAPI(t *testing.T) {
-	for _, key := range []string{"", "PRIVATE-INVALID-KEY", base64.StdEncoding.EncodeToString([]byte("short")), base64.StdEncoding.EncodeToString(make([]byte, 33))} {
+	for _, key := range []string{
+		"", "PRIVATE-INVALID-KEY", base64.StdEncoding.EncodeToString([]byte("short")),
+		base64.StdEncoding.EncodeToString(make([]byte, 33)),
+	} {
 		values := configValues()
 		values["links"].(map[string]any)["cursor_key"] = key
 		_, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
@@ -30,7 +33,7 @@ func TestLinksCursorConfigOwnedByAPI(t *testing.T) {
 			t.Fatal("key value exposed in startup diagnostic")
 		}
 		for _, role := range []Role{RoleRedirector, RoleWorker, RoleMigrator} {
-			if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
+			if _, roleErr := loadConfigForRole(configProvider{values: values}, role); roleErr != nil {
 				t.Fatal("unowned cursor key blocked role")
 			}
 		}
@@ -43,18 +46,23 @@ func TestLinksOperatorConfigOwnedByAPI(t *testing.T) {
 		"links.localhost", "links.local", "links.internal", "metadata.google.internal",
 	} {
 		values := configValues()
-		values["links"] = map[string]any{"managed_host": host}
+		values["links"] = map[string]any{
+			"cursor_key": base64.StdEncoding.EncodeToString(make([]byte, 32)), "managed_host": host,
+		}
 		if _, err := loadConfigForRole(configProvider{values: values}, RoleAPI); err == nil {
 			t.Fatal("invalid managed host accepted")
 		}
 		for _, role := range []Role{RoleRedirector, RoleWorker, RoleMigrator} {
-			if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
+			if _, roleErr := loadConfigForRole(configProvider{values: values}, role); roleErr != nil {
 				t.Fatal("unowned links configuration blocked role")
 			}
 		}
 	}
 	values := configValues()
-	values["links"] = map[string]any{"managed_host": "GO.FLUX.TEST.", "blocked_hosts": []string{"BLOCKED.EXAMPLE."}}
+	values["links"] = map[string]any{
+		"cursor_key":   base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"managed_host": "GO.FLUX.TEST.", "blocked_hosts": []string{"BLOCKED.EXAMPLE."},
+	}
 	cfg, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
 	if err != nil || cfg.Links.ManagedHost != "go.flux.test" || cfg.Links.BlockedHosts[0] != "blocked.example" {
 		t.Fatal("operator host normalization failed")
@@ -78,6 +86,7 @@ func TestLinksEnvironmentPolicy(t *testing.T) {
 			}
 		}
 	}
+	t.Setenv("FLUX_LINKS.CURSOR_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("FLUX_LINKS.MANAGED_HOST", "BÜCHER.EXAMPLE.")
 	t.Setenv("FLUX_LINKS.BLOCKED_HOSTS", " BLOCKED.EXAMPLE., Bücher.EXAMPLE ")
 	cfg, err := LoadConfigForRole(RoleAPI)
@@ -175,7 +184,10 @@ func (p configProvider) ReadBytes() ([]byte, error)    { return nil, p.err }
 func configValues() map[string]any {
 	return map[string]any{
 		"primary": map[string]any{"env": "test"},
-		"links":   map[string]any{"managed_host": "go.flux.test", "blocked_hosts": []string{"blocked.example"}},
+		"links": map[string]any{
+			"cursor_key":   base64.StdEncoding.EncodeToString(make([]byte, 32)),
+			"managed_host": "go.flux.test", "blocked_hosts": []string{"blocked.example"},
+		},
 		"server": map[string]any{"port": "8080",
 			"read_timeout":         5,
 			"write_timeout":        5,

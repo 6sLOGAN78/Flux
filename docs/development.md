@@ -308,3 +308,9 @@ Generation stages the complete authored schema/contract package sources, includi
 identity, without reading stale `dist` authority. All four manifest artifacts
 must exist and be nonempty before any publication. Health aliases and generated
 bytes are preserved; identity consumers use the generated transport names.
+
+The API also requires private `FLUX_LINKS.CURSOR_KEY`: standard Base64 of exactly
+32 random bytes (`openssl rand -base64 32`). Provision the same secret to all API
+replicas through the deployment secret store; never expose it to the frontend.
+Redirector, worker and migrator do not require this key. Rotation invalidates
+existing link cursors; users can return to the first page. No fallback key exists.

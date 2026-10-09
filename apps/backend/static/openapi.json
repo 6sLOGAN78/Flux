@@ -381,7 +381,9 @@
             "type": "array"
           },
           "nextCursor": {
+            "description": "Opaque signed workspace/query-bound continuation; null means authoritative exhaustion.",
             "maxLength": 2048,
+            "minLength": 1,
             "nullable": true,
             "type": "string"
           }
@@ -942,7 +944,7 @@
     },
     "/api/v1/workspaces/{workspaceId}/links": {
       "get": {
-        "description": "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Only limit is supported; supplied cursor, search, state or foreign filter fields return 400. nextCursor is null until signed pagination is implemented; no total or exhaustion claim. All responses are no-store.",
+        "description": "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Search, state and foreign filter fields remain unsupported and return 400. No totals. All responses are no-store.",
         "operationId": "listLinks",
         "parameters": [
           {
@@ -967,6 +969,7 @@
             "name": "cursor",
             "schema": {
               "maxLength": 2048,
+              "minLength": 1,
               "type": "string"
             }
           }

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"net"
 	"strconv"
@@ -60,8 +61,18 @@ type Config struct {
 
 // LinksConfig binds only API-owned operator policy; no destination is fetched.
 type LinksConfig struct {
+	CursorKey    string   `koanf:"cursor_key"`
 	ManagedHost  string   `koanf:"managed_host"`
 	BlockedHosts []string `koanf:"blocked_hosts"`
+}
+
+// CursorSigningKey decodes the private API-only key without exposing its value.
+func (cfg LinksConfig) CursorSigningKey() ([]byte, error) {
+	key, err := base64.StdEncoding.Strict().DecodeString(cfg.CursorKey)
+	if err != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != cfg.CursorKey {
+		return nil, errors.New("invalid links cursor signing key")
+	}
+	return key, nil
 }
 
 // NormalizeLinkHost validates a DNS hostname without ports, IPs or URL syntax.
@@ -94,6 +105,9 @@ func NormalizeLinkHost(value string) (string, error) {
 func normalizeLinks(cfg *Config, role Role) error {
 	if role != RoleAPI {
 		return nil
+	}
+	if _, err := cfg.Links.CursorSigningKey(); err != nil {
+		return err
 	}
 	host, err := NormalizeLinkHost(cfg.Links.ManagedHost)
 	if err != nil {

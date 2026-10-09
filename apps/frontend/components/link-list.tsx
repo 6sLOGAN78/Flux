@@ -5,7 +5,7 @@ import { ZLinksResponse, type LinksResponse } from "@flux/zod";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, createAPI } from "../lib/api";
-import { destinationSyntaxOK, localLinkTime } from "../lib/links";
+import { destinationSyntaxOK, invalidCursor, LinkPages, localLinkTime } from "../lib/links";
 import { WorkspaceRequests } from "../lib/workspace";
 
 export function LinkList({
@@ -25,17 +25,25 @@ export function LinkList({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  const [cursor, setCursor] = useState<string>();
+  const pages = useRef(new LinkPages());
+  const scope = JSON.stringify({ workspaceId, state: "nondeleted", search: "" });
+  pages.current.bind(scope);
   useEffect(() => {
     const request = requests.current.begin();
     setLoading(true);
     setError("");
     void createAPI(getToken, { origin: window.location.origin })
-      .request(`/workspaces/${workspaceId}/links`, { signal: request.signal })
+      .request(`/workspaces/${workspaceId}/links`, {
+        signal: request.signal,
+        query: cursor === undefined ? undefined : new URLSearchParams({ cursor }),
+      })
       .then((value) => {
         const response = ZLinksResponse.parse(value);
         if (!request.current()) return;
         if (response.items.some((item) => item.workspaceId !== workspaceId))
           throw new Error("Unexpected resource");
+        pages.current.accept(scope, cursor, response.nextCursor);
         setItems(response.items);
       })
       .catch((failure: unknown) => {
@@ -43,13 +51,15 @@ export function LinkList({
         if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) {
           setItems(undefined);
           denied.current(failure.status);
+        } else if (failure instanceof ApiError && failure.constraint === "CURSOR_INVALID") {
+          setError(invalidCursor);
         } else setError("We couldn't load links. Try again.");
       })
       .finally(() => {
         if (request.current()) setLoading(false);
       });
     return () => requests.current.clear();
-  }, [workspaceId, getToken, attempt]);
+  }, [workspaceId, scope, cursor, getToken, attempt]);
   const title = (item: LinksResponse["items"][number]) => (
     <Link href={`/workspaces/${workspaceId}/links/${item.id}`}>
       {item.title || "Untitled link"}
@@ -79,18 +89,34 @@ export function LinkList({
       {!canCreate && <p>You have view-only access. Ask an owner or admin to change your role.</p>}
       {loading && <p role="status">Loading links…</p>}
       {error && <p role="alert">{error}</p>}
+      {error === invalidCursor && (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            setCursor(undefined);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          Return to first page
+        </button>
+      )}
       <button type="button" disabled={loading} onClick={() => setAttempt((value) => value + 1)}>
         {error ? "Retry loading links" : "Reload links"}
       </button>
-      {items?.length === 0 && (
+      {items?.length === 0 && !pages.current.canPrevious && (
         <>
           <h3>No links yet</h3>
-          <p>No links have been created in this workspace.</p>
+          <p>Create a managed-domain link to organize its destination and status.</p>
+          {canCreate && (
+            <Link href={`/workspaces/${workspaceId}/links/new`}>Create your first link</Link>
+          )}
         </>
       )}
       {items && items.length > 0 && (
         <>
           <p>Newest links first. Showing up to 25 links.</p>
+          {canCreate && <Link href={`/workspaces/${workspaceId}/links/new`}>Create link</Link>}
           <div className="desktop-library">
             <table aria-label="Links library">
               <thead>
@@ -134,6 +160,27 @@ export function LinkList({
             ))}
           </ul>
         </>
+      )}
+      {items && (
+        <nav aria-label="Link pages">
+          <button
+            type="button"
+            disabled={loading || !!error || !pages.current.canPrevious}
+            onClick={() => setCursor(pages.current.previous)}
+          >
+            Previous page
+          </button>
+          <button
+            type="button"
+            disabled={loading || !!error || pages.current.next === null}
+            onClick={() => {
+              if (pages.current.next !== null) setCursor(pages.current.next);
+            }}
+          >
+            Next page
+          </button>
+          {!loading && !error && pages.current.next === null && <p role="status">No more links.</p>}
+        </nav>
       )}
       <style jsx>{`
         table { width: 100%; table-layout: fixed; border-collapse: collapse; }

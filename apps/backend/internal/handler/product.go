@@ -267,48 +267,55 @@ func (h *ProductHandler) SelectWorkspace(c echo.Context) error {
 	return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)})
 }
 
-// ListLinks accepts only a bounded first-page limit. Unsupported cursor/filter
-// fields fail closed rather than weakening tenant predicates or claiming paging.
+// ListLinks accepts bounded signed pagination; unsupported filters fail closed.
 func (h *ProductHandler) ListLinks(c echo.Context) error {
 	scope, err := h.linkScope(c)
 	if err != nil {
 		return err
 	}
-	limit, err := linkListLimit(c.Request().URL.RawQuery)
+	limit, cursor, err := linkListQuery(c.Request().URL.RawQuery)
 	if err != nil {
 		return err
 	}
-	items, err := h.links.List(c.Request().Context(), scope, limit)
+	items, next, err := h.links.List(c.Request().Context(), scope, limit, cursor)
 	if err != nil {
 		return err
 	}
-	response := transport.TransportLinksResponse{Items: make([]transport.TransportLink, 0, len(items))}
+	response := transport.TransportLinksResponse{Items: make([]transport.TransportLink, 0, len(items)), NextCursor: next}
 	for _, item := range items {
 		response.Items = append(response.Items, linkTransport(item))
 	}
 	return c.JSON(http.StatusOK, response)
 }
 
-func linkListLimit(raw string) (int, error) {
-	const maxQueryBytes = 1024
+func linkListQuery(raw string) (int, string, error) {
+	const maxQueryBytes = 8192
 	const defaultLimit = 25
-	invalid := func() (int, error) {
-		return 0, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	invalid := func() (int, string, error) {
+		return 0, "", errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	invalidCursor := func() (int, string, error) {
+		return 0, "", &errs.HTTPError{Code: "CURSOR_INVALID", Status: http.StatusBadRequest,
+			Message: "This page is no longer available. Return to the first page."}
 	}
 	if len(raw) > maxQueryBytes {
-		return invalid()
+		return invalidCursor()
 	}
 	query, err := url.ParseQuery(raw)
 	if err != nil {
 		return invalid()
 	}
 	for name, values := range query {
-		if name != "limit" || len(values) != 1 {
+		if (name != "limit" && name != "cursor") || len(values) != 1 {
 			return invalid()
 		}
 	}
+	cursor := query.Get("cursor")
+	if query.Has("cursor") && (cursor == "" || len(cursor) > 2048) {
+		return invalidCursor()
+	}
 	if !query.Has("limit") {
-		return defaultLimit, nil
+		return defaultLimit, cursor, nil
 	}
 	value := query.Get("limit")
 	if len(value) > 3 || value == "" {
@@ -323,5 +330,5 @@ func linkListLimit(raw string) (int, error) {
 	if err != nil || limit < 1 || limit > 100 {
 		return invalid()
 	}
-	return limit, nil
+	return limit, cursor, nil
 }

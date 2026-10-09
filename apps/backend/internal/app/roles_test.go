@@ -4,6 +4,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -832,7 +833,8 @@ func binaryTestEnv() []string {
 			env = append(env, item)
 		}
 	}
-	return append(env, "FLUX_PRIMARY.ENV=test", "FLUX_LINKS.MANAGED_HOST=go.flux.test")
+	return append(env, "FLUX_PRIMARY.ENV=test", "FLUX_LINKS.MANAGED_HOST=go.flux.test",
+		"FLUX_LINKS.CURSOR_KEY="+base64.StdEncoding.EncodeToString(make([]byte, 32)))
 }
 
 func binaryDatabaseEnv(cfg config.DatabaseConfig) []string {

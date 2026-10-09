@@ -601,8 +601,13 @@ test("workspace requires an explicit name and opens authorized Links after commi
   await expect(navigation.getByRole("button", { name: "Team", exact: true })).toBeDisabled();
   await expect(navigation.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
   await expect(
-    page.getByText("No links have been created in this workspace.", { exact: true }),
+    page.getByText("Create a managed-domain link to organize its destination and status.", {
+      exact: true,
+    }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Create your first link", exact: true }),
+  ).toHaveAttribute("href", `${new URL(page.url()).pathname}/new`);
   await expect(
     page.getByText("Link management is available. Redirects and analytics are not available yet."),
   ).toBeVisible();
@@ -1247,7 +1252,7 @@ test("library empty viewer presentation and initial failure never claim empty be
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create your first link" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Create your first link" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Create link", exact: true })).toHaveCount(0);
 });
 
@@ -1312,4 +1317,35 @@ test("pagination traverses real pages and returns through remembered cursors", a
   await expect(table.getByRole("row")).toHaveCount(26);
   await expect(previous).toBeDisabled();
   expect(queries.filter((query) => query.includes("cursor=")).length).toBeGreaterThanOrEqual(2);
+});
+
+test("empty library creation CTA opens the real committed create flow", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-empty-cta-workspace",
+    },
+    data: { name: "Empty creation tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(page.getByText("No links yet", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Create your first link", exact: true }).click();
+  await page.getByLabel("Destination URL", { exact: true }).fill("https://example.com/first-cta");
+  await page.getByLabel("Title", { exact: true }).fill("Created from empty library");
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
+  await expect(page.getByText("Link created.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Created from empty library", { exact: true })).toBeVisible();
 });

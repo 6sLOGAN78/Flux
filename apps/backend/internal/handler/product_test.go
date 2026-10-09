@@ -4,9 +4,11 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,7 +178,7 @@ func productRouterWithRandom(cfg *config.Config, db *database.Database, p *signe
 	log := zerolog.New(zerolog.SyncWriter(&p.logs))
 	srv := &server.Server{Config: cfg, Logger: &log, DB: db}
 	cfg.Auth = config.AuthConfig{SecretKey: "test-only", Issuer: p.issuer, AuthorizedParties: []string{fixtureParty}}
-	cfg.Links = config.LinksConfig{ManagedHost: "go.flux.test", BlockedHosts: []string{"blocked.example"}}
+	cfg.Links = config.LinksConfig{CursorKey: base64.StdEncoding.EncodeToString(make([]byte, 32)), ManagedHost: "go.flux.test", BlockedHosts: []string{"blocked.example"}}
 	clients := &clerk.ClientConfig{BackendConfig: clerk.BackendConfig{
 		URL: clerk.String(p.server.URL), Key: clerk.String(cfg.Auth.SecretKey),
 		HTTPClient: &http.Client{Timeout: 3 * time.Second}}}
@@ -1216,6 +1218,9 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 		code, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
 		require.Equal(t, 400, code, query)
 	}
+	// A new head inserted between requests cannot shift an existing seek position.
+	_, insertErr := db.Pool.Exec(ctx, "INSERT INTO links (workspace_id,creator_user_id,managed_host,short_key,destination,title,created_at) VALUES($1,$2,'go.flux.test','library-new-head','https://example.com/new','Inserted after first page','2026-02-01T12:00:00Z')", workspace, actor)
+	require.NoError(t, insertErr)
 	seen := make(map[string]bool)
 	page := listed
 	for {
@@ -1235,7 +1240,26 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	require.Len(t, seen, 104, "every nondeleted equal-timestamp row must appear")
 	require.Len(t, page["items"], 4, "last page is authoritative exhaustion")
 	cursor := listed["nextCursor"].(string)
-	for _, invalid := range []string{"", "malformed", cursor[:len(cursor)-1] + "!", strings.Repeat("x", 2049)} {
+	// A correctly signed token for a different effective filter must still fail.
+	encoded, _, _ := strings.Cut(cursor, ".")
+	payload, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+	require.NoError(t, decodeErr)
+	var cursorBody map[string]any
+	require.NoError(t, json.Unmarshal(payload, &cursorBody))
+	cursorBody["fingerprint"] = "different-effective-filter"
+	payload, decodeErr = json.Marshal(cursorBody)
+	require.NoError(t, decodeErr)
+	encoded = base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, make([]byte, 32)) // Same explicit test-only fixture key.
+	_, decodeErr = mac.Write([]byte(encoded))
+	require.NoError(t, decodeErr)
+	mismatch := encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	mismatchStatus, mismatchError := workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(mismatch), "", "")
+	require.Equal(t, 400, mismatchStatus)
+	require.Equal(t, "CURSOR_INVALID", mismatchError["code"])
+	require.Equal(t, "This page is no longer available. Return to the first page.", mismatchError["message"])
+
+	for _, invalid := range []string{"", "malformed", cursor[:len(cursor)-1] + "!", "A" + cursor[1:], strings.Repeat("x", 2049), strings.Repeat("x", 9000)} {
 		code, failure := workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(invalid), "", "")
 		require.Equal(t, 400, code)
 		require.Equal(t, "CURSOR_INVALID", failure["code"])
@@ -1258,7 +1282,7 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	require.Equal(t, 200, status, "viewers may list")
 	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", workspace)
 	require.NoError(t, err)
-	status, denied := workspaceRequest(t, api, token, "GET", path, "", "")
+	status, denied := workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(cursor), "", "")
 	require.Equal(t, 404, status, "fresh membership precedes listing")
 	require.NotContains(t, fmt.Sprint(denied), "Library 103")
 }

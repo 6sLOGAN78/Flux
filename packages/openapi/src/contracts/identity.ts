@@ -19,7 +19,7 @@ export const identityContract = c.router({
   listLinks: {
     summary: "List a freshly authorized newest-first link library",
     description:
-      "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Only limit is supported; supplied cursor, search, state or foreign filter fields return 400. nextCursor is null until signed pagination is implemented; no total or exhaustion claim. All responses are no-store.",
+      "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Search, state and foreign filter fields remain unsupported and return 400. No totals. All responses are no-store.",
     path: "/api/v1/workspaces/:workspaceId/links",
     method: "GET",
     metadata: getSecurityMetadata(),
@@ -31,7 +31,7 @@ export const identityContract = c.router({
           .regex(/^[0-9]{1,3}$/)
           .refine((value) => Number(value) >= 1 && Number(value) <= 100)
           .optional(),
-        cursor: z.string().max(2048).optional(),
+        cursor: z.string().min(1).max(2048).optional(),
       })
       .strict(),
     responses: {

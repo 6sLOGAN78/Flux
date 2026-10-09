@@ -256,3 +256,30 @@ test("deadline also bounds an unresponsive token provider and pre-aborted calls 
   );
   expect(tokens).toBe(0);
 });
+
+test("cursor error projection requires the canonical code and matching status", async () => {
+  for (const [status, code, expected] of [
+    [400, "CURSOR_INVALID", "CURSOR_INVALID"],
+    [409, "CURSOR_INVALID", undefined],
+    [400, "PRIVATE-CURSOR-DETAIL", undefined],
+  ] as const) {
+    const api = createAPI(async () => "credential", {
+      origin,
+      fetch: async () =>
+        Response.json(
+          {
+            code,
+            message: "PRIVATE-CURSOR-DETAIL",
+            status,
+            override: false,
+            errors: null,
+            action: null,
+          },
+          { status },
+        ),
+    });
+    await expect(
+      api.request("/workspaces/00000000-0000-4000-8000-000000000001/links"),
+    ).rejects.toMatchObject({ status, constraint: expected });
+  }
+});

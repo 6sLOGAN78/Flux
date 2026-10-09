@@ -228,17 +228,23 @@ func (r *LinkRepository) Detail(ctx context.Context, scope Scope, id uuid.UUID,
 	return result, nil
 }
 
+// LinkPosition is a typed keyset position; it never supplies tenant authority.
+type LinkPosition struct {
+	CreatedAt time.Time
+	ID        uuid.UUID
+}
+
 // List reads only nondeleted rows in deterministic newest-first order after
 // fresh membership authorization under the shared workspace transaction lock.
 //
 //nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
-func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int,
+func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int, position *LinkPosition,
 	authorize LinkAuthorize,
 ) (result []Link, err error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("link store unavailable")
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > 101 {
 		return nil, errors.New("invalid link limit")
 	}
 	tx, err := r.pool.Begin(ctx)
@@ -249,11 +255,18 @@ func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int,
 	if err = authorize(ctx, tx, scope); err != nil {
 		return nil, err
 	}
+	var createdAt *time.Time
+	var id *uuid.UUID
+	if position != nil {
+		createdAt, id = &position.CreatedAt, &position.ID
+	}
 	rows, err := tx.Query(ctx, "SELECT l.id,l.workspace_id,l.creator_user_id,l.managed_host,l.short_key,"+
 		"l.destination,l.title,u.verified_email,l.lifecycle,l.created_at,l.updated_at,l.version,"+
 		"l.suspended_at,l.suspended_by,l.suspension_reason FROM links l JOIN users u ON u.id=l.creator_user_id "+
-		"WHERE l.workspace_id=$1 AND l.lifecycle <> 'deleted' ORDER BY l.created_at DESC,l.id DESC LIMIT $2",
-		scope.WorkspaceID, limit)
+		"WHERE l.workspace_id=$1 AND l.lifecycle <> 'deleted' "+
+		"AND ($3::timestamptz IS NULL OR (l.created_at,l.id) < ($3::timestamptz,$4::uuid)) "+
+		"ORDER BY l.created_at DESC,l.id DESC LIMIT $2",
+		scope.WorkspaceID, limit, createdAt, id)
 	if err != nil {
 		return nil, err
 	}
