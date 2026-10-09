@@ -185,6 +185,30 @@ func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 	}
 }
 
+func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
+	document := readJSON(t, "../../../../packages/openapi/openapi.json")
+	schema := responseSchema(t, document, "/api/v1/me", "200", "IdentityResponse")
+	fixture := []byte(`{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001","email":"local@example.test"}}`)
+	var value transport.TransportIdentityResponse
+	if err := json.Unmarshal(fixture, &value); err != nil {
+		t.Fatal(err)
+	}
+	if !value.Authenticated.Valid() {
+		t.Fatal("generated enum rejects canonical identity")
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateSchema(schema, decoded); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInvalidStatesAndDiagnosticsFailCanonicalSchema(t *testing.T) {
 	document := readJSON(t, "../../../../packages/openapi/openapi.json")
 	for _, tt := range []struct{ path, status, name, fixture string }{

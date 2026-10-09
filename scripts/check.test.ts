@@ -73,6 +73,52 @@ const browserReport = () => ({
   ],
 });
 
+test("browser output is private OS temporary storage rather than a scanned repository directory", async () => {
+  const config = await readFile(
+    new URL("../apps/frontend/playwright.config.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(config, /outputDir: "\.\.\/\.\.\/tmp\//);
+  assert.match(config, /mkdtempSync/);
+  assert.match(config, /tmpdir\(\)/);
+});
+
+test("root browser command failure, zero, skip, malformed and inconsistent reports fail closed", async () => {
+  for (const failure of ["command", "zero", "skip", "json", "count"]) {
+    await fixture(async (root) => {
+      const frontend = join(root, "apps/frontend");
+      await mkdir(join(frontend, "tests"), { recursive: true });
+      await writeFile(
+        join(frontend, "package.json"),
+        JSON.stringify({
+          name: "@flux/frontend",
+          scripts: Object.fromEntries(commands.map((command) => [command, "true"])),
+        }),
+      );
+      await writeFile(join(frontend, "tests/auth.spec.ts"), "export {};");
+      const { runChecks } = await load();
+      await assert.rejects(
+        runChecks({
+          root,
+          group: "test:e2e",
+          runner: async (stage) => {
+            if (!stage.browserTests) return { code: 0, stdout: successfulOutput(stage) };
+            const report = browserReport();
+            if (failure === "zero") report.stats.expected = 0;
+            if (failure === "skip") report.stats.skipped = 1;
+            if (failure === "count") report.stats.expected = 2;
+            return {
+              code: failure === "command" ? 1 : 0,
+              stdout: failure === "json" ? "PRIVATE-REPORT" : JSON.stringify(report),
+            };
+          },
+        }),
+        /Check failed: @flux\/frontend:test:e2e|No successful browser tests/,
+      );
+    });
+  }
+});
+
 test("browser gate requires positive complete non-skipped nonflaky JSON results", async () => {
   const { assertBrowserReport } = await load();
   assert.equal(assertBrowserReport(JSON.stringify(browserReport())), 1);

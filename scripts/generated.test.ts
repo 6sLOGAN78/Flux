@@ -27,6 +27,29 @@ const load = async (): Promise<Generate> => {
   return module.generate;
 };
 
+test("empty generated artifacts fail before publication and preserve every checked byte", async () => {
+  const generate = await load();
+  await fixture(async (root, temporaryParent) => {
+    for (const path of artifacts) await put(root, path, "checked");
+    for (const check of [true, false]) {
+      await assert.rejects(
+        generate({
+          root,
+          temporaryParent,
+          check,
+          generateArtifacts: async (output) => {
+            await regenerate(output);
+            await put(output, artifacts[2] as string, "");
+          },
+        }),
+        /Generation failed:/,
+      );
+      for (const path of artifacts)
+        assert.equal(await readFile(join(root, path), "utf8"), "checked");
+    }
+  });
+});
+
 const put = async (root: string, path: string, bytes: string) => {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), bytes);
