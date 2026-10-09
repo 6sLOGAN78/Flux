@@ -58,6 +58,7 @@ completed: 2026-10-09
 - Recorded resumed verification interval: 2026-10-09 23:21:14 UTC through approximately 23:30:45 UTC, about 10 minutes. Earlier interrupted execution and initial resumed context preparation are excluded; their duration was not retained. This is a measured resumed interval, not a reconstructed total.
 - Actual implementation/test/generated inventory: 21 paths, four created and 17 modified, exhaustively listed above. Summary and STATE/ROADMAP tracking are additional documentation paths.
 - Resumed from existing RED commit `3403f8d`; preserved partial implementation rather than restarting it.
+- Additional final acceptance audit: approximately 23:32–23:34 UTC, about two minutes, after the recorded main interval. It strengthened only the provider-role test claim and reran integration; the earlier interrupted duration remains unknown and excluded.
 
 ## Accomplishments
 
@@ -72,11 +73,13 @@ completed: 2026-10-09
 
 1. Task 1 — Specify scoped Team inspection and capability disposal: `3403f8d` (`test`, existing RED).
 2. Task 2 — Deliver freshly authorized bounded Team inspection: `353b7fa` (`feat`, resumed GREEN).
+   Final test-only owner-claim acceptance refinement: `56560cc` (`test`).
 
 ## Verification
 
 - Existing RED evidence preserved: registered real-PG Team owner/admin reads expected 200 but received 404; member/viewer reads expected 403 but received 404. Actual browser RED reached the real Links page and failed on the absent Team link, with no skipped/flaky/infrastructure cases accepted.
 - Fresh full root integration gate passed **17 registered top-level tests across six groups**. Registered `TestProductActualHTTP/team` exercises all four roles with forged provider organization claims, foreign workspace 404, removed actor 404, exact safe projection, unsupported/duplicate/invalid queries, body budget and complete pagination over 31 members with no duplicates or foreign rows. Existing HTTP boundary and response/log privacy assertions remain intact.
+- Final acceptance audit changed the signed fixture's organization claim from `org:admin` to the explicitly required `org:owner`. The full root integration gate passed all **17** registered tests again, including the real Team owner/admin/member/viewer matrix. This test-only refinement changed no production, generated or browser code; original 32/32 browser evidence and the final production build remain applicable. Root format passed again, and the final complete worktree/full-history scan passed after committing the refinement.
 - Fresh full root unit gate passed **95 discovered race-enabled Go unit tests**, plus every workspace, script and tool suite. Direct frontend units passed **22/22**. The canonical route inventory was extended with the real members endpoint while preserving health/auth/contract assertions.
 - Original focused Team browser gate passed **2 completed / 0 skipped / 0 flaky / 0 unexpected / 0 infrastructure errors**. It proves real owner/admin inspection, member/viewer direct-route denial and native navigation removal, continued Links access, responsive 320px cards without horizontal overflow, truthful 503 retry/recovery, membership removal scrubbing, and a held older successful response that cannot repaint Team after a real SQL role change.
 - Original full canonical browser gate passed **32 completed**, with unchanged strict zero-skip/flaky/infrastructure validation, preserving all previous 30 cases.
