@@ -382,6 +382,79 @@ func TestProductActualHTTP(t *testing.T) {
 		defer workspaceAPI.Close()
 		checkWorkspaceBootstrap(t, workspaceAPI.URL, db, p, token)
 	})
+	t.Run("workspace-restore", func(t *testing.T) {
+		checkWorkspaceRestore(t, api.URL, db, p)
+	})
+}
+
+func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_restore", "sid": "sess_user_restore"})
+	status, bootstrap := workspaceRequest(t, api, token, "GET", "/me", "", "")
+	require.Equal(t, 200, status)
+	require.Contains(t, bootstrap, "workspaces", "bootstrap must expose current memberships")
+	require.Empty(t, bootstrap["workspaces"])
+	require.Contains(t, bootstrap, "lastWorkspace")
+	require.Nil(t, bootstrap["lastWorkspace"])
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "restore-workspace-0001", `{"name":"Restore current"}`)
+	require.Equal(t, 201, status)
+	workspace := created["workspace"].(map[string]any)
+	id := workspace["id"].(string)
+	status, selected := workspaceRequest(t, api, token, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+id+`"}`)
+	require.Equal(t, 200, status)
+	require.Equal(t, created, selected)
+	status, bootstrap = workspaceRequest(t, api, token, "GET", "/me", "", "")
+	require.Equal(t, 200, status)
+	require.Equal(t, workspace, bootstrap["lastWorkspace"])
+	require.Len(t, bootstrap["workspaces"], 1)
+	other := p.token(t, map[string]any{"sub": "user_restore_other", "sid": "sess_user_restore_other"})
+	status, denied := workspaceRequest(t, api, other, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+id+`"}`)
+	require.Equal(t, 404, status)
+	require.NotContains(t, denied, "workspace")
+	for _, body := range []string{`{}`, `{"workspaceId":null}`, `{"workspaceId":"bad"}`, `{"workspaceId":"` + id + `","role":"owner"}`, `{"workspaceId":"` + id + `"} {}`} {
+		status, _ = workspaceRequest(t, api, token, "PUT", "/me/last-workspace", "", body)
+		require.Equal(t, 400, status)
+	}
+	var actor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE subject=$1", "user_restore").Scan(&actor))
+	t.Run("all-roles-can-select", func(t *testing.T) {
+		for _, role := range []string{"owner", "admin", "member", "viewer"} {
+			_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=$1 WHERE workspace_id=$2 AND user_id=$3", role, id, actor)
+			require.NoError(t, err)
+			requestStatus, result := workspaceRequest(t, api, token, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+id+`"}`)
+			require.Equal(t, 200, requestStatus)
+			require.Equal(t, role, result["workspace"].(map[string]any)["role"])
+		}
+	})
+	t.Run("removal-race-rechecks-before-commit", func(t *testing.T) {
+		lock, err := db.Pool.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = lock.Rollback(context.Background()) }()
+		_, err = repository.NewWorkspaceRepository(db.Pool).LockScope(ctx, lock, repository.Scope{WorkspaceID: uuid.MustParse(id), ActorID: actor}, true)
+		require.NoError(t, err)
+		finished := make(chan int, 1)
+		go func() {
+			requestStatus, _ := workspaceRequest(t, api, token, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+id+`"}`)
+			finished <- requestStatus
+		}()
+		require.Eventually(t, func() bool {
+			var waiting int
+			return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id,name FROM workspaces%'").Scan(&waiting) == nil && waiting > 0
+		}, time.Second, 10*time.Millisecond)
+		_, err = lock.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", id, actor)
+		require.NoError(t, err)
+		require.NoError(t, lock.Commit(ctx))
+		require.Equal(t, 404, <-finished)
+	})
+	status, bootstrap = workspaceRequest(t, api, token, "GET", "/me", "", "")
+	require.Equal(t, 200, status)
+	require.Nil(t, bootstrap["lastWorkspace"])
+	require.Empty(t, bootstrap["workspaces"])
+	encoded, err := json.Marshal(bootstrap)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), id)
+	require.NotContains(t, string(encoded), "Restore current")
 }
 
 func workspaceRequest(t *testing.T, api, token, method, path, key, body string) (int, map[string]any) {

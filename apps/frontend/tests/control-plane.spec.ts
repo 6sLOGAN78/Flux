@@ -1,5 +1,46 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test("restore uses committed authorized selection and never trusts browser values", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-restore-0001",
+    },
+    data: { name: "Restore browser" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const response = await route.fetch({
+      url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+    });
+    await route.fulfill({ response });
+  });
+  await page.goto("/workspaces");
+  await expect(page.getByRole("heading", { name: "Choose a workspace" })).toBeVisible();
+  await page.getByLabel("Workspace", { exact: true }).selectOption(workspace.id);
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${workspace.id}/links$`));
+  await expect(page.getByRole("heading", { name: "Restore browser" })).toBeVisible();
+  await page.evaluate(() => {
+    localStorage.setItem("flux.workspace", "00000000-0000-4000-8000-000000000000");
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { workspaceId: "00000000-0000-4000-8000-000000000000" },
+      }),
+    );
+  });
+  await page.goto("/");
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${workspace.id}/links$`));
+  await expect(page.getByRole("heading", { name: "Restore browser" })).toBeVisible();
+});
+
 test("workspace requires an explicit name and opens authorized Links after commit", async ({
   page,
   request,
