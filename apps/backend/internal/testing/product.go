@@ -152,7 +152,7 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 			w.WriteHeader(http.StatusNoContent)
 		case "/client":
 			_ = json.NewEncoder(w).Encode(map[string]any{"api": api.URL, "token": token, "client": BrowserSessionClient(token)})
-		case "/restore-reset", "/restore-remove":
+		case "/restore-reset", "/restore-remove", "/restore-role":
 			// Local harness only: mutate real PostgreSQL below application layers.
 			// No test route, key or authorization bypass enters a production router.
 			if r.Method != http.MethodPost {
@@ -160,7 +160,16 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 				return
 			}
 			var err error
-			if r.URL.Path == "/restore-reset" {
+			if r.URL.Path == "/restore-role" {
+				role := r.URL.Query().Get("role")
+				if role != "owner" && role != "admin" && role != "member" && role != "viewer" {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				_, err = db.Pool.Exec(r.Context(), "UPDATE memberships SET role=$1 WHERE workspace_id::text=$2 AND user_id IN "+
+					"(SELECT id FROM users WHERE issuer=$3 AND subject=$4)", role,
+					r.URL.Query().Get("workspace"), fixtureIssuer, "user_fixture")
+			} else if r.URL.Path == "/restore-reset" {
 				_, err = db.Pool.Exec(r.Context(), "DELETE FROM workspace_preferences WHERE user_id IN "+
 					"(SELECT id FROM users WHERE issuer=$1 AND subject=$2)", fixtureIssuer, "user_fixture")
 			} else {

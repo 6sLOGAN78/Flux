@@ -405,6 +405,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-search", func(t *testing.T) {
 		checkLinkSearch(t, api.URL, db, p)
 	})
+	t.Run("team", func(t *testing.T) {
+		checkTeam(t, api.URL, db, p)
+	})
 	t.Run("link-library", func(t *testing.T) {
 		checkLinkLibrary(t, api.URL, db, p)
 	})
@@ -412,6 +415,90 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
+}
+
+func checkTeam(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_team", "sid": "sess_user_team", "org_role": "org:admin"})
+	foreignToken := p.token(t, map[string]any{"sub": "user_team_foreign", "sid": "sess_user_team_foreign"})
+	code, created := workspaceRequest(t, api, token, "POST", "/workspaces", "team-workspace-0001", `{"name":"Team inspection"}`)
+	require.Equal(t, 201, code)
+	id := created["workspace"].(map[string]any)["id"].(string)
+	code, foreign := workspaceRequest(t, api, foreignToken, "POST", "/workspaces", "team-workspace-0002", `{"name":"Foreign Team secret"}`)
+	require.Equal(t, 201, code)
+	foreignID := foreign["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + id + "/members"
+	for _, role := range []string{"owner", "admin", "member", "viewer"} {
+		t.Run(role, func(t *testing.T) {
+			_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=$2 WHERE workspace_id=$1", id, role)
+			require.NoError(t, err)
+			status, response := workspaceRequest(t, api, token, "GET", path, "", "")
+			if role == "owner" || role == "admin" {
+				require.Equal(t, 200, status)
+				items := response["items"].([]any)
+				require.Len(t, items, 1)
+				item := items[0].(map[string]any)
+				require.Len(t, item, 4, "only safe identity, workspace and role")
+				require.Equal(t, id, item["workspaceId"])
+				require.Equal(t, role, item["role"])
+				require.NotEmpty(t, item["email"])
+			} else {
+				require.Equal(t, 403, status, "provider org claims cannot grant Team")
+			}
+			status, denied := workspaceRequest(t, api, token, "GET", "/workspaces/"+foreignID+"/members", "", "")
+			require.Equal(t, 404, status)
+			bytes, err := json.Marshal(denied)
+			require.NoError(t, err)
+			require.NotContains(t, string(bytes), foreignID)
+			require.NotContains(t, string(bytes), "Foreign Team secret")
+		})
+	}
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='owner' WHERE workspace_id=$1", id)
+	require.NoError(t, err)
+	for _, query := range []string{"?workspaceId=" + foreignID, "?role=owner", "?search=secret", "?after=bad", "?after=" + uuid.NewString() + "&after=" + uuid.NewString()} {
+		code, _ = workspaceRequest(t, api, token, "GET", path+query, "", "")
+		require.Equal(t, 400, code, query)
+	}
+	code, _ = workspaceRequest(t, api, token, "GET", path+"/"+uuid.NewString(), "", "")
+	require.Equal(t, 404, code)
+	// Fixed 25-row pages keep even worst-case JSON-escaped 320-character
+	// identities below the browser's existing 64 KiB success boundary.
+	_, err = db.Pool.Exec(ctx, "WITH seeded AS (INSERT INTO users(issuer,subject,verified_email) "+
+		"SELECT $1,'team-page-'||n,repeat('a',306)||n||'@example.com' FROM generate_series(1,30) n RETURNING id) "+
+		"INSERT INTO memberships(workspace_id,user_id,role,created_by) SELECT $2,id,'member',id FROM seeded", fixtureIssuer, id)
+	require.NoError(t, err)
+	code, listed := workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 200, code)
+	require.Len(t, listed["items"].([]any), 25)
+	encoded, err := json.Marshal(listed)
+	require.NoError(t, err)
+	require.Less(t, len(encoded), 65536)
+	seen := map[string]bool{}
+	for {
+		for _, raw := range listed["items"].([]any) {
+			item := raw.(map[string]any)
+			require.Equal(t, id, item["workspaceId"])
+			userID := item["id"].(string)
+			require.False(t, seen[userID])
+			seen[userID] = true
+		}
+		after, more := listed["nextAfter"].(string)
+		if !more {
+			break
+		}
+		code, listed = workspaceRequest(t, api, token, "GET", path+"?after="+after, "", "")
+		require.Equal(t, 200, code)
+	}
+	require.Len(t, seen, 31)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", id)
+	require.NoError(t, err)
+	code, _ = workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 404, code, "removal before read must revoke access")
+	logs := p.logs.String()
+	require.NotContains(t, logs, "user_team")
+	require.NotContains(t, logs, "Foreign Team secret")
+	require.NotContains(t, logs, token)
 }
 
 func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {

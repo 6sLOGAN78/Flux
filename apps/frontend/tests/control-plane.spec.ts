@@ -1,5 +1,154 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test("team inspects actual members with responsive roles and truthful retry then scrubs removed access", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-team-inspect",
+    },
+    data: { name: "Team inspection tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  let fail = false;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (fail && url.pathname.endsWith("/members")) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+      return;
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(page.getByRole("heading", { name: "Links", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Team", exact: true }).click({ timeout: 10000 });
+  await expect(page.getByRole("table", { name: "Team members" })).toBeVisible();
+  await expect(page.getByRole("table").getByText("Owner", { exact: true })).toBeVisible();
+  const identity = await page.getByRole("table").locator("tbody td").first().textContent();
+  expect(identity).toContain("@");
+  expect(await page.getByRole("button", { name: /Invite|Remove|Change role/ }).count()).toBe(0);
+  fail = true;
+  await page.getByRole("button", { name: "Reload team", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("We couldn't load team. Try again.");
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByText("No members", { exact: true })).toHaveCount(0);
+  fail = false;
+  await page.getByRole("button", { name: "Retry loading team", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(page.getByRole("list", { name: "Team members" })).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Team members" }).getByText("Owner", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  const removed = await request.post(
+    `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
+  );
+  expect(removed.status()).toBe(204);
+  await page.getByRole("button", { name: "Reload team", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Choose a workspace", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Team inspection tenant", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Team members" })).toHaveCount(0);
+});
+
+test("team fresh role matrix disposes stale management access while retaining valid Links", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-team-role-matrix",
+    },
+    data: { name: "Team role tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  let hold = false;
+  let release: (() => void) | undefined;
+  let held: (() => void) | undefined;
+  const arrived = new Promise<void>((resolve) => {
+    held = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (hold && url.pathname.endsWith("/members")) {
+      held?.();
+      await released;
+    }
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/team`);
+  await expect(page.getByRole("table", { name: "Team members" })).toBeVisible();
+  for (const role of ["admin", "member", "viewer", "owner"]) {
+    const changed = await request.post(
+      `${process.env.FLUX_BROWSER_FIXTURE}/restore-role?workspace=${workspace.id}&role=${role}`,
+    );
+    expect(changed.status()).toBe(204);
+    if (role === "admin" || role === "member") {
+      await page.getByRole("button", { name: "Reload team", exact: true }).click();
+    } else {
+      await page.goto(`/workspaces/${workspace.id}/team`);
+    }
+    if (role === "owner" || role === "admin") {
+      await expect(
+        page.getByRole("table").getByText(role === "owner" ? "Owner" : "Admin", { exact: true }),
+      ).toBeVisible();
+    } else {
+      await expect(
+        page.getByText("You do not have permission to view Team.", { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByRole("table", { name: "Team members" })).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("navigation", { name: "Workspace", exact: true })
+          .getByRole("link", { name: "Team", exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("link", { name: "Links", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Links", exact: true })).toBeVisible();
+      if (role === "viewer")
+        await expect(
+          page.getByText("You have view-only access. Ask an owner or admin to change your role."),
+        ).toBeVisible();
+    }
+  }
+  hold = true;
+  await page.getByRole("button", { name: "Reload team", exact: true }).click();
+  await arrived;
+  expect(
+    (
+      await request.post(
+        `${process.env.FLUX_BROWSER_FIXTURE}/restore-role?workspace=${workspace.id}&role=member`,
+      )
+    ).status(),
+  ).toBe(204);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(
+    page.getByText("You do not have permission to view Team.", { exact: true }),
+  ).toBeVisible();
+  release?.();
+  await expect(page.getByRole("table", { name: "Team members" })).toHaveCount(0);
+});
+
 test("custom-key rejects invalid input and shows actual server collision with a fresh changed submission", async ({
   page,
   request,
