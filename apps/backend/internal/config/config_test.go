@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,25 @@ import (
 type configProvider struct {
 	values map[string]any
 	err    error
+}
+
+func TestLinksCursorConfigOwnedByAPI(t *testing.T) {
+	for _, key := range []string{"", "PRIVATE-INVALID-KEY", base64.StdEncoding.EncodeToString([]byte("short")), base64.StdEncoding.EncodeToString(make([]byte, 33))} {
+		values := configValues()
+		values["links"].(map[string]any)["cursor_key"] = key
+		_, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
+		if err == nil {
+			t.Fatal("invalid cursor signing key accepted")
+		}
+		if strings.Contains(fmt.Sprint(err), key) && key != "" {
+			t.Fatal("key value exposed in startup diagnostic")
+		}
+		for _, role := range []Role{RoleRedirector, RoleWorker, RoleMigrator} {
+			if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
+				t.Fatal("unowned cursor key blocked role")
+			}
+		}
+	}
 }
 
 func TestLinksOperatorConfigOwnedByAPI(t *testing.T) {

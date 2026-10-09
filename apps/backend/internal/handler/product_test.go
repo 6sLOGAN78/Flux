@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1199,7 +1200,7 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	items := listed["items"].([]any)
 	require.Len(t, items, 25)
 	require.Len(t, listed, 2)
-	require.Nil(t, listed["nextCursor"], "pagination is not yet supported")
+	require.NotEmpty(t, listed["nextCursor"], "an extra row must produce a signed continuation")
 	for i, item := range items {
 		link := item.(map[string]any)
 		require.Equal(t, workspace, link["workspaceId"])
@@ -1215,9 +1216,37 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 		code, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
 		require.Equal(t, 400, code, query)
 	}
+	seen := make(map[string]bool)
+	page := listed
+	for {
+		for _, item := range page["items"].([]any) {
+			id := item.(map[string]any)["id"].(string)
+			require.False(t, seen[id], "equal timestamps must never duplicate rows")
+			seen[id] = true
+		}
+		cursor, more := page["nextCursor"].(string)
+		if !more {
+			break
+		}
+		require.LessOrEqual(t, len(cursor), 2048)
+		status, page = workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(cursor), "", "")
+		require.Equal(t, 200, status)
+	}
+	require.Len(t, seen, 104, "every nondeleted equal-timestamp row must appear")
+	require.Len(t, page["items"], 4, "last page is authoritative exhaustion")
+	cursor := listed["nextCursor"].(string)
+	for _, invalid := range []string{"", "malformed", cursor[:len(cursor)-1] + "!", strings.Repeat("x", 2049)} {
+		code, failure := workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(invalid), "", "")
+		require.Equal(t, 400, code)
+		require.Equal(t, "CURSOR_INVALID", failure["code"])
+		require.Equal(t, "This page is no longer available. Return to the first page.", failure["message"])
+	}
 	status, foreign := workspaceRequest(t, api, token, "POST", "/workspaces", "library-foreign-01", `{"name":"Foreign library"}`)
 	require.Equal(t, 201, status)
 	foreignID := foreign["workspace"].(map[string]any)["id"].(string)
+	status, foreignCursor := workspaceRequest(t, api, token, "GET", "/workspaces/"+foreignID+"/links?cursor="+url.QueryEscape(cursor), "", "")
+	require.Equal(t, 400, status)
+	require.Equal(t, "CURSOR_INVALID", foreignCursor["code"])
 	status, foreignList := workspaceRequest(t, api, token, "GET", "/workspaces/"+foreignID+"/links", "", "")
 	require.Equal(t, 200, status)
 	require.Empty(t, foreignList["items"], "foreign tenant rows never leak")

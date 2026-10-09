@@ -1250,3 +1250,66 @@ test("library empty viewer presentation and initial failure never claim empty be
   await expect(page.getByRole("button", { name: "Create your first link" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Create link", exact: true })).toHaveCount(0);
 });
+
+test("pagination traverses real pages and returns through remembered cursors", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-pagination-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Pagination tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  for (let index = 0; index < 26; index++) {
+    // Respect the production request budget while creating real records.
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    const result = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+      headers: { ...headers, "Idempotency-Key": `browser-pagination-link-${index}` },
+      data: { destination: "https://example.com/pagination", title: `Pagination ${index}` },
+    });
+    expect(result.status()).toBe(201);
+  }
+  let invalid = false;
+  const queries: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/workspaces/${workspace.id}/links`)) {
+      queries.push(url.search);
+      if (invalid && url.searchParams.has("cursor")) url.searchParams.set("cursor", "tampered");
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  const table = page.getByRole("table", { name: "Links library" });
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await expect(table.getByRole("row").nth(1)).toContainText("Pagination 25");
+  const next = page.getByRole("button", { name: "Next page", exact: true });
+  const previous = page.getByRole("button", { name: "Previous page", exact: true });
+  await expect(previous).toBeDisabled();
+  await next.click();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(table.getByRole("row").nth(1)).toContainText("Pagination 0");
+  await expect(page.getByText("No more links.", { exact: true })).toBeVisible();
+  await expect(next).toBeDisabled();
+  await previous.click();
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await expect(previous).toBeDisabled();
+  invalid = true;
+  await next.click();
+  await expect(
+    page.getByRole("region", { name: "Links", exact: true }).getByRole("alert"),
+  ).toHaveText("This page is no longer available. Return to the first page.");
+  await page.getByRole("button", { name: "Return to first page", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await expect(previous).toBeDisabled();
+  expect(queries.filter((query) => query.includes("cursor=")).length).toBeGreaterThanOrEqual(2);
+});
