@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -395,8 +396,87 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("workspace-restore", func(t *testing.T) {
 		checkWorkspaceRestore(t, api.URL, db, p)
 	})
+	t.Run("custom-key", func(t *testing.T) {
+		checkCustomKey(t, api.URL, db, p)
+	})
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
+	})
+}
+
+func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	token := p.token(t, map[string]any{"sub": "user_custom", "sid": "sess_user_custom"})
+	paths := make([]string, 2)
+	for i := range paths {
+		code, result := workspaceRequest(t, api, token, "POST", "/workspaces", fmt.Sprintf("custom-workspace-%02d", i), `{"name":"Custom tenant"}`)
+		require.Equal(t, 201, code)
+		paths[i] = "/workspaces/" + result["workspace"].(map[string]any)["id"].(string) + "/links"
+	}
+	payload := `{"destination":"https://example.com/custom","customKey":"Launch_2026"}`
+	code, first := workspaceRequest(t, api, token, "POST", paths[0], "custom-create-0001", payload)
+	require.Equal(t, 201, code)
+	require.Equal(t, "https://go.flux.test/launch_2026", first["link"].(map[string]any)["shortUrl"])
+	code, replay := workspaceRequest(t, api, token, "POST", paths[0], "custom-create-0001", strings.ReplaceAll(payload, "Launch_2026", "launch_2026"))
+	require.Equal(t, 201, code)
+	require.Equal(t, first, replay)
+	code, conflict := workspaceRequest(t, api, token, "POST", paths[0], "custom-create-0001", strings.ReplaceAll(payload, "Launch_2026", "changed-key"))
+	require.Equal(t, 409, code)
+	require.Equal(t, "REQUEST_REUSE_CONFLICT", conflict["code"])
+	for i, key := range []string{"ab", strings.Repeat("a", 65), "-abc", "a/b", "a%2fb", "a b", "abcé", "Key", "api", "docs", "live", "ready", "static", "login", "register", "dashboard", "settings", "links", "admin"} {
+		body, err := json.Marshal(map[string]string{"destination": "https://example.com", "customKey": key})
+		require.NoError(t, err)
+		code, _ = workspaceRequest(t, api, token, "POST", paths[0], fmt.Sprintf("custom-invalid-%02d", i), string(body))
+		require.Equal(t, 400, code, key)
+	}
+	t.Run("global-concurrent-one-winner", func(t *testing.T) {
+		responses := make(chan int, 2)
+		var group sync.WaitGroup
+		for i := range paths {
+			group.Go(func() {
+				status, response := workspaceRequest(t, api, token, "POST", paths[i], "custom-global-0001", `{"destination":"https://example.com","customKey":"global-key"}`)
+				if status == 409 {
+					require.Equal(t, "KEY_UNAVAILABLE", response["code"])
+					require.Equal(t, "This short key is unavailable. Choose another key or generate one.", response["message"])
+				}
+				responses <- status
+			})
+		}
+		group.Wait()
+		close(responses)
+		statuses := []int{}
+		for status := range responses {
+			statuses = append(statuses, status)
+		}
+		require.ElementsMatch(t, []int{201, 409}, statuses)
+		var count int
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM links WHERE short_key='global-key'").Scan(&count))
+		require.Equal(t, 1, count)
+	})
+	t.Run("same-request-concurrent-one-effect", func(t *testing.T) {
+		var group sync.WaitGroup
+		responses := make(chan map[string]any, 4)
+		for range 4 {
+			group.Go(func() {
+				status, response := workspaceRequest(t, api, token, "POST", paths[0], "custom-concurrent-01", `{"destination":"https://example.com","customKey":"same-request"}`)
+				require.Equal(t, 201, status)
+				responses <- response
+			})
+		}
+		group.Wait()
+		close(responses)
+		var first map[string]any
+		for response := range responses {
+			if first == nil {
+				first = response
+			}
+			require.Equal(t, first, response)
+		}
+		var effects, ledger int
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM links WHERE short_key='same-request'").Scan(&effects))
+		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM mutation_requests WHERE request_key='custom-concurrent-01'").Scan(&ledger))
+		require.Equal(t, 1, effects)
+		require.Equal(t, 1, ledger)
 	})
 }
 

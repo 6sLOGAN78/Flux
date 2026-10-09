@@ -61,7 +61,7 @@ test("destination rejects reserved addresses with exact safe feedback", async ({
   expect(await page.locator("time[datetime]").count()).toBe(2);
 });
 
-test("destination uncertain creation retries the identical committed request", async ({
+test("custom-key uncertain creation retries the identical committed request", async ({
   page,
   request,
 }) => {
@@ -100,6 +100,8 @@ test("destination uncertain creation retries the identical committed request", a
   });
   await page.goto(`/workspaces/${workspace.id}/links/new`);
   await page.getByLabel("Destination URL", { exact: true }).fill("https://example.com/uncertain");
+  await page.getByLabel("Custom short key", { exact: true }).fill("Browser_Launch");
+  await expect(page.getByLabel("Custom short key", { exact: true })).toHaveValue("browser_launch");
   await page.getByRole("button", { name: "Create link", exact: true }).click();
   await expect(page.getByRole("main").getByRole("alert")).toHaveText(
     "We couldn't confirm link creation. Retry to check the same request.",
@@ -110,6 +112,8 @@ test("destination uncertain creation retries the identical committed request", a
   expect(submissions).toHaveLength(2);
   expect(submissions[0]?.key).toBeTruthy();
   expect(submissions[1]).toEqual(submissions[0]);
+  expect(JSON.parse(submissions[0]!.body!).customKey).toBe("browser_launch");
+  await expect(page.getByText("https://go.flux.test/browser_launch", { exact: true })).toBeVisible();
 });
 
 test("link-create commits a generated link and opens escaped detail", async ({ page, request }) => {
