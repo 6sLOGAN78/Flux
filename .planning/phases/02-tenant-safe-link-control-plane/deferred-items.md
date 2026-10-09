@@ -1,0 +1,3 @@
+# Deferred items
+
+- **02-09 verification, unchanged telemetry integration:** The first full integration run failed `TestTracestateHTTPRedisOTLP` in `internal/app`. The standard runner exposed only the failing test name; its underlying diagnostic was not retained. An isolated race-enabled run passed, followed by the full registered integration gate passing all 17 tests with no telemetry source changes. The orchestrator reports a similar transient in 02-06. Investigate the existing telemetry/Asynq proof if it recurs; do not describe this plan as repairing it or weaken its assertions. The bounded full rerun captured only source-backed failure labels and file locations and produced no failure.

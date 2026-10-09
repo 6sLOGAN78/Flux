@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-08-PLAN.md
-last_updated: "2026-10-09T10:13:21.744Z"
+stopped_at: Completed 02-09-PLAN.md
+last_updated: "2026-10-09T10:38:04.297Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 30
+  completed_plans: 31
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 9 of 35
+Plan: 10 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [█████░░░░░] 53%
+Progress: [█████░░░░░] 54%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [█████░░░░░] 53%
 | Phase 2 P06 | 26min | 2 tasks | 20 files |
 | Phase 2 P07 | 15min | 2 tasks | 16 files |
 | Phase 2 P08 | 15min | 2 tasks | 22 files |
+| Phase 2 P09 | 23min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Derive restored selection from the same current membership snapshot as the chooser; a stored preference never grants authority or exposes removed workspace identifiers.
 - [Phase 2]: Select under the existing workspace-first shared lock and recheck membership before saving the preference; creation commits its initial preference atomically.
 - [Phase 2]: Keep provider-only unit bootstrap substitution strictly test-local; all product and browser fixtures use real migrated PostgreSQL and production middleware.
+- [Phase 2]: Broadcast only a fixed invalidation signal; server bootstrap and committed selection remain workspace authority.
+- [Phase 2]: Dispose the scoped subtree before switching, signout or access loss; retain valid same-workspace content during transient refresh failure.
+- [Phase 2]: Consume native unsaved confirmation in the existing onboarding name flow; future link drafts must use the same scoped disposal and confirmation boundaries.
 
 ### Pending Todos
 
@@ -157,6 +161,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T10:13:21.734Z
-Stopped at: Completed 02-08-PLAN.md
+Last session: 2026-10-09T10:38:04.287Z
+Stopped at: Completed 02-09-PLAN.md
 Resume file: None
