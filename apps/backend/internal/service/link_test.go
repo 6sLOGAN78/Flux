@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/safety"
 )
 
 func TestDestinationReservedRanges(t *testing.T) {
@@ -16,7 +17,7 @@ func TestDestinationReservedRanges(t *testing.T) {
 		"https://sub.blocked.example", "https://go.flux.test./loop",
 	} {
 		t.Run(value, func(t *testing.T) {
-			if _, err := validateDestination(value, policy); err == nil {
+			if _, err := safety.ValidateDestination(value, policy); err == nil {
 				t.Fatal("unsafe destination accepted")
 			}
 		})

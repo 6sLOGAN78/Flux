@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"time"
 
@@ -35,10 +36,21 @@ type Link struct {
 }
 
 // LinkRepository owns transactional links; authorization is injected explicitly.
-type LinkRepository struct{ pool *pgxpool.Pool }
+type LinkRepository struct {
+	pool   *pgxpool.Pool
+	random io.Reader
+}
 
 // NewLinkRepository injects the PostgreSQL authority.
-func NewLinkRepository(pool *pgxpool.Pool) *LinkRepository { return &LinkRepository{pool: pool} }
+func NewLinkRepository(pool *pgxpool.Pool) *LinkRepository {
+	return NewLinkRepositoryWithRandom(pool, rand.Reader)
+}
+
+// NewLinkRepositoryWithRandom injects an entropy source for deterministic failure
+// verification. Production callers use NewLinkRepository and crypto/rand.Reader.
+func NewLinkRepositoryWithRandom(pool *pgxpool.Pool, random io.Reader) *LinkRepository {
+	return &LinkRepository{pool: pool, random: random}
+}
 
 // LinkAuthorize runs inside the effect transaction before any replay or link read.
 type LinkAuthorize func(context.Context, pgx.Tx, Scope) error
@@ -82,7 +94,7 @@ func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destinat
 			return Link{}, err
 		}
 	case errors.Is(err, pgx.ErrNoRows):
-		result, err = insertGeneratedLink(ctx, tx, scope, host, destination, title)
+		result, err = insertGeneratedLink(ctx, tx, scope, host, destination, title, r.random)
 		if err != nil {
 			return Link{}, err
 		}
@@ -105,10 +117,15 @@ func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destinat
 	return result, nil
 }
 
-func insertGeneratedLink(ctx context.Context, tx pgx.Tx, scope Scope, host, destination, title string) (Link, error) {
+func insertGeneratedLink(ctx context.Context, tx pgx.Tx, scope Scope, host, destination, title string,
+	random io.Reader,
+) (Link, error) {
+	if random == nil {
+		return Link{}, errors.New("entropy source unavailable")
+	}
 	for range 5 {
 		var entropy [12]byte
-		if _, err := rand.Read(entropy[:]); err != nil {
+		if _, err := io.ReadFull(random, entropy[:]); err != nil {
 			return Link{}, err
 		}
 		key := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(entropy[:]))

@@ -8,12 +8,15 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -164,6 +167,10 @@ func (p *signedProvider) token(t *testing.T, changes map[string]any) string {
 }
 
 func productRouter(cfg *config.Config, db *database.Database, p *signedProvider) http.Handler {
+	return productRouterWithRandom(cfg, db, p, rand.Reader)
+}
+
+func productRouterWithRandom(cfg *config.Config, db *database.Database, p *signedProvider, random io.Reader) http.Handler {
 	log := zerolog.New(zerolog.SyncWriter(&p.logs))
 	srv := &server.Server{Config: cfg, Logger: &log, DB: db}
 	cfg.Auth = config.AuthConfig{SecretKey: "test-only", Issuer: p.issuer, AuthorizedParties: []string{fixtureParty}}
@@ -176,7 +183,7 @@ func productRouter(cfg *config.Config, db *database.Database, p *signedProvider)
 	workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
 		Identity:  service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
-		Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
+		Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepositoryWithRandom(db.Pool, random), workspace, cfg.Links)})
 }
 
 func requestMe(t *testing.T, api string, token string, _ bool) (int, string, string) {
@@ -395,6 +402,35 @@ func TestProductActualHTTP(t *testing.T) {
 
 func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
 	t.Helper()
+	// Observe the process defaults used by an accidental destination fetch or
+	// lookup. Only the actual loopback API and provider fixture traffic passes.
+	// The probes surround real HTTP creation, its PostgreSQL commit, and corpus.
+	resolver, transport := net.DefaultResolver, http.DefaultTransport
+	var dns, destinationHTTP atomic.Uint64
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) { //nolint:reassign // Sequential actual-creation egress observation, restored below.
+		dns.Add(1)
+		return nil, errors.New("destination DNS forbidden")
+	}}
+	http.DefaultTransport = destinationTransport{base: transport, requests: &destinationHTTP, //nolint:reassign // Sequential actual-creation egress observation, restored below.
+		allowed: map[string]bool{strings.TrimPrefix(api, "http://"): true,
+			strings.TrimPrefix(p.server.URL, "http://"): true}}
+	t.Cleanup(func() {
+		net.DefaultResolver, http.DefaultTransport = resolver, transport //nolint:reassign // Restore process defaults after the isolated registered subtest.
+		require.Zero(t, dns.Load(), "creation must not resolve destination DNS")
+		require.Zero(t, destinationHTTP.Load(), "creation must not fetch destinations")
+	})
+	probe, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, probeErr := net.DefaultResolver.LookupHost(probe, "destination-probe.example")
+	require.Error(t, probeErr)
+	require.Positive(t, dns.Load(), "DNS observation must be live")
+	dns.Store(0)
+	probeRequest, requestErr := http.NewRequestWithContext(probe, http.MethodGet, "https://destination-probe.example", nil)
+	require.NoError(t, requestErr)
+	_, probeErr = http.DefaultTransport.RoundTrip(probeRequest)
+	require.Error(t, probeErr)
+	require.Equal(t, uint64(1), destinationHTTP.Load(), "HTTP observation must be live")
+	destinationHTTP.Store(0)
 	ctx := context.Background()
 	token := p.token(t, map[string]any{"sub": "user_links", "sid": "sess_user_links"})
 	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "link-workspace-0001", `{"name":"Link tenant"}`)
@@ -413,6 +449,15 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	require.Equal(t, result, replay)
 	status, _ = workspaceRequest(t, api, token, "POST", path, "link-create-00001", `{"destination":"https://example.org"}`)
 	require.Equal(t, 409, status)
+	for i, destination := range []string{"https://BÜCHER.example/a%2Fb?q=a%2Bb#fragment", "http://8.8.8.8/path", "https://[2606:4700:4700::1111]/path"} {
+		body, err := json.Marshal(map[string]string{"destination": destination})
+		require.NoError(t, err)
+		code, accepted := workspaceRequest(t, api, token, "POST", path, "link-public-0000"+string(rune('a'+i)), string(body))
+		require.Equal(t, 201, code)
+		if i == 0 {
+			require.Equal(t, "https://xn--bcher-kva.example/a%2Fb?q=a%2Bb#fragment", accepted["link"].(map[string]any)["destination"])
+		}
+	}
 	for i, destination := range []string{"//example.com", "https://user@example.com", "http://127.0.0.1", "http://169.254.169.254", "https://go.flux.test/a", "https://blocked.example", "https://example.com:99999", "https://example.com\\evil", "ftp://example.com", "http://[::ffff:127.0.0.1]", "http://192.88.99.1", "http://[fec0::1]", "http://[2001:20::1]", "http://[3fff::1]", "https://sub.blocked.example", "https://example.com/%0a"} {
 		body, err := json.Marshal(map[string]string{"destination": destination})
 		require.NoError(t, err)
@@ -422,6 +467,44 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	status, detail := workspaceRequest(t, api, token, "GET", path+"/"+link["id"].(string), "", "")
 	require.Equal(t, 200, status)
 	require.Equal(t, result, detail)
+	t.Run("injected-entropy-and-collision-policy", func(t *testing.T) {
+		createWith := func(reader io.Reader, key string) (int, map[string]any) {
+			cfg := *db.Config
+			server := httptest.NewServer(productRouterWithRandom(&cfg, &database.Database{Pool: db.Pool}, p, reader))
+			defer server.Close()
+			guard := http.DefaultTransport.(destinationTransport)
+			guard.allowed[strings.TrimPrefix(server.URL, "http://")] = true
+			return workspaceRequest(t, server.URL, token, "POST", path, key, payload)
+		}
+		code, seeded := createWith(bytes.NewReader(make([]byte, 12)), "link-entropy-seed-01")
+		require.Equal(t, 201, code)
+		entropy := &countedEntropy{reader: bytes.NewReader(append(make([]byte, 12), bytes.Repeat([]byte{1}, 12)...))}
+		code, collision := createWith(entropy, "link-entropy-retry-01")
+		require.Equal(t, 201, code)
+		require.Equal(t, 2, entropy.reads)
+		require.NotEqual(t, seeded["link"].(map[string]any)["shortUrl"], collision["link"].(map[string]any)["shortUrl"])
+		for _, item := range []struct {
+			reader io.Reader
+			key    string
+			reads  int
+		}{
+			{strings.NewReader(""), "link-entropy-failure-01", 1},
+			{bytes.NewReader(make([]byte, 11)), "link-entropy-short-01", 2},
+			{bytes.NewReader(make([]byte, 60)), "link-entropy-exhaust-01", 5},
+		} {
+			var before, after, ledger int
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM links WHERE workspace_id=$1", workspace).Scan(&before))
+			random := &countedEntropy{reader: item.reader}
+			failureCode, failureResponse := createWith(random, item.key)
+			require.Equal(t, 503, failureCode)
+			require.Equal(t, item.reads, random.reads)
+			require.Equal(t, "Links temporarily unavailable", failureResponse["message"])
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM links WHERE workspace_id=$1", workspace).Scan(&after))
+			require.Equal(t, before, after)
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE request_key=$1", item.key).Scan(&ledger))
+			require.Zero(t, ledger)
+		}
+	})
 	for _, invalidBody := range []string{`null`, `{"destination":"https://example.com","title":null}`, `{"destination":"https://example.com","extra":true}`, `{"destination":"https://example.com"} {}`, `{"destination":"https://example.com","title":"` + strings.Repeat("x", 201) + `"}`} {
 		status, _ = workspaceRequest(t, api, token, "POST", path, "link-invalid-0001", invalidBody)
 		require.Equal(t, 400, status)
@@ -538,6 +621,30 @@ func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	for _, marker := range []string{"PRIVATE-LINK-COMMIT", "PRIVATE-OTHER-CONSTRAINT", "<script>protected</script>", "https://example.com/path?q=ok"} {
 		require.NotContains(t, p.logs.String(), marker)
 	}
+}
+
+type destinationTransport struct {
+	base     http.RoundTripper
+	requests *atomic.Uint64
+	allowed  map[string]bool
+}
+
+type countedEntropy struct {
+	reader io.Reader
+	reads  int
+}
+
+func (r *countedEntropy) Read(value []byte) (int, error) {
+	r.reads++
+	return r.reader.Read(value)
+}
+
+func (d destinationTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if !d.allowed[request.URL.Host] {
+		d.requests.Add(1)
+		return nil, errors.New("destination HTTP forbidden")
+	}
+	return d.base.RoundTrip(request)
 }
 
 func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {

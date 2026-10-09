@@ -82,6 +82,9 @@ func NormalizeLinkHost(value string) (string, error) {
 		}
 	}
 	last := host[strings.LastIndexByte(host, '.')+1:]
+	if last == "localhost" || last == "local" || last == "internal" {
+		return "", errors.New("invalid link hostname")
+	}
 	if last[0] >= '0' && last[0] <= '9' || strings.HasPrefix(last, "0x") {
 		return "", errors.New("invalid link hostname")
 	}

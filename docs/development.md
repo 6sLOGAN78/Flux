@@ -6,6 +6,25 @@ tenant entities, and a dashboard belong to later phases.
 
 ## Acceptance contract
 
+The API requires `FLUX_LINKS.MANAGED_HOST` to be an operator-owned DNS hostname
+(for example your organization's short-link hostname); there is no default.
+Set the literal dot-nested key in the backend dotenv file or deployment
+environment. `apps/backend/.env.sample` documents the two link-policy
+keys. Do not deploy with the test fixture hostname `go.flux.test`.
+`FLUX_LINKS.BLOCKED_HOSTS` is an optional comma-separated list of DNS hostnames;
+entries are trimmed, IDNA-normalized and lowercased once during API startup.
+Empty entries, URLs, ports, IP literals and local/internal names fail closed.
+Redirector, worker and migrator configuration does not require these API keys.
+
+The authorized workspace response supplies the immutable managed hostname.
+Creation rejects local/private/metadata, special or reserved IP destinations,
+the managed hostname and its subdomains, and configured blocked names and their
+subdomains. Host normalization preserves encoded path/query meaning. Validation
+does not resolve DNS, fetch the destination, follow redirects or render previews.
+DNS answers are not claimed public merely because a syntactic hostname passes;
+any future destination processing must use the separately guarded transport.
+Link management does not establish redirect or analytics availability.
+
 Use `.tool-versions` for Go 1.26.9, Node 22.23.3, and Bun 1.3.14.
 `tools.lock.json` is the source for standalone quality tools, the Go generator,
 and collector version, including the required Task 3.54.0 runtime for backend
