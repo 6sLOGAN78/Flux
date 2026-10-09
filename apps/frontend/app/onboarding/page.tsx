@@ -3,8 +3,9 @@
 import { useAuth } from "@clerk/nextjs";
 import { ZWorkspaceResponse } from "@flux/zod";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { createAPI } from "../../lib/api";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 
 export default function OnboardingPage() {
   const { isLoaded, isSignedIn, sessionId, getToken } = useAuth();
@@ -12,9 +13,21 @@ export default function OnboardingPage() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirm, setConfirm] = useState(false);
   const submitting = useRef(false);
   const activeSession = useRef(sessionId);
   activeSession.current = sessionId;
+  const previousSession = useRef(sessionId);
+  useEffect(() => {
+    if (!isSignedIn || previousSession.current !== sessionId) {
+      setName("");
+      setConfirm(false);
+      setError("");
+      if (previousSession.current)
+        sessionStorage.removeItem(`flux.workspace-bootstrap.${previousSession.current}`);
+    }
+    previousSession.current = sessionId;
+  }, [isSignedIn, sessionId]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -71,6 +84,24 @@ export default function OnboardingPage() {
       ) : (
         <>
           <h1>Create your workspace</h1>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => (name ? setConfirm(true) : router.push("/workspaces"))}
+          >
+            Choose a workspace
+          </button>
+          {confirm && (
+            <ConfirmDialog
+              onStay={() => setConfirm(false)}
+              onDiscard={() => {
+                setConfirm(false);
+                setName("");
+                if (sessionId) sessionStorage.removeItem(`flux.workspace-bootstrap.${sessionId}`);
+                router.push("/workspaces");
+              }}
+            />
+          )}
           <form onSubmit={(event) => void submit(event)} aria-busy={busy}>
             <label htmlFor="workspace-name">Workspace name</label>
             <p id="workspace-help">Choose a name your team will recognize.</p>

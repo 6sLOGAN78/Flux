@@ -5,9 +5,11 @@ import { workspaceCapabilities } from "../lib/workspace";
 export function AppShell({
   workspace,
   children,
+  switcher,
 }: {
   workspace: WorkspaceResponse["workspace"];
   children: ReactNode;
+  switcher?: ReactNode;
 }) {
   const capabilities = workspaceCapabilities(workspace.role);
   return (
@@ -15,6 +17,7 @@ export function AppShell({
       <header className="auth-panel">
         <p className="wordmark">Flux</p>
         <h1>{workspace.name}</h1>
+        {switcher}
         <nav aria-label="Workspace">
           <a href={`/workspaces/${workspace.id}/links`} aria-current="page">
             Links

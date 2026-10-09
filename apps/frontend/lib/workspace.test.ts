@@ -16,10 +16,20 @@ describe("switching generations and signal-only invalidation", () => {
   test("aborts previous requests and rejects late success even when transport ignores abort", async () => {
     const requests = new WorkspaceRequests();
     const old = requests.begin();
+    let complete = (_value: string) => {};
+    let rendered = "";
+    const pending = new Promise<string>((resolve) => {
+      complete = resolve;
+    }).then((value) => {
+      if (old.current()) rendered = value;
+    });
     const next = requests.begin();
     expect(old.signal.aborted).toBe(true);
     expect(old.current()).toBe(false);
     expect(next.current()).toBe(true);
+    complete("old private tenant data");
+    await pending;
+    expect(rendered).toBe("");
     requests.clear();
     expect(next.signal.aborted).toBe(true);
     expect(next.current()).toBe(false);

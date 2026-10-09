@@ -30,10 +30,14 @@ test("switching commits selection and clears old content before the next workspa
   await page.getByLabel("Switch workspace", { exact: true }).selectOption(workspaces[1].id);
   await page.getByRole("button", { name: "Open workspace", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Switch Beta", exact: true })).toBeVisible();
-  expect(await page.locator("body").innerHTML()).not.toContain(workspaces[0].id);
+  expect(await page.getByRole("main").innerHTML()).not.toContain(workspaces[0].id);
+  expect(await page.getByRole("navigation", { name: "Workspace" }).innerHTML()).not.toContain(
+    workspaces[0].id,
+  );
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Flux", exact: true })).toBeVisible();
-  expect(await page.locator("body").innerHTML()).not.toContain(workspaces[1].id);
+  expect(await page.getByRole("main").innerHTML()).not.toContain(workspaces[1].id);
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toHaveCount(0);
 });
 
 test("switching two tabs revocation discards a held older authorized response", async ({
@@ -61,53 +65,66 @@ test("switching two tabs revocation discards a held older authorized response", 
   const started = new Promise<void>((resolve) => {
     observed = resolve;
   });
-  let hold = false;
-  for (const tab of [page, second]) {
-    await installProviderTransport(tab, fixture.client);
-    await tab.route("**/api/v1/**", async (route) => {
-      const response = await route.fetch({
-        url: `${fixture.api}${new URL(route.request().url()).pathname}`,
-      });
-      if (tab === page && hold && new URL(route.request().url()).pathname === "/api/v1/me") {
-        hold = false;
-        observed();
-        await held;
-      }
-      await route.fulfill({ response }).catch(() => {});
-    });
-    await tab.goto(`/workspaces/${workspace.id}/links`);
-    await expect(tab.getByRole("heading", { name: "Revoked Switch", exact: true })).toBeVisible();
-  }
-  hold = true;
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await started;
-  const removed = await request.post(
-    `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
-  );
-  expect(removed.status()).toBe(204);
-  await second.evaluate(() => {
-    const channel = new BroadcastChannel("flux.workspace-invalidation");
-    channel.postMessage("invalidate");
-    channel.close();
-    window.dispatchEvent(new Event("focus"));
+  let finished = () => {};
+  const completed = new Promise<void>((resolve) => {
+    finished = resolve;
   });
-  for (const tab of [page, second]) {
+  let hold = false;
+  try {
+    for (const tab of [page, second]) {
+      await installProviderTransport(tab, fixture.client);
+      await tab.route("**/api/v1/**", async (route) => {
+        const response = await route.fetch({
+          url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+        });
+        if (tab === page && hold && new URL(route.request().url()).pathname === "/api/v1/me") {
+          hold = false;
+          observed();
+          await held;
+          await route.fulfill({ response }).catch(() => {});
+          finished();
+          return;
+        }
+        await route.fulfill({ response });
+      });
+      await tab.goto(`/workspaces/${workspace.id}/links`);
+      await expect(tab.getByRole("heading", { name: "Revoked Switch", exact: true })).toBeVisible();
+    }
+    hold = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await started;
+    const removed = await request.post(
+      `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspace.id}`,
+    );
+    expect(removed.status()).toBe(204);
+    await second.evaluate(() => {
+      const channel = new BroadcastChannel("flux.workspace-invalidation");
+      channel.postMessage("invalidate");
+      channel.close();
+      window.dispatchEvent(new Event("focus"));
+    });
+    for (const tab of [page, second]) {
+      await expect(
+        tab.getByRole("heading", { name: "Choose a workspace", exact: true }),
+      ).toBeVisible();
+      await expect(
+        tab.getByText("Your workspace access changed. Choose an available workspace.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(await tab.getByRole("main").innerHTML()).not.toContain(workspace.id);
+      await expect(tab.getByRole("navigation", { name: "Workspace" })).toHaveCount(0);
+    }
+    release();
+    await completed;
     await expect(
-      tab.getByRole("heading", { name: "Choose a workspace", exact: true }),
-    ).toBeVisible();
-    await expect(
-      tab.getByText("Your workspace access changed. Choose an available workspace.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    expect(await tab.locator("body").innerHTML()).not.toContain(workspace.id);
+      page.getByRole("heading", { name: "Choose a workspace", exact: true }),
+    ).toBeFocused();
+    expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
+  } finally {
+    release();
+    await finishProviderTransport(second);
   }
-  release();
-  await expect(
-    page.getByRole("heading", { name: "Choose a workspace", exact: true }),
-  ).toBeFocused();
-  expect(await page.locator("body").innerHTML()).not.toContain(workspace.id);
-  await finishProviderTransport(second);
 });
 
 test("switching unsaved workspace name offers safe Stay and Discard without submitting", async ({
@@ -141,6 +158,55 @@ test("switching unsaved workspace name offers safe Stay and Discard without subm
     page.getByRole("heading", { name: "Choose a workspace", exact: true }),
   ).toBeVisible();
   expect(posts).toBe(0);
+});
+
+test("switching same-workspace transient refresh retains authorized content and missing resource confirms membership", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const response = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-switch-refresh-01",
+    },
+    data: { name: "Refresh Switch" },
+  });
+  expect(response.status()).toBe(201);
+  const { workspace } = await response.json();
+  let unavailable = false;
+  let missing = false;
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (unavailable && path === "/api/v1/me") {
+      await route.fulfill({ status: 503, body: "{}" });
+      return;
+    }
+    if (missing && path === `/api/v1/workspaces/${workspace.id}`) {
+      await route.fulfill({ status: 404, body: "{}" });
+      return;
+    }
+    const response = await route.fetch({ url: `${fixture.api}${path}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(page.getByRole("heading", { name: "Refresh Switch", exact: true })).toBeVisible();
+  unavailable = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "Workspace could not be loaded. Try again.",
+  );
+  await expect(page.getByRole("heading", { name: "Refresh Switch", exact: true })).toBeVisible();
+  unavailable = false;
+  missing = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Refresh Switch", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a workspace", exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test("restore uses committed authorized selection and never trusts browser values", async ({
