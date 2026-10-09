@@ -1349,3 +1349,97 @@ test("empty library creation CTA opens the real committed create flow", async ({
   await expect(page.getByText("Link created.", { exact: true })).toBeVisible();
   await expect(page.getByText("Created from empty library", { exact: true })).toBeVisible();
 });
+
+test("search returns actual literal matches, resets pages and preserves drafts on failures", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-search-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Search browser tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  for (let index = 0; index < 26; index++) {
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    const response = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+      headers: { ...headers, "Idempotency-Key": `browser-search-link-${index}` },
+      data: {
+        destination: `https://example.com/search-${index}`,
+        title: index === 0 ? "Literal 50% under_score" : "Search ordinary " + index,
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
+  let fail = false;
+  const queries: string[] = [];
+  let returnedTitles: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/workspaces/${workspace.id}/links`)) {
+      queries.push(url.search);
+      if (fail) {
+        await route.fulfill({ status: 503, json: {} });
+        return;
+      }
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (url.pathname.endsWith(`/workspaces/${workspace.id}/links`) && response.ok())
+      returnedTitles = (await response.json()).items.map((item: { title: string }) => item.title);
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  const table = page.getByRole("table", { name: "Links library" });
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await page.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  const search = page.getByLabel("Search links", { exact: true });
+  await search.fill("%");
+  await page.getByRole("button", { name: "Search links", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(table.getByRole("row").nth(1)).toContainText("Literal 50% under_score");
+  expect(returnedTitles).toEqual(["Literal 50% under_score"]);
+  expect(new URLSearchParams(queries.at(-1)).has("cursor")).toBe(false);
+  await expect(page.getByRole("button", { name: "Previous page", exact: true })).toBeDisabled();
+  fail = true;
+  await search.fill("typed draft");
+  await page.getByRole("button", { name: "Search links", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Links", exact: true }).getByRole("alert"),
+  ).toHaveText("We couldn't load links. Try again.");
+  await expect(search).toHaveValue("typed draft");
+  await expect(table.getByRole("row").nth(1)).toContainText("Literal 50% under_score");
+  fail = false;
+  await page.getByRole("button", { name: "Retry loading links", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "No matching links", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await search.fill("_");
+  await page.getByRole("button", { name: "Search links", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  expect(returnedTitles).toEqual(["Literal 50% under_score"]);
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(26);
+  await page.getByLabel("Lifecycle", { exact: true }).selectOption("deleted");
+  await expect(page.getByRole("heading", { name: "No deleted links", exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Deleted links appear here and can be restored.", { exact: true }),
+  ).toBeVisible();
+  expect(returnedTitles).toEqual([]);
+  for (const state of ["active", "disabled", "archived", "nondeleted"]) {
+    await page.getByLabel("Lifecycle", { exact: true }).selectOption(state);
+    if (["active", "nondeleted"].includes(state))
+      await expect(table.getByRole("row")).toHaveCount(26);
+    else
+      await expect(
+        page.getByRole("heading", { name: "No matching links", exact: true }),
+      ).toBeVisible();
+  }
+});

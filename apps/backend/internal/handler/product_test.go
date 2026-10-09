@@ -402,6 +402,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("custom-key", func(t *testing.T) {
 		checkCustomKey(t, api.URL, db, p)
 	})
+	t.Run("link-search", func(t *testing.T) {
+		checkLinkSearch(t, api.URL, db, p)
+	})
 	t.Run("link-library", func(t *testing.T) {
 		checkLinkLibrary(t, api.URL, db, p)
 	})
@@ -1214,7 +1217,7 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 		require.Equal(t, 200, code)
 		require.Len(t, response["items"], count)
 	}
-	for _, query := range []string{"?limit=0", "?limit=101", "?limit=-1", "?limit=1.5", "?limit=abc", "?limit=1&limit=2", "?cursor=foreign", "?cursor=", "?workspaceId=" + uuid.NewString(), "?search=%27%20OR%201%3D1--", "?state=active"} {
+	for _, query := range []string{"?limit=0", "?limit=101", "?limit=-1", "?limit=1.5", "?limit=abc", "?limit=1&limit=2", "?cursor=foreign", "?cursor=", "?workspaceId=" + uuid.NewString(), "?search=" + url.QueryEscape(strings.Repeat("x", 201)), "?state=unknown"} {
 		code, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
 		require.Equal(t, 400, code, query)
 	}
@@ -1285,4 +1288,73 @@ func checkLinkLibrary(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	status, denied := workspaceRequest(t, api, token, "GET", path+"?cursor="+url.QueryEscape(cursor), "", "")
 	require.Equal(t, 404, status, "fresh membership precedes listing")
 	require.NotContains(t, fmt.Sprint(denied), "Library 103")
+}
+
+func checkLinkSearch(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, nil)
+	paths := make([]string, 2)
+	workspaces := make([]string, 2)
+	for i := range paths {
+		code, body := workspaceRequest(t, api, token, "POST", "/workspaces", fmt.Sprintf("search-workspace-%02d", i), fmt.Sprintf(`{"name":"Search tenant %d"}`, i))
+		require.Equal(t, 201, code)
+		workspaces[i] = body["workspace"].(map[string]any)["id"].(string)
+		paths[i] = "/workspaces/" + workspaces[i] + "/links"
+	}
+	var actor string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id::text FROM users WHERE subject='user_fixture'").Scan(&actor))
+	titles := []string{"Literal 50% off", "Literal under_score", "Literal back\\slash", "Literal ' OR 1=1--", "Ordinary", "Title target"}
+	states := []string{"active", "disabled", "archived", "deleted", "active", "active"}
+	for tenant := range paths {
+		for i, title := range titles {
+			_, err := db.Pool.Exec(ctx, "INSERT INTO links(workspace_id,creator_user_id,managed_host,short_key,destination,title,lifecycle) VALUES($1,$2,'go.flux.test',$3,$4,$5,$6)", workspaces[tenant], actor, fmt.Sprintf("search-tenant-%d-key-%d", tenant, i), fmt.Sprintf("https://example.com/destination-target-%d", i), title, states[i])
+			require.NoError(t, err)
+		}
+	}
+	for _, tc := range []struct {
+		search, state string
+		count         int
+	}{
+		{"%", "nondeleted", 1}, {"_", "nondeleted", 1}, {`\`, "nondeleted", 1}, {"' OR 1=1--", "deleted", 1},
+		{"Title TARGET", "active", 1}, {"destination-target-4", "active", 1}, {"search-tenant-0-key-4", "active", 1},
+		{"", "nondeleted", 5}, {"", "active", 3}, {"", "disabled", 1}, {"", "archived", 1}, {"", "deleted", 1}, {"absent", "nondeleted", 0},
+	} {
+		code, body := workspaceRequest(t, api, token, "GET", paths[0]+"?search="+url.QueryEscape(tc.search)+"&state="+tc.state, "", "")
+		require.Equal(t, 200, code, "search %q state %s", tc.search, tc.state)
+		items := body["items"].([]any)
+		require.Len(t, items, tc.count)
+		for _, item := range items {
+			require.Equal(t, workspaces[0], item.(map[string]any)["workspaceId"])
+		}
+	}
+	code, first := workspaceRequest(t, api, token, "GET", paths[0]+"?limit=1&search=%20Literal%20&state=nondeleted", "", "")
+	require.Equal(t, 200, code)
+	cursor := first["nextCursor"].(string)
+	code, second := workspaceRequest(t, api, token, "GET", paths[0]+"?limit=1&search=Literal&state=nondeleted&cursor="+url.QueryEscape(cursor), "", "")
+	require.Equal(t, 200, code, "trimmed effective query must bind identically")
+	require.NotEqual(t, first["items"].([]any)[0].(map[string]any)["id"], second["items"].([]any)[0].(map[string]any)["id"])
+	for _, query := range []string{"?search=literal&state=nondeleted", "?search=Literal&state=active", "?search=Literalx&state=nondeleted"} {
+		code, body := workspaceRequest(t, api, token, "GET", paths[0]+query+"&cursor="+url.QueryEscape(cursor), "", "")
+		require.Equal(t, 400, code)
+		require.Equal(t, "CURSOR_INVALID", body["code"])
+	}
+	code, body := workspaceRequest(t, api, token, "GET", paths[1]+"?search=Literal&cursor="+url.QueryEscape(cursor), "", "")
+	require.Equal(t, 400, code)
+	require.Equal(t, "CURSOR_INVALID", body["code"])
+	for _, query := range []string{"?state=all", "?state=ACTIVE", "?state=", "?search=a&search=b", "?state=active&state=deleted", "?sort=title", "?search=" + url.QueryEscape(strings.Repeat("界", 201)), "?search=%FF"} {
+		code, _ := workspaceRequest(t, api, token, "GET", paths[0]+query, "", "")
+		require.Equal(t, 400, code, query)
+	}
+	code, _ = workspaceRequest(t, api, token, "GET", paths[0]+"?search="+url.QueryEscape(strings.Repeat("界", 200)), "", "")
+	require.Equal(t, 200, code)
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1", workspaces[0])
+	require.NoError(t, err)
+	code, _ = workspaceRequest(t, api, token, "GET", paths[0]+"?search=Literal&state=deleted", "", "")
+	require.Equal(t, 200, code)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", workspaces[0])
+	require.NoError(t, err)
+	code, body = workspaceRequest(t, api, token, "GET", paths[0]+"?search=Literal&cursor="+url.QueryEscape(cursor), "", "")
+	require.Equal(t, 404, code)
+	require.NotContains(t, fmt.Sprint(body), "Literal")
 }
