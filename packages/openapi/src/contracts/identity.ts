@@ -16,9 +16,9 @@ const c = initContract();
 
 export const identityContract = c.router({
   createLink: {
-    summary: "Create a safe generated-key managed-domain link",
+    summary: "Create a safe generated or custom-key managed-domain link",
     description:
-      "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
+      "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Optional ASCII customKey is lowercased and validated as 3–64 characters with system paths reserved; global collisions return KEY_UNAVAILABLE without owner data and changed canonical payload returns REQUEST_REUSE_CONFLICT. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
     path: "/api/v1/workspaces/:workspaceId/links",
     method: "POST",
     metadata: getSecurityMetadata(),

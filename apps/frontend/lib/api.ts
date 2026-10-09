@@ -18,6 +18,10 @@ export class ApiError extends Error {
   constructor(
     public readonly code: Code,
     public readonly status = 0,
+    public readonly constraint?:
+      | "KEY_UNAVAILABLE"
+      | "REQUEST_REUSE_CONFLICT"
+      | "INVALID_CUSTOM_KEY",
   ) {
     super(messages[code]);
     this.name = "ApiError";
@@ -98,7 +102,50 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
           referrerPolicy: "no-referrer",
         });
         if (!response.ok) {
-          await response.body?.cancel();
+          // Only a closed canonical code may cross the error boundary. Never
+          // expose server messages, field values or unbounded error bodies.
+          let constraint: ApiError["constraint"];
+          const reader = response.body?.getReader();
+          if (reader) {
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > 8192) {
+                  await reader.cancel();
+                  break;
+                }
+                chunks.push(value);
+              }
+              if (size <= 8192) {
+                const bytes = new Uint8Array(size);
+                let offset = 0;
+                for (const chunk of chunks) {
+                  bytes.set(chunk, offset);
+                  offset += chunk.byteLength;
+                }
+                const parsed = ZIdentityError.safeParse(
+                  JSON.parse(new TextDecoder().decode(bytes)),
+                );
+                if (parsed.success && parsed.data.status === response.status) {
+                  const code = parsed.data.code;
+                  if (
+                    (response.status === 409 &&
+                      (code === "KEY_UNAVAILABLE" || code === "REQUEST_REUSE_CONFLICT")) ||
+                    (response.status === 400 && code === "INVALID_CUSTOM_KEY")
+                  )
+                    constraint = code;
+                }
+              }
+            } catch {
+              // Invalid or interrupted error bodies retain fixed status feedback.
+            } finally {
+              reader.releaseLock();
+            }
+          }
           throw new ApiError(
             response.status === 401
               ? "unauthenticated"
@@ -108,6 +155,7 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
                   ? "unavailable"
                   : "request_failed",
             response.status,
+            constraint,
           );
         }
         if (response.status === 204) return undefined as T;
@@ -150,3 +198,4 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
     },
   };
 };
+import { ZIdentityError } from "@flux/zod";

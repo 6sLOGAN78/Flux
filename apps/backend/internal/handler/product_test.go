@@ -407,9 +407,11 @@ func TestProductActualHTTP(t *testing.T) {
 func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
 	t.Helper()
 	token := p.token(t, map[string]any{"sub": "user_custom", "sid": "sess_user_custom"})
+	otherToken := p.token(t, map[string]any{"sub": "user_custom_other", "sid": "sess_user_custom_other"})
+	tokens := []string{token, otherToken}
 	paths := make([]string, 2)
 	for i := range paths {
-		code, result := workspaceRequest(t, api, token, "POST", "/workspaces", fmt.Sprintf("custom-workspace-%02d", i), `{"name":"Custom tenant"}`)
+		code, result := workspaceRequest(t, api, tokens[i], "POST", "/workspaces", fmt.Sprintf("custom-workspace-%02d", i), `{"name":"Custom tenant"}`)
 		require.Equal(t, 201, code)
 		paths[i] = "/workspaces/" + result["workspace"].(map[string]any)["id"].(string) + "/links"
 	}
@@ -434,7 +436,7 @@ func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		var group sync.WaitGroup
 		for i := range paths {
 			group.Go(func() {
-				status, response := workspaceRequest(t, api, token, "POST", paths[i], "custom-global-0001", `{"destination":"https://example.com","customKey":"global-key"}`)
+				status, response := workspaceRequest(t, api, tokens[i], "POST", paths[i], "custom-global-0001", `{"destination":"https://example.com","customKey":"GLOBAL-KEY"}`)
 				if status == 409 {
 					require.Equal(t, "KEY_UNAVAILABLE", response["code"])
 					require.Equal(t, "This short key is unavailable. Choose another key or generate one.", response["message"])
@@ -465,12 +467,12 @@ func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		}
 		group.Wait()
 		close(responses)
-		var first map[string]any
+		var committed map[string]any
 		for response := range responses {
-			if first == nil {
-				first = response
+			if committed == nil {
+				committed = response
 			}
-			require.Equal(t, first, response)
+			require.Equal(t, committed, response)
 		}
 		var effects, ledger int
 		require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM links WHERE short_key='same-request'").Scan(&effects))
@@ -478,6 +480,28 @@ func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.Equal(t, 1, effects)
 		require.Equal(t, 1, ledger)
 	})
+	t.Run("custom-effect-ledger-rollback", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_custom_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-CUSTOM-COMMIT'; END $$; CREATE CONSTRAINT TRIGGER reject_custom_commit AFTER INSERT ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_custom_commit()`)
+		require.NoError(t, err)
+		defer func() {
+			_, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER reject_custom_commit ON links; DROP FUNCTION reject_custom_commit()")
+			require.NoError(t, dropErr)
+		}()
+		failureCode, response := workspaceRequest(t, api, token, "POST", paths[0], "custom-rollback-01", `{"destination":"https://example.com","customKey":"rolled-back"}`)
+		require.Equal(t, 503, failureCode)
+		require.Equal(t, "Links temporarily unavailable", response["message"])
+		var effects, ledger int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM links WHERE short_key='rolled-back'").Scan(&effects))
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE request_key='custom-rollback-01'").Scan(&ledger))
+		require.Zero(t, effects)
+		require.Zero(t, ledger)
+	})
+	workspace := strings.TrimSuffix(strings.TrimPrefix(paths[0], "/workspaces/"), "/links")
+	_, err := db.Pool.Exec(context.Background(), "DELETE FROM memberships WHERE workspace_id=$1", workspace)
+	require.NoError(t, err)
+	code, _ = workspaceRequest(t, api, token, "POST", paths[0], "custom-create-0001", payload)
+	require.Equal(t, 404, code, "revoked actor cannot replay custom-key outcome")
 }
 
 func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {

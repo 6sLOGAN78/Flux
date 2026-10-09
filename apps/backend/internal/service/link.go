@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -36,10 +37,15 @@ func (s *LinkService) ManagedHost() string { return s.policy.ManagedHost }
 
 // Create validates canonical payload without DNS, HTTP or preview egress.
 func (s *LinkService) Create(ctx context.Context, scope repository.Scope,
-	destination, title, key string,
+	destination, title, key, customKey string,
 ) (repository.Link, error) {
 	canonical, err := safety.ValidateDestination(destination, s.policy)
+	customKey, customOK := normalizeCustomKey(customKey)
 	keyOK, matchErr := regexp.MatchString(`^[A-Za-z0-9_-]{16,128}$`, key)
+	if !customOK {
+		return repository.Link{}, &errs.HTTPError{Code: "INVALID_CUSTOM_KEY", Status: http.StatusBadRequest,
+			Message: "Enter a valid custom short key."}
+	}
 	if err != nil || matchErr != nil || !keyOK || !utf8.ValidString(title) || utf8.RuneCountInString(title) > 200 {
 		return repository.Link{}, errs.NewBadRequestError("Enter a public HTTP(S) destination, "+
 			"a title of at most 200 characters and a valid retry key.", false, nil, nil, nil)
@@ -47,7 +53,8 @@ func (s *LinkService) Create(ctx context.Context, scope repository.Scope,
 	payload, err := json.Marshal(struct {
 		Destination string `json:"destination"`
 		Title       string `json:"title"`
-	}{canonical, title})
+		CustomKey   string `json:"customKey,omitempty"`
+	}{canonical, title, customKey})
 	if err != nil {
 		return repository.Link{}, linkFailure(err)
 	}
@@ -55,8 +62,25 @@ func (s *LinkService) Create(ctx context.Context, scope repository.Scope,
 	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
 	defer cancel()
 	result, err := s.store.Create(ctx, scope, s.policy.ManagedHost, canonical, title,
-		key, hash[:], s.workspace.RequireWrite)
+		key, customKey, hash[:], s.workspace.RequireWrite)
 	return result, linkFailure(err)
+}
+
+func normalizeCustomKey(key string) (string, bool) {
+	if key == "" {
+		return "", true
+	}
+	// Validate ASCII before case folding: Unicode lookalikes must never become keys.
+	if ok, _ := regexp.MatchString(`^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$`, key); !ok {
+		return "", false
+	}
+	key = strings.ToLower(key)
+	for _, reserved := range strings.Fields("api docs live ready static login register dashboard settings links admin") {
+		if key == reserved {
+			return "", false
+		}
+	}
+	return key, true
 }
 
 // Detail preserves durable creator provenance without granting former access.
@@ -79,8 +103,12 @@ func linkFailure(err error) error {
 		return err
 	}
 	if errors.Is(err, repository.ErrWorkspaceConflict) {
-		return &errs.HTTPError{Code: "IDEMPOTENCY_CONFLICT",
+		return &errs.HTTPError{Code: "REQUEST_REUSE_CONFLICT",
 			Message: "This retry key was used for a different request.", Status: http.StatusConflict}
+	}
+	if errors.Is(err, repository.ErrLinkKeyUnavailable) {
+		return &errs.HTTPError{Code: "KEY_UNAVAILABLE", Status: http.StatusConflict,
+			Message: "This short key is unavailable. Choose another key or generate one."}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errs.NewNotFoundError("Link not found", false, nil)

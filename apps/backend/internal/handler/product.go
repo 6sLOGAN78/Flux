@@ -141,7 +141,7 @@ func (h *ProductHandler) CreateLink(c echo.Context) error {
 		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
 	for name, value := range fields {
-		if (name != "destination" && name != "title") || string(value) == "null" {
+		if (name != "destination" && name != "title" && name != "customKey") || string(value) == "null" {
 			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 		}
 	}
@@ -160,8 +160,15 @@ func (h *ProductHandler) CreateLink(c echo.Context) error {
 	if body.Title != nil {
 		title = *body.Title
 	}
+	customKey := ""
+	if body.CustomKey != nil {
+		customKey = *body.CustomKey
+		if customKey == "" {
+			return errs.NewBadRequestError("Enter a valid custom short key.", false, nil, nil, nil)
+		}
+	}
 	item, err := h.links.Create(c.Request().Context(), scope, body.Destination, title,
-		c.Request().Header.Get("Idempotency-Key"))
+		c.Request().Header.Get("Idempotency-Key"), customKey)
 	if err != nil {
 		return err
 	}

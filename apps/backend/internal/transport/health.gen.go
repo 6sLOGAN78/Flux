@@ -132,8 +132,9 @@ func (e TransportWorkspaceRole) Valid() bool {
 	}
 }
 
-// TransportCreateLinkRequest Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.
+// TransportCreateLinkRequest Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.
 type TransportCreateLinkRequest struct {
+	CustomKey   *string `json:"customKey,omitempty"`
 	Destination string  `json:"destination"`
 	Title       *string `json:"title,omitempty"`
 }

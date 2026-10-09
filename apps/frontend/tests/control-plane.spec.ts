@@ -1,5 +1,70 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test("custom-key rejects invalid input and shows actual server collision with a fresh changed submission", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-custom-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Custom key tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const seeded = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": "browser-custom-seed" },
+    data: { destination: "https://example.com", customKey: "taken-key" },
+  });
+  expect(seeded.status()).toBe(201);
+  const submissions: { key: string | undefined; body: string | null }[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    if (route.request().method() === "POST" && route.request().url().endsWith("/links")) {
+      submissions.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postData(),
+      });
+    }
+    const response = await route.fetch({
+      url: `${fixture.api}${new URL(route.request().url()).pathname}`,
+    });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links/new`);
+  await expect(page.getByText("Managed hostname: go.flux.test", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("Destination URL", { exact: true })
+    .fill("https://example.com/custom-browser");
+  for (const value of ["a/b", "a%2fb", "a b", "aéz", "api"]) {
+    await page.getByLabel("Custom short key", { exact: true }).fill(value);
+    await page.getByRole("button", { name: "Create link", exact: true }).click();
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+      "Enter a valid custom short key.",
+    );
+    await expect(page.getByLabel("Custom short key", { exact: true })).toHaveValue(value);
+  }
+  expect(submissions).toHaveLength(0);
+  await page.getByLabel("Custom short key", { exact: true }).fill("TAKEN-KEY");
+  await expect(page.getByLabel("Custom short key", { exact: true })).toHaveValue("taken-key");
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This short key is unavailable. Choose another key or generate one.",
+  );
+  await expect(page.getByText("Link created.", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Custom short key", { exact: true }).fill("available-key");
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
+  await expect(page.getByText("Link created.", { exact: true })).toBeVisible();
+  await expect(page.getByText("https://go.flux.test/available-key", { exact: true })).toBeVisible();
+  expect(submissions).toHaveLength(2);
+  expect(submissions[0]?.key).toBeTruthy();
+  expect(submissions[1]?.key).not.toBe(submissions[0]?.key);
+});
+
 test("destination rejects reserved addresses with exact safe feedback", async ({
   page,
   request,
@@ -113,7 +178,9 @@ test("custom-key uncertain creation retries the identical committed request", as
   expect(submissions[0]?.key).toBeTruthy();
   expect(submissions[1]).toEqual(submissions[0]);
   expect(JSON.parse(submissions[0]!.body!).customKey).toBe("browser_launch");
-  await expect(page.getByText("https://go.flux.test/browser_launch", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("https://go.flux.test/browser_launch", { exact: true }),
+  ).toBeVisible();
 });
 
 test("link-create commits a generated link and opens escaped detail", async ({ page, request }) => {

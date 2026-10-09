@@ -55,11 +55,14 @@ func NewLinkRepositoryWithRandom(pool *pgxpool.Pool, random io.Reader) *LinkRepo
 // LinkAuthorize runs inside the effect transaction before any replay or link read.
 type LinkAuthorize func(context.Context, pgx.Tx, Scope) error
 
+// ErrLinkKeyUnavailable hides global key ownership from callers.
+var ErrLinkKeyUnavailable = errors.New("link key unavailable")
+
 // Create commits the effect and exact replay snapshot together, after fresh
 // workspace authorization. Actor serialization follows the shared workspace lock.
 //
 //nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
-func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destination, title, key string,
+func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destination, title, key, customKey string,
 	hash []byte, authorize LinkAuthorize,
 ) (result Link, err error) {
 	if r == nil || r.pool == nil {
@@ -94,7 +97,7 @@ func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destinat
 			return Link{}, err
 		}
 	case errors.Is(err, pgx.ErrNoRows):
-		result, err = insertGeneratedLink(ctx, tx, scope, host, destination, title, r.random)
+		result, err = r.insertLink(ctx, tx, scope, host, destination, title, customKey)
 		if err != nil {
 			return Link{}, err
 		}
@@ -115,6 +118,31 @@ func (r *LinkRepository) Create(ctx context.Context, scope Scope, host, destinat
 		return Link{}, err
 	}
 	return result, nil
+}
+
+func (r *LinkRepository) insertLink(ctx context.Context, tx pgx.Tx, scope Scope,
+	host, destination, title, customKey string,
+) (Link, error) {
+	if customKey != "" {
+		return insertCustomLink(ctx, tx, scope, host, destination, title, customKey)
+	}
+	return insertGeneratedLink(ctx, tx, scope, host, destination, title, r.random)
+}
+
+func insertCustomLink(ctx context.Context, tx pgx.Tx, scope Scope, host, destination, title, key string) (Link, error) {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, "INSERT INTO links "+
+		"(workspace_id,creator_user_id,managed_host,short_key,destination,title) "+
+		"VALUES($1,$2,$3,$4,$5,$6) RETURNING id", scope.WorkspaceID, scope.ActorID, host, key, destination, title).Scan(&id)
+	var constraint *pgconn.PgError
+	if errors.As(err, &constraint) && constraint.Code == "23505" &&
+		constraint.ConstraintName == "links_managed_host_short_key_unique" {
+		return Link{}, ErrLinkKeyUnavailable
+	}
+	if err != nil {
+		return Link{}, err
+	}
+	return readLink(ctx, tx, scope, id)
 }
 
 func insertGeneratedLink(ctx context.Context, tx pgx.Tx, scope Scope, host, destination, title string,

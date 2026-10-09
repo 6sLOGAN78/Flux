@@ -95,6 +95,10 @@ export const ZCreateLinkRequest = extendApi(
   z
     .object({
       destination: z.string().min(1).max(8192),
+      customKey: z
+        .string()
+        .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/)
+        .optional(),
       title: extendApi(
         z.string().refine((value) => [...value].length <= 200),
         { maxLength: 200 },
@@ -104,7 +108,7 @@ export const ZCreateLinkRequest = extendApi(
   {
     title: "transport.CreateLinkRequest",
     description:
-      "Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.",
+      "Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.",
   },
 );
 export const ZLinkSuspension = extendApi(

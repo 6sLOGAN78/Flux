@@ -3,8 +3,12 @@
     "schemas": {
       "transport.CreateLinkRequest": {
         "additionalProperties": false,
-        "description": "Public HTTP(S) destination, optional title of at most 200 Unicode characters. Creation never fetches the destination.",
+        "description": "Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.",
         "properties": {
+          "customKey": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$",
+            "type": "string"
+          },
           "destination": {
             "maxLength": 8192,
             "minLength": 1,
@@ -915,7 +919,7 @@
     },
     "/api/v1/workspaces/{workspaceId}/links": {
       "post": {
-        "description": "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
+        "description": "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Optional ASCII customKey is lowercased and validated as 3–64 characters with system paths reserved; global collisions return KEY_UNAVAILABLE without owner data and changed canonical payload returns REQUEST_REUSE_CONFLICT. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
         "operationId": "createLink",
         "parameters": [
           {
@@ -1054,7 +1058,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Create a safe generated-key managed-domain link",
+        "summary": "Create a safe generated or custom-key managed-domain link",
         "tags": [
           "Identity"
         ]
