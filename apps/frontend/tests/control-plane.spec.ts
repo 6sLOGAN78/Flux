@@ -1,5 +1,28 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test("workspace requires an explicit name and opens authorized Links after commit", async ({ page, request }) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  await page.route("**/api/v1/**", async (route) => {
+    const response = await route.fetch({ url: `${fixture.api}${new URL(route.request().url()).pathname}` });
+    await route.fulfill({ response });
+  });
+  await page.goto("/onboarding");
+  await expect(page.getByRole("heading", { name: "Create your workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+  await expect(page.getByLabel("Workspace name")).toBeFocused();
+  await page.getByLabel("Workspace name").fill("  Browser Growth 🚀  ");
+  await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+  await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\/links$/);
+  await expect(page.getByRole("heading", { name: "Browser Growth 🚀" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No links yet" })).toBeVisible();
+  await expect(page.getByText("Create your first link", { exact: true })).toBeVisible();
+  await expect(page.getByText("Link management is available. Redirects and analytics are not available yet.")).toBeVisible();
+  await page.goto("/workspaces/00000000-0000-4000-8000-000000000000/links");
+  await expect(page.getByText("You do not have access to this workspace.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No links yet" })).toHaveCount(0);
+});
+
 const providerAssets = new WeakMap<Page, Set<Promise<void>>>();
 
 // Only the browser harness substitutes FAPI responses. The real SDK and native

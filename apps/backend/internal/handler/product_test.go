@@ -192,6 +192,7 @@ func TestProductActualHTTP(t *testing.T) {
 	db, cleanup := fluxTesting.SetupTestDB(t)
 	defer cleanup()
 	p := newSignedProvider(t)
+	db.Config.Server.CORSAllowedOrigins = []string{fixtureParty}
 	api := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, p))
 	defer api.Close()
 	token := p.token(t, nil)
@@ -372,6 +373,67 @@ func TestProductActualHTTP(t *testing.T) {
 			require.NotContains(t, p.logs.String(), secret)
 		}
 	})
+	t.Run("workspace-bootstrap", func(t *testing.T) {
+		checkWorkspaceBootstrap(t, api.URL, db, p, token)
+	})
+}
+
+func workspaceRequest(t *testing.T, api, token, method, path, key, body string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, api+"/api/v1"+path, strings.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Origin", fixtureParty)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", key)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, "no-store", response.Header.Get("Cache-Control"))
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+	return response.StatusCode, result
+}
+
+func checkWorkspaceBootstrap(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, token string) {
+	t.Helper()
+	status, first := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"  Growth 🚀  "}`)
+	require.Equal(t, 201, status)
+	workspace := first["workspace"].(map[string]any)
+	id := workspace["id"].(string)
+	require.Equal(t, "Growth 🚀", workspace["name"])
+	require.Equal(t, "owner", workspace["role"])
+	status, repeated := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Growth 🚀"}`)
+	require.Equal(t, 201, status)
+	require.Equal(t, first, repeated)
+	status, _ = workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Changed"}`)
+	require.Equal(t, 409, status)
+	for _, body := range []string{`{"name":" "}`, `{"name":"` + strings.Repeat("界", 101) + `"}`, `{"name":"ok","extra":true}`} {
+		status, _ = workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-invalid-0001", body)
+		require.Equal(t, 400, status)
+	}
+	status, listed := workspaceRequest(t, api, token, "GET", "/workspaces", "", "")
+	require.Equal(t, 200, status)
+	require.Len(t, listed["workspaces"], 1)
+	status, summary := workspaceRequest(t, api, token, "GET", "/workspaces/"+id, "", "")
+	require.Equal(t, 200, status)
+	require.Equal(t, first, summary)
+	other := p.token(t, map[string]any{"sub": "user_other", "sid": "sess_other"})
+	status, denied := workspaceRequest(t, api, other, "GET", "/workspaces/"+id, "", "")
+	require.Equal(t, 404, status)
+	require.NotContains(t, denied, "workspace")
+	var group sync.WaitGroup
+	for range 4 {
+		group.Go(func() {
+			status, result := workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-concurrent-0001", `{"name":"Concurrent"}`)
+			require.Equal(t, 201, status)
+			require.Equal(t, "Concurrent", result["workspace"].(map[string]any)["name"])
+		})
+	}
+	group.Wait()
+	var rows int
+	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM workspaces WHERE name=$1", "Concurrent").Scan(&rows))
+	require.Equal(t, 1, rows)
 }
 
 func checkSessionMutations(t *testing.T, e *echo.Echo, token string) {
