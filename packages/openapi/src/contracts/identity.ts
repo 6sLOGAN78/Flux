@@ -7,6 +7,7 @@ import {
   ZWorkspacePreferenceRequest,
   ZCreateLinkRequest,
   ZLinkResponse,
+  ZLinksResponse,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -15,6 +16,33 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  listLinks: {
+    summary: "List a freshly authorized newest-first link library",
+    description:
+      "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Only limit is supported; supplied cursor, search, state or foreign filter fields return 400. nextCursor is null until signed pagination is implemented; no total or exhaustion claim. All responses are no-store.",
+    path: "/api/v1/workspaces/:workspaceId/links",
+    method: "GET",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid() }),
+    query: z
+      .object({
+        limit: z
+          .string()
+          .regex(/^[0-9]{1,3}$/)
+          .refine((value) => Number(value) >= 1 && Number(value) <= 100)
+          .optional(),
+        cursor: z.string().max(2048).optional(),
+      })
+      .strict(),
+    responses: {
+      200: ZLinksResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      404: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   createLink: {
     summary: "Create a safe generated or custom-key managed-domain link",
     description:

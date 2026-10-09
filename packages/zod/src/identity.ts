@@ -151,3 +151,11 @@ export const ZLinkResponse = extendApi(z.object({ link: ZLink }).strict(), {
   title: "transport.LinkResponse",
 });
 export type LinkResponse = z.infer<typeof ZLinkResponse>;
+
+export const ZLinksResponse = extendApi(
+  z
+    .object({ items: z.array(ZLink).max(100), nextCursor: z.string().max(2048).nullable() })
+    .strict(),
+  { title: "transport.LinksResponse" },
+);
+export type LinksResponse = z.infer<typeof ZLinksResponse>;

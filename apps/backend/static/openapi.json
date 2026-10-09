@@ -370,6 +370,29 @@
         "title": "transport.LinkSuspension",
         "type": "object"
       },
+      "transport.LinksResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/transport.Link"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "nextCursor": {
+            "maxLength": 2048,
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "title": "transport.LinksResponse",
+        "type": "object"
+      },
       "transport.Workspace": {
         "additionalProperties": false,
         "properties": {
@@ -918,6 +941,108 @@
       }
     },
     "/api/v1/workspaces/{workspaceId}/links": {
+      "get": {
+        "description": "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Only limit is supported; supplied cursor, search, state or foreign filter fields return 400. nextCursor is null until signed pagination is implemented; no total or exhaustion claim. All responses are no-store.",
+        "operationId": "listLinks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "pattern": "^[0-9]{1,3}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.LinksResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a freshly authorized newest-first link library",
+        "tags": [
+          "Identity"
+        ]
+      },
       "post": {
         "description": "Requires allowed Origin, JSON and Idempotency-Key. Fresh write membership is checked under workspace shared lock before actor-scoped create replay. SHA-256 canonical payload and committed response share a 24-hour ledger and atomic transaction. Twelve cryptographic random bytes yield lowercase unpadded base32 keys, with at most five retries only on the named global host/key constraint, including deleted rows. Optional ASCII customKey is lowercased and validated as 3–64 characters with system paths reserved; global collisions return KEY_UNAVAILABLE without owner data and changed canonical payload returns REQUEST_REUSE_CONFLICT. Public HTTP(S) destinations only; no fetch or preview. All responses are no-store.",
         "operationId": "createLink",

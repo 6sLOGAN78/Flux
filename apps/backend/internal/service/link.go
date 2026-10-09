@@ -117,3 +117,17 @@ func linkFailure(err error) error {
 		http.StatusText(http.StatusServiceUnavailable)), Message: "Links temporarily unavailable",
 		Status: http.StatusServiceUnavailable}, err)
 }
+
+// List returns a bounded first page; cursors and filters are not implemented yet.
+func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit int) ([]repository.Link, error) {
+	if limit < 1 || limit > 100 {
+		return nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	authorize := func(ctx context.Context, tx pgx.Tx, scope repository.Scope) error {
+		return s.workspace.RequireCapability(ctx, tx, scope, CapabilityRead)
+	}
+	items, err := s.store.List(ctx, scope, limit, authorize)
+	return items, linkFailure(err)
+}

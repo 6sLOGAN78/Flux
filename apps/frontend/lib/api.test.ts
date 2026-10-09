@@ -211,6 +211,33 @@ test("caller cancellation aborts actual fetch and never retries a mutation", asy
   expect(count).toBe(1);
 });
 
+test("bounded collection allowance accepts 100 maximally escaped destinations and rejects overflow", async () => {
+  const path = "/workspaces/00000000-0000-4000-8000-000000000001/links";
+  const row = {
+    destination: "https://example.com/?" + "&".repeat(8192 - 21),
+    title: "😀".repeat(200),
+    shortUrl: "https://" + "a".repeat(253) + "/" + "a".repeat(64),
+    creator: { email: "a".repeat(320) },
+  };
+  const body = JSON.stringify({
+    items: Array.from({ length: 100 }, () => row),
+    nextCursor: null,
+  }).replaceAll("&", "\\u0026");
+  expect(new TextEncoder().encode(body).length).toBeGreaterThan(1024 * 1024);
+  expect(new TextEncoder().encode(body).length).toBeLessThan(8 * 1024 * 1024);
+  const api = createAPI(async () => "credential", {
+    origin,
+    fetch: async () => new Response(body),
+  });
+  expect((await api.request<{ items: unknown[] }>(path)).items).toHaveLength(100);
+  await expect(api.request("/identity")).rejects.toMatchObject({ code: "unavailable" });
+  const oversized = createAPI(async () => "credential", {
+    origin,
+    fetch: async () => new Response("x".repeat(8 * 1024 * 1024 + 1)),
+  });
+  await expect(oversized.request(path)).rejects.toMatchObject({ code: "unavailable" });
+});
+
 test("deadline also bounds an unresponsive token provider and pre-aborted calls send nothing", async () => {
   const api = createAPI(() => new Promise(() => {}), { origin, timeoutMs: 15 });
   await expect(api.request("/identity")).rejects.toMatchObject({ code: "unavailable" });

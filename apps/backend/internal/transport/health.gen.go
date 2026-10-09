@@ -238,6 +238,12 @@ type TransportLinkSuspension struct {
 	Reason  string `json:"reason"`
 }
 
+// TransportLinksResponse defines model for transport.LinksResponse.
+type TransportLinksResponse struct {
+	Items      []TransportLink `json:"items"`
+	NextCursor *string         `json:"nextCursor"`
+}
+
 // TransportWorkspace defines model for transport.Workspace.
 type TransportWorkspace struct {
 	Id   string                 `json:"id"`
@@ -273,6 +279,12 @@ type HealthReadyResponse = TransportHealthReadyResponse
 // CreateWorkspaceParams defines parameters for CreateWorkspace.
 type CreateWorkspaceParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
+}
+
+// ListLinksParams defines parameters for ListLinks.
+type ListLinksParams struct {
+	Limit  *string `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // CreateLinkParams defines parameters for CreateLink.

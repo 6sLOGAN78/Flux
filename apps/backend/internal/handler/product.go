@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -264,4 +265,63 @@ func (h *ProductHandler) SelectWorkspace(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)})
+}
+
+// ListLinks accepts only a bounded first-page limit. Unsupported cursor/filter
+// fields fail closed rather than weakening tenant predicates or claiming paging.
+func (h *ProductHandler) ListLinks(c echo.Context) error {
+	scope, err := h.linkScope(c)
+	if err != nil {
+		return err
+	}
+	limit, err := linkListLimit(c.Request().URL.RawQuery)
+	if err != nil {
+		return err
+	}
+	items, err := h.links.List(c.Request().Context(), scope, limit)
+	if err != nil {
+		return err
+	}
+	response := transport.TransportLinksResponse{Items: make([]transport.TransportLink, 0, len(items))}
+	for _, item := range items {
+		response.Items = append(response.Items, linkTransport(item))
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+func linkListLimit(raw string) (int, error) {
+	const maxQueryBytes = 1024
+	const defaultLimit = 25
+	invalid := func() (int, error) {
+		return 0, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if len(raw) > maxQueryBytes {
+		return invalid()
+	}
+	query, err := url.ParseQuery(raw)
+	if err != nil {
+		return invalid()
+	}
+	for name, values := range query {
+		if name != "limit" || len(values) != 1 {
+			return invalid()
+		}
+	}
+	if !query.Has("limit") {
+		return defaultLimit, nil
+	}
+	value := query.Get("limit")
+	if len(value) > 3 || value == "" {
+		return invalid()
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return invalid()
+		}
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit < 1 || limit > 100 {
+		return invalid()
+	}
+	return limit, nil
 }

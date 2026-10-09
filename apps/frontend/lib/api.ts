@@ -159,6 +159,16 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
           );
         }
         if (response.status === 204) return undefined as T;
+        // A 100-row link library may contain 8192-byte destinations. Go's JSON
+        // encoder can expand each byte to six bytes; keep this larger allowance
+        // confined to the bounded collection GET. Other responses remain 64 KiB.
+        const maxResponseBytes =
+          (request.method ?? "GET") === "GET" &&
+          /^\/workspaces\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/links$/i.test(
+            path,
+          )
+            ? 8 * 1024 * 1024
+            : 65536;
         const reader = response.body?.getReader();
         if (!reader) throw new ApiError("unavailable");
         let size = 0;
@@ -168,7 +178,7 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
             const { done, value } = await reader.read();
             if (done) break;
             size += value.byteLength;
-            if (size > 65536) {
+            if (size > maxResponseBytes) {
               await reader.cancel();
               throw new ApiError("unavailable");
             }

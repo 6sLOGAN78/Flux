@@ -227,3 +227,52 @@ func (r *LinkRepository) Detail(ctx context.Context, scope Scope, id uuid.UUID,
 	}
 	return result, nil
 }
+
+// List reads only nondeleted rows in deterministic newest-first order after
+// fresh membership authorization under the shared workspace transaction lock.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int,
+	authorize LinkAuthorize,
+) (result []Link, err error) {
+	if r == nil || r.pool == nil {
+		return nil, errors.New("link store unavailable")
+	}
+	if limit < 1 || limit > 100 {
+		return nil, errors.New("invalid link limit")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	if err = authorize(ctx, tx, scope); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, "SELECT l.id,l.workspace_id,l.creator_user_id,l.managed_host,l.short_key,"+
+		"l.destination,l.title,u.verified_email,l.lifecycle,l.created_at,l.updated_at,l.version,"+
+		"l.suspended_at,l.suspended_by,l.suspension_reason FROM links l JOIN users u ON u.id=l.creator_user_id "+
+		"WHERE l.workspace_id=$1 AND l.lifecycle <> 'deleted' ORDER BY l.created_at DESC,l.id DESC LIMIT $2",
+		scope.WorkspaceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result = make([]Link, 0, limit)
+	for rows.Next() {
+		var item Link
+		if err = rows.Scan(&item.ID, &item.WorkspaceID, &item.CreatorID, &item.Host, &item.Key,
+			&item.Destination, &item.Title, &item.CreatorEmail, &item.Lifecycle, &item.CreatedAt,
+			&item.UpdatedAt, &item.Version, &item.SuspendedAt, &item.SuspendedBy, &item.SuspensionReason); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return result, nil
+}

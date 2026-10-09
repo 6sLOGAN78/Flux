@@ -600,7 +600,9 @@ test("workspace requires an explicit name and opens authorized Links after commi
   );
   await expect(navigation.getByRole("button", { name: "Team", exact: true })).toBeDisabled();
   await expect(navigation.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
-  await expect(page.getByText("Create your first link", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("No links have been created in this workspace.", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText("Link management is available. Redirects and analytics are not available yet."),
   ).toBeVisible();
@@ -1142,6 +1144,12 @@ test("library lists real newest-first rows with recovery and immediate membershi
         await route.fulfill({ status: 503, json: { message: "PRIVATE-LIBRARY-FAILURE" } });
         return;
       }
+      const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+      const body = await response.json();
+      // Presentation-only canonical archived state; lifecycle mutation is a later plan.
+      if (response.ok() && body.items?.[0]) body.items[0].lifecycle = "archived";
+      await route.fulfill({ response, json: body });
+      return;
     }
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
     await route.fulfill({ response });
@@ -1162,15 +1170,20 @@ test("library lists real newest-first rows with recovery and immediate membershi
     table.getByRole("link", { name: links[1].destination, exact: true }),
   ).toHaveAttribute("href", links[1].destination);
   await expect(table.locator("time").first()).toHaveAttribute("datetime", links[1].createdAt);
-  await expect(table.getByRole("row").nth(1)).toContainText("Active");
+  await expect(table.getByRole("row").nth(1)).toContainText("Archived");
+  await expect(table.getByRole("row").nth(2)).toContainText("Active");
   fail = true;
   await page.getByRole("button", { name: "Reload links", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("We couldn't load links. Try again.");
+  await expect(
+    page.getByRole("region", { name: "Links", exact: true }).getByRole("alert"),
+  ).toHaveText("We couldn't load links. Try again.");
   await expect(table).toBeVisible();
   await expect(page.getByText("PRIVATE-LIBRARY-FAILURE")).toHaveCount(0);
   fail = false;
   await page.getByRole("button", { name: "Retry loading links", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Links", exact: true }).getByRole("alert"),
+  ).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(table).toBeHidden();
   const cards = page.getByRole("list", { name: "Links library" });
@@ -1222,7 +1235,9 @@ test("library empty viewer presentation and initial failure never claim empty be
     } else await route.fulfill({ response });
   });
   await page.goto(`/workspaces/${workspace.id}/links`);
-  await expect(page.getByRole("alert")).toHaveText("We couldn't load links. Try again.");
+  await expect(
+    page.getByRole("region", { name: "Links", exact: true }).getByRole("alert"),
+  ).toHaveText("We couldn't load links. Try again.");
   await expect(page.getByRole("heading", { name: "No links yet" })).toHaveCount(0);
   fail = false;
   await page.getByRole("button", { name: "Retry loading links", exact: true }).click();
