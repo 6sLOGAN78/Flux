@@ -1335,16 +1335,19 @@ func checkLinkSearch(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	require.Equal(t, 200, code, "trimmed effective query must bind identically")
 	require.NotEqual(t, first["items"].([]any)[0].(map[string]any)["id"], second["items"].([]any)[0].(map[string]any)["id"])
 	for _, query := range []string{"?search=literal&state=nondeleted", "?search=Literal&state=active", "?search=Literalx&state=nondeleted"} {
-		code, body := workspaceRequest(t, api, token, "GET", paths[0]+query+"&cursor="+url.QueryEscape(cursor), "", "")
-		require.Equal(t, 400, code)
-		require.Equal(t, "CURSOR_INVALID", body["code"])
+		changedCode, changedBody := workspaceRequest(t, api, token, "GET", paths[0]+query+"&cursor="+url.QueryEscape(cursor), "", "")
+		require.Equal(t, 400, changedCode)
+		require.Equal(t, "CURSOR_INVALID", changedBody["code"])
 	}
 	code, body := workspaceRequest(t, api, token, "GET", paths[1]+"?search=Literal&cursor="+url.QueryEscape(cursor), "", "")
 	require.Equal(t, 400, code)
 	require.Equal(t, "CURSOR_INVALID", body["code"])
-	for _, query := range []string{"?state=all", "?state=ACTIVE", "?state=", "?search=a&search=b", "?state=active&state=deleted", "?sort=title", "?search=" + url.QueryEscape(strings.Repeat("界", 201)), "?search=%FF"} {
-		code, _ := workspaceRequest(t, api, token, "GET", paths[0]+query, "", "")
-		require.Equal(t, 400, code, query)
+	code, foreignOnly := workspaceRequest(t, api, token, "GET", paths[1]+"?search=search-tenant-0-key", "", "")
+	require.Equal(t, 200, code)
+	require.Empty(t, foreignOnly["items"])
+	for _, query := range []string{"?state=all", "?state=ACTIVE", "?state=", "?search=a&search=b", "?state=active&state=deleted", "?sort=title", "?search=" + url.QueryEscape(strings.Repeat("界", 201)), "?search=%FF", "?search=%00", "?search=" + url.QueryEscape(strings.Repeat(" ", 201))} {
+		invalidCode, _ := workspaceRequest(t, api, token, "GET", paths[0]+query, "", "")
+		require.Equal(t, 400, invalidCode, query)
 	}
 	code, _ = workspaceRequest(t, api, token, "GET", paths[0]+"?search="+url.QueryEscape(strings.Repeat("界", 200)), "", "")
 	require.Equal(t, 200, code)

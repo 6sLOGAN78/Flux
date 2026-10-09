@@ -7,6 +7,7 @@ import {
   localLinkTime,
   LinkPages,
   invalidCursor,
+  normalizeLinkSearch,
 } from "./links";
 
 describe("link presentation uses safe syntax and exact feedback", () => {
@@ -59,4 +60,12 @@ test("pagination remembers successful positions and resets on exact scope change
     expect(pages.next).toBeNull();
   }
   expect(invalidCursor).toBe("This page is no longer available. Return to the first page.");
+});
+
+test("search normalization preserves literal and exact interior query text", () => {
+  expect(normalizeLinkSearch("\u0085\u2003 50% under_score \\ path \u2028")).toBe(
+    "50% under_score \\ path",
+  );
+  expect(normalizeLinkSearch("a  B")).toBe("a  B");
+  expect(normalizeLinkSearch("\ufeffa\ufeff")).toBe("\ufeffa\ufeff");
 });

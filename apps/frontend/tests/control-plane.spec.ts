@@ -1379,6 +1379,18 @@ test("search returns actual literal matches, resets pages and preserves drafts o
     expect(response.status()).toBe(201);
   }
   let fail = false;
+  let releaseSlow: (() => void) | undefined;
+  const heldSlow = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+  let observedSlow: (() => void) | undefined;
+  const slowStarted = new Promise<void>((resolve) => {
+    observedSlow = resolve;
+  });
+  let finishedSlow: (() => void) | undefined;
+  const slowFinished = new Promise<void>((resolve) => {
+    finishedSlow = resolve;
+  });
   const queries: string[] = [];
   let returnedTitles: string[] = [];
   await page.route("**/api/v1/**", async (route) => {
@@ -1391,6 +1403,18 @@ test("search returns actual literal matches, resets pages and preserves drafts o
       }
     }
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (
+      url.pathname.endsWith(`/workspaces/${workspace.id}/links`) &&
+      url.searchParams.get("search") === "ordinary"
+    ) {
+      observedSlow?.();
+      await heldSlow;
+      // The new generation aborts this old browser transport; still deliver its
+      // actual backend response when possible to prove it cannot repaint rows.
+      await route.fulfill({ response }).catch(() => {});
+      finishedSlow?.();
+      return;
+    }
     if (url.pathname.endsWith(`/workspaces/${workspace.id}/links`) && response.ok())
       returnedTitles = (await response.json()).items.map((item: { title: string }) => item.title);
     await route.fulfill({ response });
@@ -1425,6 +1449,18 @@ test("search returns actual literal matches, resets pages and preserves drafts o
   await page.getByRole("button", { name: "Search links", exact: true }).click();
   await expect(table.getByRole("row")).toHaveCount(2);
   expect(returnedTitles).toEqual(["Literal 50% under_score"]);
+  await search.fill("ordinary");
+  await page.getByRole("button", { name: "Search links", exact: true }).click();
+  await slowStarted;
+  await expect(page.getByText("Loading links…", { exact: true })).toBeVisible();
+  await search.fill("%");
+  await page.getByRole("button", { name: "Search links", exact: true }).click();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(page.getByText("Loading links…", { exact: true })).toHaveCount(0);
+  releaseSlow?.();
+  await slowFinished;
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(table.getByRole("row").nth(1)).toContainText("Literal 50% under_score");
   await page.getByRole("button", { name: "Clear search", exact: true }).click();
   await expect(table.getByRole("row")).toHaveCount(26);
   await page.getByLabel("Lifecycle", { exact: true }).selectOption("deleted");

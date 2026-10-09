@@ -126,7 +126,7 @@ func linkFailure(err error) error {
 
 // List freshly authorizes caller scope and seeks using a verified query-bound position.
 func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit int,
-	cursor string,
+	cursor, search, state string,
 ) ([]repository.Link, *string, error) {
 	if limit < 1 || limit > 100 {
 		return nil, nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
@@ -134,7 +134,19 @@ func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit in
 	if len(s.cursorKey) != sha256.Size {
 		return nil, nil, linkFailure(errors.New("cursor signing unavailable"))
 	}
-	filters := CursorFilters{State: "nondeleted"}
+	if !utf8.ValidString(search) || utf8.RuneCountInString(search) > 200 || strings.ContainsRune(search, 0) {
+		return nil, nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	search = strings.TrimSpace(search)
+	if state == "" {
+		state = "nondeleted"
+	}
+	switch state {
+	case "nondeleted", "active", "disabled", "archived", "deleted":
+	default:
+		return nil, nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	filters := CursorFilters{State: state, Search: search}
 	var position *repository.LinkPosition
 	var err error
 	if cursor != "" {
@@ -148,7 +160,7 @@ func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit in
 	authorize := func(ctx context.Context, tx pgx.Tx, scope repository.Scope) error {
 		return s.workspace.RequireCapability(ctx, tx, scope, CapabilityRead)
 	}
-	items, err := s.store.List(ctx, scope, limit+1, position, authorize)
+	items, err := s.store.List(ctx, scope, limit+1, position, search, state, authorize)
 	if err != nil {
 		return nil, nil, linkFailure(err)
 	}

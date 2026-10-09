@@ -165,3 +165,28 @@ export const ZLinksResponse = extendApi(
   { title: "transport.LinksResponse" },
 );
 export type LinksResponse = z.infer<typeof ZLinksResponse>;
+
+// Canonical query contract: Go normalizes surrounding Unicode whitespace before
+// binding the exact search text and lifecycle into its signed cursor.
+export const ZLinkListQuery = extendApi(
+  z
+    .object({
+      limit: z
+        .string()
+        .regex(/^[0-9]{1,3}$/)
+        .refine((value) => Number(value) >= 1 && Number(value) <= 100)
+        .optional(),
+      cursor: z.string().min(1).max(2048).optional(),
+      search: extendApi(
+        z.string().refine((value) => [...value].length <= 200 && !value.includes("\0")),
+        {
+          maxLength: 200,
+          description:
+            "Literal case-insensitive substring across short key, title or destination; surrounding Unicode whitespace is trimmed. Maximum 200 Unicode characters.",
+        },
+      ).optional(),
+      state: z.enum(["nondeleted", "active", "disabled", "archived", "deleted"]).optional(),
+    })
+    .strict(),
+  { title: "transport.LinkListQuery" },
+);

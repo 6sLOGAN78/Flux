@@ -59,3 +59,7 @@ export class LinkPages {
     return this.cursors[this.index - 1];
   }
 }
+
+// Match Go strings.TrimSpace: Unicode White_Space, preserving exact inner text.
+export const normalizeLinkSearch = (value: string): string =>
+  value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");

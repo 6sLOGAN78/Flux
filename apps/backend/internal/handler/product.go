@@ -267,17 +267,17 @@ func (h *ProductHandler) SelectWorkspace(c echo.Context) error {
 	return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(item)})
 }
 
-// ListLinks accepts bounded signed pagination; unsupported filters fail closed.
+// ListLinks accepts bounded literal search, closed lifecycle and signed pagination.
 func (h *ProductHandler) ListLinks(c echo.Context) error {
 	scope, err := h.linkScope(c)
 	if err != nil {
 		return err
 	}
-	limit, cursor, err := linkListQuery(c.Request().URL.RawQuery)
+	limit, cursor, filters, err := linkListQuery(c.Request().URL.RawQuery)
 	if err != nil {
 		return err
 	}
-	items, next, err := h.links.List(c.Request().Context(), scope, limit, cursor)
+	items, next, err := h.links.List(c.Request().Context(), scope, limit, cursor, filters.Search, filters.State)
 	if err != nil {
 		return err
 	}
@@ -288,14 +288,13 @@ func (h *ProductHandler) ListLinks(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func linkListQuery(raw string) (int, string, error) {
+func linkListQuery(raw string) (int, string, service.CursorFilters, error) {
 	const maxQueryBytes = 8192
-	const defaultLimit = 25
-	invalid := func() (int, string, error) {
-		return 0, "", errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	invalid := func() (int, string, service.CursorFilters, error) {
+		return 0, "", service.CursorFilters{}, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
-	invalidCursor := func() (int, string, error) {
-		return 0, "", &errs.HTTPError{Code: "CURSOR_INVALID", Status: http.StatusBadRequest,
+	invalidCursor := func() (int, string, service.CursorFilters, error) {
+		return 0, "", service.CursorFilters{}, &errs.HTTPError{Code: "CURSOR_INVALID", Status: http.StatusBadRequest,
 			Message: "This page is no longer available. Return to the first page."}
 	}
 	if len(raw) > maxQueryBytes {
@@ -306,29 +305,39 @@ func linkListQuery(raw string) (int, string, error) {
 		return invalid()
 	}
 	for name, values := range query {
-		if (name != "limit" && name != "cursor") || len(values) != 1 {
+		if (name != "limit" && name != "cursor" && name != "search" && name != "state") || len(values) != 1 {
 			return invalid()
 		}
+	}
+	filters := service.CursorFilters{Search: query.Get("search"), State: query.Get("state")}
+	if query.Has("state") && filters.State == "" {
+		return invalid()
 	}
 	cursor := query.Get("cursor")
 	if query.Has("cursor") && (cursor == "" || len(cursor) > 2048) {
 		return invalidCursor()
 	}
+	limit, ok := linkListLimit(query)
+	if !ok {
+		return invalid()
+	}
+	return limit, cursor, filters, nil
+}
+
+func linkListLimit(query url.Values) (int, bool) {
+	const defaultLimit = 25
 	if !query.Has("limit") {
-		return defaultLimit, cursor, nil
+		return defaultLimit, true
 	}
 	value := query.Get("limit")
 	if len(value) > 3 || value == "" {
-		return invalid()
+		return 0, false
 	}
 	for _, digit := range value {
 		if digit < '0' || digit > '9' {
-			return invalid()
+			return 0, false
 		}
 	}
 	limit, err := strconv.Atoi(value)
-	if err != nil || limit < 1 || limit > 100 {
-		return invalid()
-	}
-	return limit, cursor, nil
+	return limit, err == nil && limit >= 1 && limit <= 100
 }

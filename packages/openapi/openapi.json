@@ -944,7 +944,7 @@
     },
     "/api/v1/workspaces/{workspaceId}/links": {
       "get": {
-        "description": "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Search, state and foreign filter fields remain unsupported and return 400. No totals. All responses are no-store.",
+        "description": "All current Flux members, including viewers, may search and filter scoped links. Default state is nondeleted; closed states are nondeleted, active, disabled, archived and deleted. Search is a literal case-insensitive substring of short key, title or destination, with SQL wildcards escaped and a maximum of 200 Unicode characters. Surrounding Unicode whitespace is trimmed before exact query fingerprinting. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Changed normalized search or lifecycle rejects an existing cursor with CURSOR_INVALID. Duplicate, invalid or unknown query fields return 400. 429 responses include Retry-After and rate-limit metadata. No totals. All responses are no-store.",
         "operationId": "listLinks",
         "parameters": [
           {
@@ -970,6 +970,29 @@
             "schema": {
               "maxLength": 2048,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Literal case-insensitive substring across short key, title or destination; surrounding Unicode whitespace is trimmed. Maximum 200 Unicode characters.",
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "enum": [
+                "nondeleted",
+                "active",
+                "disabled",
+                "archived",
+                "deleted"
+              ],
               "type": "string"
             }
           }

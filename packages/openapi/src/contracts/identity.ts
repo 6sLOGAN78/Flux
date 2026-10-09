@@ -8,6 +8,7 @@ import {
   ZCreateLinkRequest,
   ZLinkResponse,
   ZLinksResponse,
+  ZLinkListQuery,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -19,21 +20,12 @@ export const identityContract = c.router({
   listLinks: {
     summary: "List a freshly authorized newest-first link library",
     description:
-      "All current Flux members may read nondeleted links. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Search, state and foreign filter fields remain unsupported and return 400. No totals. All responses are no-store.",
+      "All current Flux members, including viewers, may search and filter scoped links. Default state is nondeleted; closed states are nondeleted, active, disabled, archived and deleted. Search is a literal case-insensitive substring of short key, title or destination, with SQL wildcards escaped and a maximum of 200 Unicode characters. Surrounding Unicode whitespace is trimmed before exact query fingerprinting. Defaults to 25 items, maximum 100, ordered createdAt descending then UUID descending. Fresh SQL workspace membership and tenant predicates are mandatory. Signed version-1 opaque cursors bind workspace, effective filter fingerprint, timestamp and UUID with HMAC-SHA256; they never grant membership. Fetches limit plus one and emits nextCursor only when an extra row exists. Malformed, oversized, tampered, foreign or mismatched cursors return 400 CURSOR_INVALID: This page is no longer available. Return to the first page. Changed normalized search or lifecycle rejects an existing cursor with CURSOR_INVALID. Duplicate, invalid or unknown query fields return 400. 429 responses include Retry-After and rate-limit metadata. No totals. All responses are no-store.",
     path: "/api/v1/workspaces/:workspaceId/links",
     method: "GET",
     metadata: getSecurityMetadata(),
     pathParams: z.object({ workspaceId: z.string().uuid() }),
-    query: z
-      .object({
-        limit: z
-          .string()
-          .regex(/^[0-9]{1,3}$/)
-          .refine((value) => Number(value) >= 1 && Number(value) <= 100)
-          .optional(),
-        cursor: z.string().min(1).max(2048).optional(),
-      })
-      .strict(),
+    query: ZLinkListQuery,
     responses: {
       200: ZLinksResponse,
       400: ZIdentityError,

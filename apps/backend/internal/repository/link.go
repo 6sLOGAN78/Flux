@@ -234,12 +234,12 @@ type LinkPosition struct {
 	ID        uuid.UUID
 }
 
-// List reads only nondeleted rows in deterministic newest-first order after
+// List reads scoped literal-search/lifecycle matches in newest-first order after
 // fresh membership authorization under the shared workspace transaction lock.
 //
 //nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
 func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int, position *LinkPosition,
-	authorize LinkAuthorize,
+	search, state string, authorize LinkAuthorize,
 ) (result []Link, err error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("link store unavailable")
@@ -263,10 +263,11 @@ func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int, posit
 	rows, err := tx.Query(ctx, "SELECT l.id,l.workspace_id,l.creator_user_id,l.managed_host,l.short_key,"+
 		"l.destination,l.title,u.verified_email,l.lifecycle,l.created_at,l.updated_at,l.version,"+
 		"l.suspended_at,l.suspended_by,l.suspension_reason FROM links l JOIN users u ON u.id=l.creator_user_id "+
-		"WHERE l.workspace_id=$1 AND l.lifecycle <> 'deleted' "+
+		"WHERE l.workspace_id=$1 AND (($6='nondeleted' AND l.lifecycle <> 'deleted') OR l.lifecycle=$6) "+
+		"AND ($5='' OR l.short_key ILIKE $5 ESCAPE '!' OR l.title ILIKE $5 ESCAPE '!' OR l.destination ILIKE $5 ESCAPE '!') "+
 		"AND ($3::timestamptz IS NULL OR (l.created_at,l.id) < ($3::timestamptz,$4::uuid)) "+
 		"ORDER BY l.created_at DESC,l.id DESC LIMIT $2",
-		scope.WorkspaceID, limit, createdAt, id)
+		scope.WorkspaceID, limit, createdAt, id, linkSearchPattern(search), state)
 	if err != nil {
 		return nil, err
 	}
@@ -288,4 +289,13 @@ func (r *LinkRepository) List(ctx context.Context, scope Scope, limit int, posit
 		return nil, err
 	}
 	return result, nil
+}
+
+// linkSearchPattern treats SQL pattern metacharacters as literal user text.
+// A dedicated escape character also keeps backslashes literal.
+func linkSearchPattern(search string) string {
+	if search == "" {
+		return ""
+	}
+	return "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(search) + "%"
 }

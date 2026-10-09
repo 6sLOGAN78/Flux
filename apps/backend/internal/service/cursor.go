@@ -20,7 +20,7 @@ import (
 const maxCursorBytes = 2048
 
 // CursorFilters binds the exact effective collection query, independently of
-// page size. Search and lifecycle filtering remain unsupported by the endpoint.
+// page size. Search is normalized before signing; lifecycle is a closed value.
 type CursorFilters struct {
 	Search string `json:"search"`
 	State  string `json:"state"`

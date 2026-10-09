@@ -86,22 +86,22 @@ func (e TransportIdentityResponseAuthenticated) Valid() bool {
 
 // Defines values for TransportLinkLifecycle.
 const (
-	Active   TransportLinkLifecycle = "active"
-	Archived TransportLinkLifecycle = "archived"
-	Deleted  TransportLinkLifecycle = "deleted"
-	Disabled TransportLinkLifecycle = "disabled"
+	TransportLinkLifecycleActive   TransportLinkLifecycle = "active"
+	TransportLinkLifecycleArchived TransportLinkLifecycle = "archived"
+	TransportLinkLifecycleDeleted  TransportLinkLifecycle = "deleted"
+	TransportLinkLifecycleDisabled TransportLinkLifecycle = "disabled"
 )
 
 // Valid indicates whether the value is a known member of the TransportLinkLifecycle enum.
 func (e TransportLinkLifecycle) Valid() bool {
 	switch e {
-	case Active:
+	case TransportLinkLifecycleActive:
 		return true
-	case Archived:
+	case TransportLinkLifecycleArchived:
 		return true
-	case Deleted:
+	case TransportLinkLifecycleDeleted:
 		return true
-	case Disabled:
+	case TransportLinkLifecycleDisabled:
 		return true
 	default:
 		return false
@@ -126,6 +126,33 @@ func (e TransportWorkspaceRole) Valid() bool {
 	case Owner:
 		return true
 	case Viewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListLinksParamsState.
+const (
+	ListLinksParamsStateActive     ListLinksParamsState = "active"
+	ListLinksParamsStateArchived   ListLinksParamsState = "archived"
+	ListLinksParamsStateDeleted    ListLinksParamsState = "deleted"
+	ListLinksParamsStateDisabled   ListLinksParamsState = "disabled"
+	ListLinksParamsStateNondeleted ListLinksParamsState = "nondeleted"
+)
+
+// Valid indicates whether the value is a known member of the ListLinksParamsState enum.
+func (e ListLinksParamsState) Valid() bool {
+	switch e {
+	case ListLinksParamsStateActive:
+		return true
+	case ListLinksParamsStateArchived:
+		return true
+	case ListLinksParamsStateDeleted:
+		return true
+	case ListLinksParamsStateDisabled:
+		return true
+	case ListLinksParamsStateNondeleted:
 		return true
 	default:
 		return false
@@ -287,7 +314,14 @@ type CreateWorkspaceParams struct {
 type ListLinksParams struct {
 	Limit  *string `form:"limit,omitempty" json:"limit,omitempty"`
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Search Literal case-insensitive substring across short key, title or destination; surrounding Unicode whitespace is trimmed. Maximum 200 Unicode characters.
+	Search *string               `form:"search,omitempty" json:"search,omitempty"`
+	State  *ListLinksParamsState `form:"state,omitempty" json:"state,omitempty"`
 }
+
+// ListLinksParamsState defines parameters for ListLinks.
+type ListLinksParamsState string
 
 // CreateLinkParams defines parameters for CreateLink.
 type CreateLinkParams struct {

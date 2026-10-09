@@ -5,7 +5,13 @@ import { ZLinksResponse, type LinksResponse } from "@flux/zod";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, createAPI } from "../lib/api";
-import { destinationSyntaxOK, invalidCursor, LinkPages, localLinkTime } from "../lib/links";
+import {
+  destinationSyntaxOK,
+  invalidCursor,
+  LinkPages,
+  localLinkTime,
+  normalizeLinkSearch,
+} from "../lib/links";
 import { WorkspaceRequests } from "../lib/workspace";
 
 export function LinkList({
@@ -26,8 +32,11 @@ export function LinkList({
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const [cursor, setCursor] = useState<string>();
+  const [draftSearch, setDraftSearch] = useState("");
+  const [search, setSearch] = useState("");
+  const [lifecycle, setLifecycle] = useState("nondeleted");
   const pages = useRef(new LinkPages());
-  const scope = JSON.stringify({ workspaceId, state: "nondeleted", search: "" });
+  const scope = JSON.stringify({ workspaceId, state: lifecycle, search });
   pages.current.bind(scope);
   useEffect(() => {
     const request = requests.current.begin();
@@ -36,7 +45,11 @@ export function LinkList({
     void createAPI(getToken, { origin: window.location.origin })
       .request(`/workspaces/${workspaceId}/links`, {
         signal: request.signal,
-        query: cursor === undefined ? undefined : new URLSearchParams({ cursor }),
+        query: new URLSearchParams({
+          search,
+          state: lifecycle,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
       })
       .then((value) => {
         const response = ZLinksResponse.parse(value);
@@ -59,7 +72,21 @@ export function LinkList({
         if (request.current()) setLoading(false);
       });
     return () => requests.current.clear();
-  }, [workspaceId, scope, cursor, getToken, attempt]);
+  }, [workspaceId, scope, cursor, getToken, attempt, search, lifecycle]);
+  const commitFilters = (nextSearch: string, nextLifecycle: string) => {
+    // Invalidate immediately; even a completion before the next effect is stale.
+    requests.current.clear();
+    setLoading(true);
+    setError("");
+    setSearch(normalizeLinkSearch(nextSearch));
+    setLifecycle(nextLifecycle);
+    setCursor(undefined);
+    setAttempt((value) => value + 1);
+  };
+  const clearFilters = () => {
+    setDraftSearch("");
+    commitFilters("", "nondeleted");
+  };
   const title = (item: LinksResponse["items"][number]) => (
     <Link href={`/workspaces/${workspaceId}/links/${item.id}`}>
       {item.title || "Untitled link"}
@@ -87,6 +114,46 @@ export function LinkList({
       <h2 id="links-library-title">Links</h2>
       <p>Link management is available. Redirects and analytics are not available yet.</p>
       {!canCreate && <p>You have view-only access. Ask an owner or admin to change your role.</p>}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          commitFilters(draftSearch, lifecycle);
+        }}
+      >
+        <label htmlFor="link-search">Search links</label>
+        <input
+          id="link-search"
+          type="search"
+          value={draftSearch}
+          aria-describedby="link-search-help"
+          onChange={(event) => setDraftSearch(event.target.value)}
+        />
+        <p id="link-search-help">Search short keys, titles, or destinations</p>
+        <button type="submit">Search links</button>
+        <button
+          type="button"
+          onClick={() => {
+            setDraftSearch("");
+            commitFilters("", lifecycle);
+          }}
+        >
+          Clear search
+        </button>
+        <label htmlFor="link-lifecycle">Lifecycle</label>
+        <select
+          id="link-lifecycle"
+          value={lifecycle}
+          onChange={(event) => {
+            commitFilters(search, event.target.value);
+          }}
+        >
+          <option value="nondeleted">All nondeleted</option>
+          <option value="active">Active</option>
+          <option value="disabled">Disabled</option>
+          <option value="archived">Archived</option>
+          <option value="deleted">Deleted</option>
+        </select>
+      </form>
       {loading && <p role="status">Loading links…</p>}
       {error && <p role="alert">{error}</p>}
       {error === invalidCursor && (
@@ -104,15 +171,39 @@ export function LinkList({
       <button type="button" disabled={loading} onClick={() => setAttempt((value) => value + 1)}>
         {error ? "Retry loading links" : "Reload links"}
       </button>
-      {items?.length === 0 && !pages.current.canPrevious && (
-        <>
-          <h3>No links yet</h3>
-          <p>Create a managed-domain link to organize its destination and status.</p>
-          {canCreate && (
-            <Link href={`/workspaces/${workspaceId}/links/new`}>Create your first link</Link>
-          )}
-        </>
-      )}
+      {!loading &&
+        !error &&
+        items?.length === 0 &&
+        !pages.current.canPrevious &&
+        (search !== "" || lifecycle !== "nondeleted") && (
+          <>
+            <h3>
+              {search === "" && lifecycle === "deleted" ? "No deleted links" : "No matching links"}
+            </h3>
+            <p>
+              {search === "" && lifecycle === "deleted"
+                ? "Deleted links appear here and can be restored."
+                : "Try a different search or clear your filters."}
+            </p>
+            <button type="button" onClick={clearFilters}>
+              Clear filters
+            </button>
+          </>
+        )}
+      {!loading &&
+        !error &&
+        items?.length === 0 &&
+        !pages.current.canPrevious &&
+        search === "" &&
+        lifecycle === "nondeleted" && (
+          <>
+            <h3>No links yet</h3>
+            <p>Create a managed-domain link to organize its destination and status.</p>
+            {canCreate && (
+              <Link href={`/workspaces/${workspaceId}/links/new`}>Create your first link</Link>
+            )}
+          </>
+        )}
       {items && items.length > 0 && (
         <>
           <p>Newest links first. Showing up to 25 links.</p>
