@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-10-09T10:12:34.647Z"
+stopped_at: Completed 02-08-PLAN.md
+last_updated: "2026-10-09T10:13:21.744Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
@@ -81,6 +81,7 @@ Progress: [█████░░░░░] 53%
 | Phase 2 P05 | 12min | 2 tasks | 15 files |
 | Phase 2 P06 | 26min | 2 tasks | 20 files |
 | Phase 2 P07 | 15min | 2 tasks | 16 files |
+| Phase 2 P08 | 15min | 2 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Standalone browser execution builds its canonical schema dependency; the first-link CTA remains disabled until 02-14 implements creation. — Prevent stale dist from substituting for authored contracts and avoid inventing an absent production route.
 - [Phase 2]: Authorize current workspace membership before bootstrap hash comparison; actor-scoped cleanup removes only expired ledger records. — Preserve safe denial, database-enforced minimum 24-hour retention and workspace-first lock ordering.
 - [Phase 2]: Consume the explicit repository registry and show authorized Team availability without inventing an endpoint. — Native Links shell is reachable; actual Team operations remain plan 02-16, first-link creation 02-14 and live provider acceptance 02-35.
+- [Phase 2]: Derive restored selection from the same current membership snapshot as the chooser; a stored preference never grants authority or exposes removed workspace identifiers.
+- [Phase 2]: Select under the existing workspace-first shared lock and recheck membership before saving the preference; creation commits its initial preference atomically.
+- [Phase 2]: Keep provider-only unit bootstrap substitution strictly test-local; all product and browser fixtures use real migrated PostgreSQL and production middleware.
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T10:12:34.635Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-10-09T10:13:21.734Z
+Stopped at: Completed 02-08-PLAN.md
 Resume file: None
