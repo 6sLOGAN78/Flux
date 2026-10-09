@@ -409,6 +409,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("team", func(t *testing.T) {
 		checkTeam(t, api.URL, db, p)
 	})
+	t.Run("roles", func(t *testing.T) {
+		checkTeamRoles(t, api.URL, db, p)
+	})
 	t.Run("link-library", func(t *testing.T) {
 		checkLinkLibrary(t, api.URL, db, p)
 	})
@@ -416,6 +419,153 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
+}
+
+func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_roles", "sid": "sess_user_roles", "org_role": "org:owner"})
+	other := p.token(t, map[string]any{"sub": "user_roles_other", "sid": "sess_user_roles_other"})
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "roles-workspace-0001", `{"name":"Role tenant"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	status, foreign := workspaceRequest(t, api, other, "POST", "/workspaces", "roles-workspace-0002", `{"name":"Foreign role tenant"}`)
+	require.Equal(t, 201, status)
+	f := foreign["workspace"].(map[string]any)["id"].(string)
+	var actor, target string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT user_id::text FROM memberships WHERE workspace_id=$1", w).Scan(&actor))
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT user_id::text FROM memberships WHERE workspace_id=$1", f).Scan(&target))
+	path := "/workspaces/" + w + "/members/" + target
+	status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-foreign-0001", `{"role":"member"}`)
+	require.Equal(t, 404, status)
+	_, err := db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'member',$3)", w, target, actor)
+	require.NoError(t, err)
+	for _, actorRole := range []string{"owner", "admin", "member", "viewer"} {
+		for _, current := range []string{"owner", "admin", "member", "viewer"} {
+			for _, grant := range []string{"owner", "admin", "member", "viewer"} {
+				t.Run(actorRole+"-"+current+"-"+grant, func(t *testing.T) {
+					_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN $3 ELSE $4 END WHERE workspace_id=$1", w, actor, actorRole, current)
+					require.NoError(t, err)
+					status, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-matrix-"+uuid.NewString(), `{"role":"`+grant+`"}`)
+					allowed := actorRole == "owner" || (actorRole == "admin" && (current == "member" || current == "viewer") && (grant == "member" || grant == "viewer"))
+					if allowed {
+						require.Equal(t, 200, status)
+					} else {
+						require.Equal(t, 403, status)
+					}
+					var actual string
+					require.NoError(t, db.Pool.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, target).Scan(&actual))
+					if allowed {
+						require.Equal(t, grant, actual)
+					} else {
+						require.Equal(t, current, actual)
+					}
+					time.Sleep(70 * time.Millisecond)
+				})
+			}
+		}
+	}
+	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN 'owner' ELSE 'member' END WHERE workspace_id=$1", w, actor)
+	require.NoError(t, err)
+	self := "/workspaces/" + w + "/members/" + actor
+	status, denied := workspaceRequest(t, api, token, "PATCH", self, "roles-last-owner-0001", `{"role":"admin"}`)
+	require.Equal(t, 409, status)
+	require.Equal(t, "OWNER_REQUIRED", denied["code"])
+	for _, body := range []string{`{"role":"bogus"}`, `{"role":null}`, `{"role":"member","workspaceId":"` + f + `"}`, `null`, `{"role":"member"} {}`} {
+		status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-invalid-0001", body)
+		require.Equal(t, 400, status)
+	}
+	status, first := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
+	require.Equal(t, 200, status)
+	status, replay := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
+	require.Equal(t, 200, status)
+	require.Equal(t, first, replay)
+	status, denied = workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"admin"}`)
+	require.Equal(t, 409, status)
+	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key='roles-replay-0001' AND operation='member.role' AND retain_until >= created_at+interval '24 hours'", w).Scan(&count))
+	require.Equal(t, 1, count)
+	// Serialize both current owners behind a real workspace lock, then release.
+	lock, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
+	require.NoError(t, err)
+	results := make(chan int, 2)
+	go func() {
+		code, _ := workspaceRequest(t, api, token, "PATCH", self, "roles-race-0001", `{"role":"member"}`)
+		results <- code
+	}()
+	go func() {
+		code, _ := workspaceRequest(t, api, other, "PATCH", path, "roles-race-0002", `{"role":"member"}`)
+		results <- code
+	}()
+	require.Eventually(t, func() bool {
+		var waiting int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'").Scan(&waiting) == nil && waiting >= 2
+	}, 2*time.Second, 10*time.Millisecond)
+	require.NoError(t, lock.Commit(ctx))
+	a, b := <-results, <-results
+	require.ElementsMatch(t, []int{200, 409}, []int{a, b})
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND role='owner'", w).Scan(&count))
+	require.Equal(t, 1, count)
+	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN 'owner' ELSE 'member' END WHERE workspace_id=$1", w, actor)
+	require.NoError(t, err)
+	checkRoleRollback(t, api, db, p, token, w, path, target)
+	// A pending operation must see the actor role committed before its lock.
+	lock, err = db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
+	require.NoError(t, err)
+	go func() {
+		code, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"viewer"}`)
+		results <- code
+	}()
+	require.Eventually(t, func() bool {
+		var waiting int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'").Scan(&waiting) == nil && waiting >= 1
+	}, 2*time.Second, 10*time.Millisecond)
+	_, err = lock.Exec(ctx, "UPDATE memberships SET role='member' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	require.NoError(t, lock.Commit(ctx))
+	require.Equal(t, 403, <-results, "fresh authorization precedes changed-hash replay")
+	for _, grant := range []string{"owner", "admin", "member", "viewer"} {
+		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+		require.NoError(t, err)
+		status, _ = workspaceRequest(t, api, token, "PATCH", self, "roles-self-"+uuid.NewString(), `{"role":"`+grant+`"}`)
+		require.Equal(t, 403, status, "admin cannot manage self or escalate")
+	}
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
+	require.Equal(t, 404, status)
+	_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='tampered' WHERE workspace_id=$1", w)
+	require.Error(t, err)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM audit_events WHERE workspace_id=$1", w)
+	require.Error(t, err)
+	require.NotContains(t, p.logs.String(), "Role tenant")
+}
+
+func checkRoleRollback(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, token, workspace, path, target string) {
+	t.Helper()
+	ctx := context.Background()
+	var before int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", workspace).Scan(&before))
+	_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_role_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-ROLE-COMMIT'; END $$;
+CREATE CONSTRAINT TRIGGER reject_role_commit AFTER UPDATE ON memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_role_commit()`)
+	require.NoError(t, err)
+	status, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-rollback-0001", `{"role":"viewer"}`)
+	require.Equal(t, 503, status)
+	_, err = db.Pool.Exec(ctx, "DROP TRIGGER reject_role_commit ON memberships; DROP FUNCTION reject_role_commit()")
+	require.NoError(t, err)
+	var role string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2", workspace, target).Scan(&role))
+	require.Equal(t, "member", role)
+	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key='roles-rollback-0001'", workspace).Scan(&count))
+	require.Zero(t, count)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", workspace).Scan(&count))
+	require.Equal(t, before, count)
+	require.NotContains(t, p.logs.String(), "PRIVATE-ROLE-COMMIT")
 }
 
 func checkTeam(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
