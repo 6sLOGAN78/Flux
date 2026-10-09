@@ -1,4 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Reports can contain signed test tokens even with media capture disabled.
+// mkdtemp creates a private directory; only this process-owned path is removed.
+const browserOutput = mkdtempSync(join(tmpdir(), "flux-playwright-"));
+process.once("exit", () => rmSync(browserOutput, { recursive: true, force: true }));
 
 // Public syntactic development key, confined to the local test server. No real
 // provider secret or test-login endpoint is used by this browser harness.
@@ -6,7 +14,7 @@ export const localPublishableKey = `pk_test_${Buffer.from("fixture.clerk.account
 
 export default defineConfig({
   testDir: "./tests",
-  outputDir: "../../tmp/playwright-results",
+  outputDir: browserOutput,
   timeout: 45000,
   globalTimeout: 240000,
   retries: 0,

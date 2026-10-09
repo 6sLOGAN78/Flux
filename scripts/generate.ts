@@ -161,7 +161,9 @@ export const generate = async (options: Options = {}): Promise<void> => {
     const generated = await Promise.all(
       artifactManifest.map(async (path) => {
         try {
-          return { path, bytes: await readFile(join(stage, path)) };
+          const bytes = await readFile(join(stage, path));
+          if (!bytes.length) throw new Error();
+          return { path, bytes };
         } catch {
           throw new Error(`Generation failed: ${path}`);
         }

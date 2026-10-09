@@ -267,3 +267,25 @@ local no-Git copies explicitly report worktree-only scanning.
 Local manifest, shell, clean-install and behavior checks are evidence for these
 commands. Hosted workflow execution must be observed separately before claiming
 a remote CI pass.
+
+### Offline production identity fixture
+
+`bun run test:e2e -- --project=local --grep identity` starts the registered
+`TestBrowserProductFixture` test binary with a bounded readiness/teardown
+protocol. It uses digest-pinned migrated PostgreSQL, RSA-signed sessions and
+injected Clerk SDK JWKS/session/profile clients through the production Go router.
+The legacy `TestBearerBrowserFixture -browser-fixture` launch protocol remains
+compatible. Neither fixture ships in production binaries or accepts arbitrary
+runtime provider URLs. These tests establish internal identity behavior; live
+Clerk verification, recovery and social factors remain the final provider gate.
+
+Playwright output lives in a private OS temporary directory and is removed on
+normal process exit. Traces, screenshots and video are disabled. Root checks
+capture reports privately and require positive completed JSON results, zero
+skips/retries/flaky cases, and matching aggregate counts. Never save signed
+fixture responses or browser reports in the repository, including ignored `tmp`.
+
+Generation stages the complete authored schema/contract package sources, including
+identity, without reading stale `dist` authority. All four manifest artifacts
+must exist and be nonempty before any publication. Health aliases and generated
+bytes are preserved; identity consumers use the generated transport names.

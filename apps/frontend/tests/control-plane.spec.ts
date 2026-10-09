@@ -455,7 +455,7 @@ test("identity resolves the signed browser session to one stable internal UUID",
       .Clerk;
     const token = await clerk.session.getToken();
     const results = [];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       const response = await fetch(`${api}/api/v1/me`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "omit",
@@ -469,7 +469,7 @@ test("identity resolves the signed browser session to one stable internal UUID",
     }
     return results;
   }, fixture);
-  expect(results).toHaveLength(2);
+  expect(results).toHaveLength(3);
   const first = results[0];
   if (!first) throw new Error("The identity request did not produce a result");
   expect(first.status).toBe(200);
@@ -478,6 +478,7 @@ test("identity resolves the signed browser session to one stable internal UUID",
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
   );
   expect(results[1]).toEqual(first);
+  expect(results[2]).toEqual(first);
   expect(JSON.stringify(results)).not.toContain("user_fixture");
   expect(JSON.stringify(results)).not.toContain(fixture.token);
 });

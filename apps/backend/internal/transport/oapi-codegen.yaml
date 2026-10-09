@@ -6,7 +6,8 @@ output: internal/transport/health.gen.go
 generate:
   models: true
 output-options:
-  # Preserve schema-derived declarations; expose package-local names as aliases.
+  # Preserve schema-derived declarations and existing health aliases byte-for-byte.
+  # Identity consumers use TransportIdentityResponse/TransportIdentityError directly.
   # This template changes naming only. Fields and enums still come from OpenAPI.
   user-templates:
     typedef.tmpl: |

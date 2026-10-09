@@ -167,6 +167,7 @@ export const integrationTests: Record<string, string[]> = {
   "internal/handler": ["TestRoleHealthActualHTTP", "TestProductActualHTTP"],
   "internal/lib/job": ["TestCorrelationRetryLegacyRedis"],
   "internal/service": ["TestBearerBrowserFixture"],
+  "internal/testing": ["TestBrowserProductFixture"],
 };
 
 const filesUnder = async (directory: string): Promise<string[]> => {
@@ -519,9 +520,9 @@ const startBearerFixture = async (root: string) => {
     [
       "test",
       "-run",
-      "^TestBearerBrowserFixture$",
+      "^TestBrowserProductFixture$",
       "-v",
-      "./internal/service",
+      "./internal/testing",
       "-args",
       "-browser-fixture",
     ],
@@ -570,23 +571,30 @@ const startBearerFixture = async (root: string) => {
       url,
       stop: async () => {
         try {
-          await fetch(`${url}/stop`, { method: "POST", signal: AbortSignal.timeout(3000) });
-          await new Promise<void>((complete) => {
+          const response = await fetch(`${url}/stop`, {
+            method: "POST",
+            signal: AbortSignal.timeout(3000),
+          });
+          if (response.status !== 204) throw new Error();
+          await new Promise<void>((complete, reject) => {
             if (child.exitCode !== null) {
-              complete();
+              if (child.exitCode === 0) complete();
+              else reject(new Error());
               return;
             }
             const timer = setTimeout(() => {
               kill();
-              complete();
+              reject(new Error());
             }, 5000);
-            child.once("close", () => {
+            child.once("close", (code) => {
               clearTimeout(timer);
-              complete();
+              if (code === 0) complete();
+              else reject(new Error());
             });
           });
         } catch {
           kill();
+          throw new Error("Browser fixture teardown failed");
         }
       },
     };
@@ -604,6 +612,7 @@ export const runChecks = async (
     runner?: Runner;
     progress?: (id: string) => void;
     browserArgs?: string[];
+    browserCompleted?: (count: number) => void;
   } = {},
 ) => {
   const context = await discover(options.root);
@@ -641,7 +650,10 @@ export const runChecks = async (
     }
     if (stage.bunTests && !/[1-9]\d* pass\b/.test(result.stdout))
       throw new Error(`No successful tests: ${stage.id}`);
-    if (stage.browserTests) assertBrowserReport(result.stdout);
+    if (stage.browserTests) {
+      const completed = assertBrowserReport(result.stdout);
+      options.browserCompleted?.(completed);
+    }
     if (stage.listedTests) {
       const listed: Record<string, string[]> = {};
       for (const line of result.stdout.split("\n")) {
@@ -718,6 +730,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       mode: args[0] === "--fast" ? "fast" : "full",
       group,
       browserArgs,
+      browserCompleted: (count) => console.log(`Browser tests passed: ${count}`),
       progress: (id) => console.log(`Checking ${id}`),
     });
     console.log("Checks passed");

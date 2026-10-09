@@ -252,6 +252,19 @@ test("real full and fast root checks reject initial drift before any mutation", 
         }
       }
     }
+    const identityPath = join(root, "packages/zod/src/identity.ts");
+    const identity = await readFile(identityPath, "utf8");
+    await writeFile(identityPath, identity.replace(".max(320)", ".max(319)"));
+    const result = spawnSync("bun", [join(root, "scripts/generate.ts"), "--check"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 60000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Stale generated artifacts:/);
+    assert.match(result.stderr, /packages\/openapi\/openapi.json/);
+    for (const [index, path] of artifactManifest.entries())
+      assert.deepEqual(await readFile(join(root, path)), original[index]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -2,6 +2,20 @@ import { expect } from "@playwright/test";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { ApiError, createAPI } from "./api";
+import { ZIdentityResponse } from "@flux/zod";
+
+test("identity contract rejects provider fields, false authentication and malformed durable identity", () => {
+  const user = { id: "00000000-0000-4000-8000-000000000001", email: "local@example.test" };
+  expect(ZIdentityResponse.safeParse({ authenticated: true, user }).success).toBe(true);
+  for (const payload of [
+    { authenticated: false, user },
+    { authenticated: true, user: { ...user, id: "user_fixture" } },
+    { authenticated: true, user: { ...user, email: "invalid" } },
+    { authenticated: true, user: { ...user, subject: "provider-private" } },
+    { authenticated: true, user, token: "provider-private" },
+  ])
+    expect(ZIdentityResponse.safeParse(payload).success).toBe(false);
+});
 
 const origin = "https://flux.example";
 test("session API rewrite rejects credentials, nonlocal cleartext and noncanonical origins at build time", () => {

@@ -253,6 +253,16 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 	if upgradeErr != nil || upgraded.StartVersion != 1 || upgraded.EndVersion != want {
 		t.Fatal("existing bootstrap prefix did not upgrade to the exact latest product schema")
 	}
+	var usersTable *string
+	if queryErr := conn.QueryRow(ctx,
+		"SELECT to_regclass('public.users')::text").Scan(&usersTable); queryErr != nil ||
+		usersTable == nil {
+		t.Fatal("bootstrap upgrade did not create the actual identity table")
+	}
+	noOp, noOpErr := MigrateWithResult(ctx, cfg)
+	if noOpErr != nil || noOp.StartVersion != want || noOp.EndVersion != want {
+		t.Fatal("upgraded product schema was not an exact no-op")
+	}
 	if downErr := migrator.MigrateTo(ctx, 0); downErr != nil {
 		t.Fatal(downErr)
 	}
@@ -311,6 +321,17 @@ func TestMigrationEmptyDatabaseAndBinary(t *testing.T) {
 	var postgresError *pgconn.PgError
 	if !errors.As(err, &postgresError) || strings.Contains(err.Error(), "SECRET-MARKER") {
 		t.Fatalf("real migration failure cause/redaction: %v", err)
+	}
+	var failedVersion int32
+	if queryErr := conn.QueryRow(ctx,
+		"SELECT version FROM schema_version").Scan(&failedVersion); queryErr != nil ||
+		failedVersion != 0 {
+		t.Fatal("failed migration advanced its ledger")
+	}
+	if queryErr := conn.QueryRow(ctx,
+		"SELECT to_regclass('public.users')::text").Scan(&usersTable); queryErr != nil ||
+		usersTable != nil {
+		t.Fatal("failed migration published a partial identity schema")
 	}
 	var connections int
 	if err221 := conn.QueryRow(ctx,

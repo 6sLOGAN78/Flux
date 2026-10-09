@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,6 +38,18 @@ func readJSON(t *testing.T, path string) map[string]any {
 //nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func validateSchema(schema map[string]any, value any) error {
 	switch schema["type"] {
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("expected boolean, got %T", value)
+		}
+		if values, ok := schema["enum"].([]any); ok {
+			for _, allowed := range values {
+				if allowed == value {
+					return nil
+				}
+			}
+			return errors.New("boolean is outside canonical enum")
+		}
 	case "string":
 		if _, ok := value.(string); !ok {
 			return fmt.Errorf("expected string, got %T", value)
@@ -188,7 +201,8 @@ func TestHealthJSONMatchesCanonicalResponses(t *testing.T) {
 func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
 	document := readJSON(t, "../../../../packages/openapi/openapi.json")
 	schema := responseSchema(t, document, "/api/v1/me", "200", "IdentityResponse")
-	fixture := []byte(`{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001","email":"local@example.test"}}`)
+	fixture := []byte(`{"authenticated":true,"user":{"id":"00000000-0000-4000-8000-000000000001",` +
+		`"email":"local@example.test"}}`)
 	var value transport.TransportIdentityResponse
 	if err := json.Unmarshal(fixture, &value); err != nil {
 		t.Fatal(err)
@@ -201,11 +215,25 @@ func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	var decoded any
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal(encoded, &decoded); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
-	if err := validateSchema(schema, decoded); err != nil {
-		t.Fatal(err)
+	if schemaErr := validateSchema(schema, decoded); schemaErr != nil {
+		t.Fatal(schemaErr)
+	}
+	for _, invalid := range []string{
+		`{"authenticated":false,"user":{"id":"local","email":"local@example.test"}}`,
+		`{"authenticated":true,"user":{"id":"local","email":42}}`,
+		`{"authenticated":true,"user":{"id":"local","email":"local@example.test","subject":"provider-private"}}`,
+		`{"authenticated":true}`,
+	} {
+		var candidate any
+		if decodeErr := json.Unmarshal([]byte(invalid), &candidate); decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		if schemaErr := validateSchema(schema, candidate); schemaErr == nil {
+			t.Fatal("canonical identity schema accepted invalid or private fields")
+		}
 	}
 }
 
