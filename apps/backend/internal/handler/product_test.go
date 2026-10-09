@@ -499,6 +499,9 @@ CREATE CONSTRAINT TRIGGER reject_workspace_commit AFTER INSERT ON memberships DE
 		require.Equal(t, 404, requestStatus)
 		requestStatus, _ = workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Growth 🚀"}`)
 		require.Equal(t, 404, requestStatus, "replay must reauthorize current membership")
+		requestStatus, result = workspaceRequest(t, api, token, "POST", "/workspaces", "workspace-bootstrap-0001", `{"name":"Changed"}`)
+		require.Equal(t, 404, requestStatus, "removed actor cannot use a hash conflict to inspect the ledger")
+		require.NotContains(t, result, "workspace")
 	})
 }
 

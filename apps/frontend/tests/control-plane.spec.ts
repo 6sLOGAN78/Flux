@@ -36,6 +36,13 @@ test("workspace requires an explicit name and opens authorized Links after commi
   expect(keys[1]).toBe(keys[0]);
   await expect(page.getByRole("heading", { name: "Browser Growth 🚀" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No links yet" })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Workspace" });
+  await expect(navigation.getByRole("link", { name: "Links", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(navigation.getByRole("button", { name: "Team", exact: true })).toBeDisabled();
+  await expect(navigation.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
   await expect(page.getByText("Create your first link", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Link management is available. Redirects and analytics are not available yet."),
@@ -43,6 +50,7 @@ test("workspace requires an explicit name and opens authorized Links after commi
   await page.goto("/workspaces/00000000-0000-4000-8000-000000000000/links");
   await expect(page.getByText("You do not have access to this workspace.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No links yet" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toHaveCount(0);
 });
 
 const providerAssets = new WeakMap<Page, Set<Promise<void>>>();
