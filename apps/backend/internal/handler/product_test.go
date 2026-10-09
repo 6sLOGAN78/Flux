@@ -385,6 +385,102 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("workspace-restore", func(t *testing.T) {
 		checkWorkspaceRestore(t, api.URL, db, p)
 	})
+	t.Run("link-create", func(t *testing.T) {
+		checkLinkCreate(t, api.URL, db, p)
+	})
+}
+
+func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_links", "sid": "sess_user_links"})
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "link-workspace-0001", `{"name":"Link tenant"}`)
+	require.Equal(t, 201, status)
+	workspace := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + workspace + "/links"
+	payload := `{"destination":"https://example.com/path?q=ok","title":"<script>protected</script>"}`
+	status, result := workspaceRequest(t, api, token, "POST", path, "link-create-00001", payload)
+	require.Equal(t, 201, status, "generated link creation must be committed")
+	link := result["link"].(map[string]any)
+	require.Regexp(t, `^https://go.flux.test/[a-z2-7]{20}$`, link["shortUrl"])
+	require.Equal(t, "1", link["version"])
+	require.Equal(t, "active", link["lifecycle"])
+	status, replay := workspaceRequest(t, api, token, "POST", path, "link-create-00001", payload)
+	require.Equal(t, 201, status)
+	require.Equal(t, result, replay)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "link-create-00001", `{"destination":"https://example.org"}`)
+	require.Equal(t, 409, status)
+	for i, destination := range []string{"//example.com", "https://user@example.com", "http://127.0.0.1", "http://169.254.169.254", "https://go.flux.test/a", "https://blocked.example", "https://example.com:99999", "https://example.com\\evil", "ftp://example.com", "http://[::ffff:127.0.0.1]"} {
+		body, err := json.Marshal(map[string]string{"destination": destination})
+		require.NoError(t, err)
+		status, _ = workspaceRequest(t, api, token, "POST", path, "link-unsafe-0000"+string(rune('a'+i)), string(body))
+		require.Equal(t, 400, status, destination)
+	}
+	status, detail := workspaceRequest(t, api, token, "GET", path+"/"+link["id"].(string), "", "")
+	require.Equal(t, 200, status)
+	require.Equal(t, result, detail)
+	t.Run("concurrent-replay", func(t *testing.T) {
+		var group sync.WaitGroup
+		responses := make(chan map[string]any, 4)
+		for range 4 {
+			group.Go(func() {
+				code, response := workspaceRequest(t, api, token, "POST", path, "link-concurrent-01", payload)
+				require.Equal(t, 201, code)
+				responses <- response
+			})
+		}
+		group.Wait()
+		close(responses)
+		var first map[string]any
+		for response := range responses {
+			if first == nil { first = response }
+			require.Equal(t, first, response)
+		}
+	})
+	t.Run("atomic-commit-rollback", func(t *testing.T) {
+		_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_link_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-LINK-COMMIT'; END $$; CREATE CONSTRAINT TRIGGER reject_link_commit AFTER INSERT ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_link_commit()`)
+		require.NoError(t, err)
+		defer func() { _, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER reject_link_commit ON links; DROP FUNCTION reject_link_commit()"); require.NoError(t, dropErr) }()
+		status, response := workspaceRequest(t, api, token, "POST", path, "link-rollback-0001", payload)
+		require.Equal(t, 503, status)
+		require.NotContains(t, response, "PRIVATE-LINK-COMMIT")
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE request_key=$1", "link-rollback-0001").Scan(&count))
+		require.Zero(t, count)
+	})
+	t.Run("global-key-collision-retries", func(t *testing.T) {
+		_, err := db.Pool.Exec(ctx, `CREATE SEQUENCE link_collision_attempt; CREATE FUNCTION collide_link_key() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('link_collision_attempt') <= 2 THEN NEW.short_key := '`+strings.TrimPrefix(link["shortUrl"].(string), "https://go.flux.test/")+`'; END IF; RETURN NEW; END $$; CREATE TRIGGER collide_link_key BEFORE INSERT ON links FOR EACH ROW EXECUTE FUNCTION collide_link_key()`)
+		require.NoError(t, err)
+		defer func() { _, dropErr := db.Pool.Exec(ctx, "DROP TRIGGER collide_link_key ON links; DROP FUNCTION collide_link_key(); DROP SEQUENCE link_collision_attempt"); require.NoError(t, dropErr) }()
+		status, response := workspaceRequest(t, api, token, "POST", path, "link-collision-01", payload)
+		require.Equal(t, 201, status)
+		require.NotEqual(t, link["shortUrl"], response["link"].(map[string]any)["shortUrl"])
+		var attempts int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT last_value FROM link_collision_attempt").Scan(&attempts))
+		require.Equal(t, 3, attempts)
+	})
+	t.Run("foreign-link-detail", func(t *testing.T) {
+		status, other := workspaceRequest(t, api, token, "POST", "/workspaces", "link-other-ws-001", `{"name":"Other link tenant"}`)
+		require.Equal(t, 201, status)
+		otherID := other["workspace"].(map[string]any)["id"].(string)
+		status, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+otherID+"/links/"+link["id"].(string), "", "")
+		require.Equal(t, 404, status)
+	})
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1", workspace)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "link-create-00001", payload)
+	require.Equal(t, 403, status, "replay must require current write capability")
+	status, _ = workspaceRequest(t, api, token, "GET", path+"/"+link["id"].(string), "", "")
+	require.Equal(t, 200, status)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", workspace)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "GET", path+"/"+link["id"].(string), "", "")
+	require.Equal(t, 404, status)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "link-create-00001", payload)
+	require.Equal(t, 404, status)
+	var creator string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT creator_user_id::text FROM links WHERE workspace_id=$1 AND id=$2", workspace, link["id"]).Scan(&creator))
+	require.Equal(t, link["creator"].(map[string]any)["id"], creator)
 }
 
 func checkWorkspaceRestore(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
