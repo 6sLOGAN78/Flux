@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-13-PLAN.md
-last_updated: "2026-10-09T16:57:31.592Z"
+stopped_at: Completed 02-14-PLAN.md
+last_updated: "2026-10-09T17:42:43.575Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 35
+  completed_plans: 36
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 14 of 35
+Plan: 15 of 35
 Status: Ready to execute
 Last activity: 2026-10-09
 
-Progress: [██████░░░░] 61%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Progress: [██████░░░░] 61%
 | Phase 2 P11 | 25min | 2 tasks | 17 files |
 | Phase 2 P12 | 15min | 2 tasks | 13 files |
 | Phase 2 P13 | 20min | 2 tasks | 16 files |
+| Phase 2 P14 | 34min | 2 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -156,6 +157,10 @@ Recent decisions affecting current work:
 - [Phase 2]: List bounded nondeleted links under fresh membership with deterministic timestamp/UUID order; reject unsupported cursor/filter input until complete refinements.
 - [Phase 2]: Preserve custom-key migration 006; introduce library index through forward migration 007.
 - [Phase 2]: Bound UUID-scoped collection GET success at 8 MiB for worst-case escaped destinations; retain 64 KiB other success and 8 KiB errors.
+- [Phase 2]: Bind versioned HMAC cursor positions to workspace and exact effective search/lifecycle fingerprint; fresh caller SQL scope remains authority.
+- [Phase 2]: Require a private standard-Base64 32-byte cursor signing key only for API startup, without fallback or unsafe diagnostics.
+- [Phase 2]: Remember only successful scoped pages locally and announce exhaustion only from an authoritative null continuation.
+- [Phase 2]: Connect the approved library creation CTA to the existing real create route and verify its committed browser flow.
 
 ### Pending Todos
 
@@ -176,6 +181,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T16:57:31.581Z
-Stopped at: Completed 02-13-PLAN.md
+Last session: 2026-10-09T17:42:43.558Z
+Stopped at: Completed 02-14-PLAN.md
 Resume file: None
