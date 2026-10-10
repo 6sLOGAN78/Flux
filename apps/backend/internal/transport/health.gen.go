@@ -353,6 +353,13 @@ type TransportLinksResponse struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
+// TransportMemberRemovalResponse defines model for transport.MemberRemovalResponse.
+type TransportMemberRemovalResponse struct {
+	RemovedUserId string `json:"removedUserId"`
+	SelfRemoved   bool   `json:"selfRemoved"`
+	WorkspaceId   string `json:"workspaceId"`
+}
+
 // TransportMemberResponse defines model for transport.MemberResponse.
 type TransportMemberResponse struct {
 	ActorRole TransportMemberResponseActorRole `json:"actorRole"`
@@ -369,6 +376,9 @@ type TransportMembersResponse struct {
 	// NextAfter Last user UUID continuation; null means authoritative exhaustion. Never grants workspace authority.
 	NextAfter *string `json:"nextAfter"`
 }
+
+// TransportRemoveMemberRequest defines model for transport.RemoveMemberRequest.
+type TransportRemoveMemberRequest = map[string]interface{}
 
 // TransportTeamMember defines model for transport.TeamMember.
 type TransportTeamMember struct {
@@ -441,6 +451,11 @@ type ListMembersParams struct {
 	After *string `form:"after,omitempty" json:"after,omitempty"`
 }
 
+// RemoveMemberParams defines parameters for RemoveMember.
+type RemoveMemberParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // ChangeMemberRoleParams defines parameters for ChangeMemberRole.
 type ChangeMemberRoleParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
@@ -454,6 +469,9 @@ type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest
 
 // CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
 type CreateLinkJSONRequestBody = TransportCreateLinkRequest
+
+// RemoveMemberJSONRequestBody defines body for RemoveMember for application/json ContentType.
+type RemoveMemberJSONRequestBody = TransportRemoveMemberRequest
 
 // ChangeMemberRoleJSONRequestBody defines body for ChangeMemberRole for application/json ContentType.
 type ChangeMemberRoleJSONRequestBody = TransportChangeMemberRoleRequest

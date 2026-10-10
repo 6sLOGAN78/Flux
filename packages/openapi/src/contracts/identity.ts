@@ -13,6 +13,8 @@ import {
   ZMemberListQuery,
   ZChangeMemberRoleRequest,
   ZMemberResponse,
+  ZRemoveMemberRequest,
+  ZMemberRemovalResponse,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -21,6 +23,29 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  removeMember: {
+    summary: "Remove a current workspace member while retaining durable creator provenance",
+    description:
+      "Requires exact allowed Origin, empty JSON object and Idempotency-Key. Locks workspace exclusively, then current actor membership, then scoped target membership. Owners may remove all roles; admins may remove member/viewer only. Final owner removal returns 409 OWNER_REQUIRED: Promote another owner first. Current SQL actor authority precedes all ledger access; current target policy or the protected committed target-role snapshot precedes hash comparison. A committed same-target retry may replay after physical membership removal for a still-authorized actor. Changed target returns 409 IDEMPOTENCY_CONFLICT; a new request for a missing target returns 404. Former actors cannot replay. SHA-256 canonical user UUID and workspace/actor/member.remove/key ledger scope retain results at least 24 hours. Membership deletion, immutable protected durable actor/action/target snapshot/time audit, and ledger commit atomically. Active/deleted links, reserved keys, creator users and audit actor provenance never cascade. All subsequent removed-actor reads, writes and replay are denied. Self removal reports selfRemoved for immediate scoped content disposal; it does not sign out the session. No-store; 429 includes Retry-After and rate-limit metadata.",
+    path: "/api/v1/workspaces/:workspaceId/members/:memberId",
+    method: "DELETE",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), memberId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZRemoveMemberRequest,
+    responses: {
+      200: ZMemberRemovalResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   changeMemberRole: {
     summary: "Change a current workspace member's role",
     description:

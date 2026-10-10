@@ -74,6 +74,8 @@ func NewSignedProvider(t *testing.T) *SignedProvider {
 				status = "pending"
 			case "sess_mismatch":
 				userID = "user_other"
+			case "sess_browser_roles":
+				userID = "user_browser_roles"
 			case "sess_outage":
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -152,6 +154,10 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 			w.WriteHeader(http.StatusNoContent)
 		case "/client":
 			_ = json.NewEncoder(w).Encode(map[string]any{"api": api.URL, "token": token, "client": BrowserSessionClient(token)})
+		case "/member-client":
+			memberToken := p.Token(t, map[string]any{"sub": "user_browser_roles", "sid": "sess_browser_roles"})
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"api": api.URL, "token": memberToken, "client": browserMemberClient(memberToken)})
 		case "/restore-reset", "/restore-remove", "/restore-role", "/restore-member":
 			// Local harness only: mutate real PostgreSQL below application layers.
 			// No test route, key or authorization bypass enters a production router.
@@ -223,12 +229,21 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 	require.Equal(t, http.StatusOK, response.StatusCode)
 }
 
+// browserMemberClient uses the same SDK wire format for a separately verified
+// seeded durable member, so cross-tab removal never substitutes actor identity.
+func browserMemberClient(token string) map[string]any {
+	return browserSessionClient(token, "user_browser_roles", "colleague@example.test", "sess_browser_roles")
+}
+
 // BrowserSessionClient preserves the SDK session wire format without live factors.
-//
-//nolint:lll // Explicit test-only provider JSON preserves the SDK wire representation.
 func BrowserSessionClient(token string) map[string]any {
+	return browserSessionClient(token, "user_fixture", "local@example.test", "sess_fixture")
+}
+
+//nolint:lll // Test-only SDK wire representation retains exact provider fields.
+func browserSessionClient(token, userID, email, sessionID string) map[string]any {
 	now := time.Now().UnixMilli()
-	user := map[string]any{"object": "user", "id": "user_fixture", "username": nil, "first_name": "Local", "last_name": "Fixture", "image_url": "", "has_image": false, "primary_email_address_id": "idn_fixture", "primary_phone_number_id": nil, "primary_web3_wallet_id": nil, "password_enabled": true, "two_factor_enabled": false, "totp_enabled": false, "backup_code_enabled": false, "email_addresses": []any{map[string]any{"object": "email_address", "id": "idn_fixture", "email_address": "local@example.test", "verification": map[string]any{"status": "verified", "strategy": "email_code"}, "linked_to": []any{}}}, "phone_numbers": []any{}, "web3_wallets": []any{}, "external_accounts": []any{}, "organization_memberships": []any{}, "public_metadata": map[string]any{}, "unsafe_metadata": map[string]any{}, "created_at": now, "updated_at": now}
-	session := map[string]any{"object": "session", "id": "sess_fixture", "status": "active", "expire_at": now + 600000, "abandon_at": now + 600000, "last_active_at": now, "last_active_organization_id": nil, "last_active_token": map[string]any{"object": "token", "jwt": token}, "user": user, "public_user_data": map[string]any{"first_name": "Local", "last_name": "Fixture", "identifier": "local@example.test", "user_id": "user_fixture"}, "created_at": now, "updated_at": now}
-	return map[string]any{"object": "client", "id": "client_fixture", "sessions": []any{session}, "sign_in": nil, "sign_up": nil, "last_active_session_id": "sess_fixture", "cookie_expires_at": now + 600000, "created_at": now, "updated_at": now}
+	user := map[string]any{"object": "user", "id": userID, "username": nil, "first_name": "Local", "last_name": "Fixture", "image_url": "", "has_image": false, "primary_email_address_id": "idn_fixture", "primary_phone_number_id": nil, "primary_web3_wallet_id": nil, "password_enabled": true, "two_factor_enabled": false, "totp_enabled": false, "backup_code_enabled": false, "email_addresses": []any{map[string]any{"object": "email_address", "id": "idn_fixture", "email_address": email, "verification": map[string]any{"status": "verified", "strategy": "email_code"}, "linked_to": []any{}}}, "phone_numbers": []any{}, "web3_wallets": []any{}, "external_accounts": []any{}, "organization_memberships": []any{}, "public_metadata": map[string]any{}, "unsafe_metadata": map[string]any{}, "created_at": now, "updated_at": now}
+	session := map[string]any{"object": "session", "id": sessionID, "status": "active", "expire_at": now + 600000, "abandon_at": now + 600000, "last_active_at": now, "last_active_organization_id": nil, "last_active_token": map[string]any{"object": "token", "jwt": token}, "user": user, "public_user_data": map[string]any{"first_name": "Local", "last_name": "Fixture", "identifier": email, "user_id": userID}, "created_at": now, "updated_at": now}
+	return map[string]any{"object": "client", "id": "client_fixture", "sessions": []any{session}, "sign_in": nil, "sign_up": nil, "last_active_session_id": sessionID, "cookie_expires_at": now + 600000, "created_at": now, "updated_at": now}
 }

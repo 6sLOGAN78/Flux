@@ -27,7 +27,11 @@ export function WorkspaceSwitcher({
   section = "Links",
 }: {
   workspaceId: string;
-  children: (workspace: Workspace, accessLost: (status: number) => void) => ReactNode;
+  children: (
+    workspace: Workspace,
+    accessLost: (status: number) => void,
+    membershipChanged: () => void,
+  ) => ReactNode;
   dirty?: boolean;
   section?: "Links" | "Team";
 }) {
@@ -238,20 +242,24 @@ export function WorkspaceSwitcher({
             }}
           />
         )}
-        {children(workspace, (status) => {
-          scrub();
-          if (status === 403 && section === "Team") {
-            setAttempt((value) => value + 1);
-            return;
-          }
-          invalidateWorkspaces(channel.current);
-          if (status === 401) setClosing(true);
-          else {
-            setChanged(true);
-            setChooser(true);
-            router.replace("/workspaces?access=changed");
-          }
-        })}
+        {children(
+          workspace,
+          (status) => {
+            scrub();
+            if (status === 403 && section === "Team") {
+              setAttempt((value) => value + 1);
+              return;
+            }
+            invalidateWorkspaces(channel.current);
+            if (status === 401) setClosing(true);
+            else {
+              setChanged(true);
+              setChooser(true);
+              router.replace("/workspaces?access=changed");
+            }
+          },
+          () => invalidateWorkspaces(channel.current),
+        )}
       </AppShell>
     );
   return (

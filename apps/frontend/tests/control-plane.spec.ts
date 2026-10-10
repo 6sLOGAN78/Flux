@@ -1,5 +1,115 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test("removal of another member retains creator links and invalidates their tab from fresh SQL authority", async ({
+  page,
+  context,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-other-removal",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Other removal tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  expect(
+    (
+      await request.post(
+        `${process.env.FLUX_BROWSER_FIXTURE}/restore-member?workspace=${workspace.id}`,
+      )
+    ).status(),
+  ).toBe(204);
+  const member = await (
+    await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/member-client`)
+  ).json();
+  const linked = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: {
+      ...headers,
+      Authorization: `Bearer ${member.token}`,
+      "Idempotency-Key": "browser-removal-creator",
+    },
+    data: { destination: "https://example.com/creator", title: "Creator retained" },
+  });
+  expect(linked.status()).toBe(201);
+  const { link } = await linked.json();
+  const second = await context.newPage();
+  let release!: () => void;
+  let captured!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    captured = resolve;
+  });
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    for (const [tab, client] of [
+      [page, fixture.client],
+      [second, member.client],
+    ] as const) {
+      await installProviderTransport(tab, client);
+      await tab.route("**/api/v1/**", async (route) => {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+        if (tab === second && url.searchParams.get("search") === "Creator") {
+          captured();
+          await delayed;
+        }
+        await route.fulfill({ response }).catch(() => undefined);
+      });
+    }
+    await second.goto(`/workspaces/${workspace.id}/links`);
+    await expect(second.getByText("Creator retained", { exact: true }).first()).toBeVisible();
+    await second.getByLabel("Search links", { exact: true }).fill("Creator");
+    await second.getByRole("button", { name: "Search links", exact: true }).click();
+    await ready;
+    await page.goto(`/workspaces/${workspace.id}/team`);
+    const team = page.getByRole("main", { name: "Team", exact: true });
+    await team
+      .getByRole("row")
+      .filter({ hasText: "colleague@example.test" })
+      .getByRole("button", { name: "Remove member", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Remove member?", exact: true })
+      .getByRole("button", { name: "Remove member", exact: true })
+      .click();
+    await expect(team.getByRole("status").filter({ hasText: "Member removed." })).toBeVisible();
+    await expect(second).toHaveURL(/\/workspaces\?access=changed/);
+    release();
+    await expect(second.getByText("Creator retained", { exact: true })).toHaveCount(0);
+    await expect(second.getByText("Other removal tenant", { exact: true })).toHaveCount(0);
+    await expect(
+      second.getByRole("heading", { name: "Choose a workspace", exact: true }),
+    ).toBeVisible();
+    const me = await request.get(`${fixture.api}/api/v1/me`, {
+      headers: { Authorization: `Bearer ${member.token}` },
+    });
+    expect(me.status()).toBe(200);
+    expect(
+      (await me.json()).workspaces.some((item: { id: string }) => item.id === workspace.id),
+    ).toBe(false);
+    const denied = await request.get(
+      `${fixture.api}/api/v1/workspaces/${workspace.id}/links/${link.id}`,
+      { headers: { Authorization: `Bearer ${member.token}` } },
+    );
+    expect(denied.status()).toBe(404);
+    const retained = await request.get(
+      `${fixture.api}/api/v1/workspaces/${workspace.id}/links/${link.id}`,
+      { headers },
+    );
+    expect(retained.status()).toBe(200);
+    expect((await retained.json()).link).toEqual(link);
+  } finally {
+    release?.();
+    await second.close();
+  }
+});
+
 test("removal confirms safely, preserves failure state, then self removal scrubs both tabs and late links", async ({
   page,
   context,
@@ -89,35 +199,39 @@ test("removal confirms safely, preserves failure state, then self removal scrubs
   const delayed = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await second.route("**/api/v1/workspaces/*/links?*", async (route) => {
-    const url = new URL(route.request().url());
-    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
-    fetched();
-    await delayed;
-    await route.fulfill({ response }).catch(() => {});
-  });
-  await second.getByLabel("Search links", { exact: true }).fill("retained");
-  await second.getByRole("button", { name: "Search links", exact: true }).click();
-  await ready;
-  await page.bringToFront();
-  await trigger.click();
-  await expect(
-    dialog.getByText("This member will lose access to this workspace.", { exact: true }),
-  ).toBeVisible();
-  await dialog.getByRole("button", { name: "Remove member", exact: true }).click();
-  await expect(page).toHaveURL(/\/workspaces\?access=changed/);
-  await expect(second).toHaveURL(/\/workspaces\?access=changed/);
-  release();
-  for (const tab of [page, second]) {
-    await expect(tab.getByText("Removal browser tenant", { exact: true })).toHaveCount(0);
-    await expect(tab.getByRole("table")).toHaveCount(0);
+  try {
+    await second.route("**/api/v1/workspaces/*/links?*", async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+      fetched();
+      await delayed;
+      await route.fulfill({ response }).catch(() => {});
+    });
+    await second.getByLabel("Search links", { exact: true }).fill("retained");
+    await second.getByRole("button", { name: "Search links", exact: true }).click();
+    await ready;
+    await page.bringToFront();
+    await trigger.click();
     await expect(
-      tab.getByRole("heading", { name: "Choose a workspace", exact: true }),
+      dialog.getByText("This member will lose access to this workspace.", { exact: true }),
     ).toBeVisible();
-    await expect(tab.getByText("You have been signed out.", { exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Remove member", exact: true }).click();
+    await expect(page).toHaveURL(/\/workspaces\?access=changed/);
+    await expect(second).toHaveURL(/\/workspaces\?access=changed/);
+    release();
+    for (const tab of [page, second]) {
+      await expect(tab.getByText("Removal browser tenant", { exact: true })).toHaveCount(0);
+      await expect(tab.getByRole("table")).toHaveCount(0);
+      await expect(
+        tab.getByRole("heading", { name: "Choose a workspace", exact: true }),
+      ).toBeVisible();
+      await expect(tab.getByText("You have been signed out.", { exact: true })).toHaveCount(0);
+    }
+    expect(mutations).toBe(3);
+  } finally {
+    release();
+    await second.close();
   }
-  expect(mutations).toBe(3);
-  await second.close();
 });
 
 test("roles safely confirm promotion then self demotion and preserve Links", async ({
@@ -248,7 +362,7 @@ test("team inspects actual members with responsive roles and truthful retry then
   await expect(page.getByRole("table").locator("tbody td").nth(1)).toHaveText("Owner");
   const identity = await page.getByRole("table").locator("tbody td").first().textContent();
   expect(identity).toContain("@");
-  expect(await page.getByRole("button", { name: /Invite|Remove/ }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /Invite/ }).count()).toBe(0);
   fail = true;
   await page.getByRole("button", { name: "Reload team", exact: true }).click();
   const team = page.getByRole("main", { name: "Team", exact: true });

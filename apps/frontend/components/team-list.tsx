@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { ZMemberResponse, ZMembersResponse, type MembersResponse } from "@flux/zod";
 import { useEffect, useId, useRef, useState } from "react";
 import { ApiError, createAPI } from "../lib/api";
+import { canRemoveMember, removeMember } from "../lib/team";
 import { WorkspaceRequests } from "../lib/workspace";
 import { ConfirmDialog } from "./confirm-dialog";
 
@@ -14,11 +15,13 @@ export function TeamList({
   actorRole,
   canInspect,
   accessLost,
+  membershipChanged,
 }: {
   workspaceId: string;
   actorRole: MembersResponse["items"][number]["role"];
   canInspect: boolean;
   accessLost: (status: number) => void;
+  membershipChanged: () => void;
 }) {
   const { getToken } = useAuth();
   const requests = useRef(new WorkspaceRequests());
@@ -40,11 +43,60 @@ export function TeamList({
   const [roleError, setRoleError] = useState("");
   const [committed, setCommitted] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<MembersResponse["items"][number]>();
+  const [removed, setRemoved] = useState(false);
+  const remove = async () => {
+    if (!pendingRemoval || submitting.current) return;
+    submitting.current = true;
+    const selected = pendingRemoval;
+    setPendingRemoval(undefined);
+    setChanging(true);
+    setRemoved(false);
+    setCommitted(false);
+    const request = mutations.current.begin();
+    try {
+      const result = await removeMember(
+        createAPI(getToken, { origin: window.location.origin }),
+        workspaceId,
+        selected.id,
+        request.signal,
+      );
+      if (!request.current()) return;
+      // The signal carries no identity, workspace, role or membership authority.
+      membershipChanged();
+      if (result.selfRemoved) {
+        requests.current.clear();
+        mutations.current.clear();
+        setItems(undefined);
+        denied.current(404);
+        return;
+      }
+      setItems((value) => value?.filter((item) => item.id !== selected.id));
+      setRemoved(true);
+    } catch (failure: unknown) {
+      if (!request.current()) return;
+      if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) {
+        requests.current.clear();
+        setItems(undefined);
+        denied.current(failure.status);
+      } else
+        setRoleError(
+          failure instanceof ApiError && failure.constraint === "OWNER_REQUIRED"
+            ? "Promote another owner first"
+            : "We couldn't remove the member. Reload team before trying again.",
+        );
+    } finally {
+      submitting.current = false;
+      if (request.current()) setChanging(false);
+    }
+  };
   const changeRole = async () => {
     if (!pending || submitting.current) return;
     submitting.current = true;
     const selected = pending;
     setPending(undefined);
+    setPendingRemoval(undefined);
+    setRemoved(false);
     setChanging(true);
     setCommitted(false);
     const request = mutations.current.begin();
@@ -153,6 +205,14 @@ export function TeamList({
       {error && <p role="alert">{error}</p>}
       {roleError && <p role="alert">{roleError}</p>}
       {committed && <p role="status">Role changed.</p>}
+      {removed && <p role="status">Member removed.</p>}
+      {pendingRemoval && (
+        <RemoveDialog
+          email={pendingRemoval.email}
+          onStay={() => setPendingRemoval(undefined)}
+          onRemove={() => void remove()}
+        />
+      )}
       {pending && (
         <ConfirmDialog
           roleChange={{
@@ -198,6 +258,15 @@ export function TeamList({
                         disabled={loading || changing || !!roleError || !!error}
                         onChange={(role) => setPending({ member: item, role })}
                       />
+                      {canRemoveMember(actorRole, item.role) && (
+                        <button
+                          type="button"
+                          disabled={loading || changing || !!roleError || !!error}
+                          onClick={() => setPendingRemoval(item)}
+                        >
+                          Remove member
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -220,6 +289,15 @@ export function TeamList({
                   disabled={loading || changing || !!roleError || !!error}
                   onChange={(role) => setPending({ member: item, role })}
                 />
+                {canRemoveMember(actorRole, item.role) && (
+                  <button
+                    type="button"
+                    disabled={loading || changing || !!roleError || !!error}
+                    onClick={() => setPendingRemoval(item)}
+                  >
+                    Remove member
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -262,6 +340,52 @@ export function TeamList({
         @media (max-width: 767px) { .desktop-team { display: none; } .mobile-team { display: block; padding-left: var(--space-lg); } }
       `}</style>
     </section>
+  );
+}
+
+function RemoveDialog({
+  email,
+  onStay,
+  onRemove,
+}: {
+  email: string;
+  onStay: () => void;
+  onRemove: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const stay = useRef<HTMLButtonElement>(null);
+  const title = useId();
+  const description = useId();
+  useEffect(() => {
+    const previous = document.activeElement;
+    const element = dialog.current;
+    element?.showModal();
+    stay.current?.focus();
+    return () => {
+      element?.close();
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby={title}
+      aria-describedby={description}
+      onCancel={(event) => {
+        event.preventDefault();
+        onStay();
+      }}
+    >
+      <h2 id={title}>Remove member?</h2>
+      <p>{email}</p>
+      <p id={description}>This member will lose access to this workspace.</p>
+      <button ref={stay} type="button" onClick={onStay}>
+        Keep member
+      </button>
+      <button type="button" onClick={onRemove}>
+        Remove member
+      </button>
+    </dialog>
   );
 }
 

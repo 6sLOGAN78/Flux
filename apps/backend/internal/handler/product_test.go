@@ -458,12 +458,14 @@ func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	}
 	status, _ = workspaceRequest(t, api, token, "DELETE", path+"?role=owner", "removal-invalid-001", `{}`)
 	require.Equal(t, 400, status)
+	status, _ = workspaceRequest(t, api, token, "PATCH", path, "removal-replay-0001", `{"role":"member"}`)
+	require.Equal(t, 200, status, "the same key belongs to a separate member.role operation")
 	// Both lifecycle rows and their original replay snapshots belong to a durable user.
 	var links []map[string]any
 	for _, key := range []string{"remove-active", "remove-deleted"} {
-		status, response := workspaceRequest(t, api, other, "POST", "/workspaces/"+w+"/links", "removal-link-"+key,
+		linkStatus, response := workspaceRequest(t, api, other, "POST", "/workspaces/"+w+"/links", "removal-link-"+key,
 			`{"destination":"https://example.com/retained","customKey":"`+key+`"}`)
-		require.Equal(t, 201, status)
+		require.Equal(t, 201, linkStatus)
 		links = append(links, response["link"].(map[string]any))
 	}
 	_, err = db.Pool.Exec(ctx, "UPDATE links SET lifecycle='deleted' WHERE workspace_id=$1 AND id=$2", w, links[1]["id"])
@@ -490,8 +492,8 @@ func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM links WHERE workspace_id=$1 AND creator_user_id=$2", w, target).Scan(&count))
 	require.Equal(t, 2, count)
 	for _, link := range links {
-		status, response := workspaceRequest(t, api, token, "GET", "/workspaces/"+w+"/links/"+link["id"].(string), "", "")
-		require.Equal(t, 200, status)
+		linkStatus, response := workspaceRequest(t, api, token, "GET", "/workspaces/"+w+"/links/"+link["id"].(string), "", "")
+		require.Equal(t, 200, linkStatus)
 		require.Equal(t, link, response["link"], "UUID, canonical URL, lifecycle, creator and safe projection survive")
 		status, _ = workspaceRequest(t, api, other, "GET", "/workspaces/"+w+"/links/"+link["id"].(string), "", "")
 		require.Equal(t, 404, status)
@@ -505,6 +507,8 @@ func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	status, _ = workspaceRequest(t, api, other, "PATCH", self, "removal-oldrole-001", `{"role":"owner"}`)
 	require.Equal(t, 404, status)
 	status, _ = workspaceRequest(t, api, other, "DELETE", self, "removal-replay-0001", `{}`)
+	require.Equal(t, 404, status)
+	status, _ = workspaceRequest(t, api, other, "PUT", "/me/last-workspace", "", `{"workspaceId":"`+w+`"}`)
 	require.Equal(t, 404, status)
 	status, _ = workspaceRequest(t, api, token, "POST", "/workspaces/"+w+"/links", "removal-reserved-001", `{"destination":"https://example.com/retained","customKey":"remove-deleted"}`)
 	require.Equal(t, 409, status, "deleted key reservation remains")
@@ -526,6 +530,7 @@ func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	_, err = db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$3)", w, target, actor)
 	require.NoError(t, err)
 	checkRemovalRace(t, api, db, token, other, w, actor, target)
+	checkRemovalSnapshotPolicy(t, api, db, token, w, actor, target, path)
 	// Still authorized owner self-removal commits, but that former actor cannot replay.
 	_, err = db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2) ON CONFLICT(workspace_id,user_id) DO UPDATE SET role='owner'", w, actor)
 	require.NoError(t, err)
@@ -542,6 +547,43 @@ func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	require.Error(t, err)
 	_, err = db.Pool.Exec(ctx, "DELETE FROM audit_events WHERE workspace_id=$1", w)
 	require.Error(t, err)
+	require.NotContains(t, p.logs.String(), "PRIVATE-REMOVAL-COMMIT")
+}
+
+func checkRemovalSnapshotPolicy(t *testing.T, api string, db *fluxTesting.TestDB, token, w, actor, target, path string) {
+	t.Helper()
+	ctx := context.Background()
+	for _, user := range []string{actor, target} {
+		_, err := db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2) ON CONFLICT(workspace_id,user_id) DO UPDATE SET role='owner'", w, user)
+		require.NoError(t, err)
+	}
+	status, _ := workspaceRequest(t, api, token, "DELETE", path, "removal-owner-00001", `{}`)
+	require.Equal(t, 200, status)
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "DELETE", path, "removal-owner-00001", `{}`)
+	require.Equal(t, 403, status, "current admin cannot replay protected former-owner snapshot")
+	status, _ = workspaceRequest(t, api, token, "DELETE", "/workspaces/"+w+"/members/"+uuid.NewString(), "removal-owner-00001", `{}`)
+	require.Equal(t, 403, status, "snapshot policy precedes changed-hash disclosure for missing target")
+	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='owner' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	lock, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	defer lock.Rollback(ctx)
+	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
+	require.NoError(t, err)
+	results := make(chan roleRequestResult, 1)
+	go func() { results <- removalStatus(api, token, path, "removal-owner-00001") }()
+	require.Eventually(t, func() bool {
+		var waiting int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'").Scan(&waiting) == nil && waiting >= 1
+	}, 2*time.Second, 10*time.Millisecond)
+	_, err = lock.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	require.NoError(t, lock.Commit(ctx))
+	result := <-results
+	require.NoError(t, result.err)
+	require.Equal(t, 404, result.code, "pending replay observes committed actor removal before reading ledger")
 }
 
 func checkRemovalMatrix(t *testing.T, api string, db *fluxTesting.TestDB, token, w, actor, target, path string) {
@@ -570,6 +612,8 @@ func checkRemovalMatrix(t *testing.T, api string, db *fluxTesting.TestDB, token,
 func checkRemovalRollback(t *testing.T, api string, db *fluxTesting.TestDB, token, w, target, path string) {
 	t.Helper()
 	ctx := context.Background()
+	var auditsBefore int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", w).Scan(&auditsBefore))
 	_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_removal_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE-REMOVAL-COMMIT'; END $$;
 CREATE CONSTRAINT TRIGGER reject_removal_commit AFTER DELETE ON memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_removal_commit()`)
 	require.NoError(t, err)
@@ -582,6 +626,8 @@ CREATE CONSTRAINT TRIGGER reject_removal_commit AFTER DELETE ON memberships DEFE
 	require.Equal(t, 1, count)
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key='removal-rollback-01'", w).Scan(&count))
 	require.Zero(t, count)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", w).Scan(&count))
+	require.Equal(t, auditsBefore, count, "failed commit never leaves protected audit")
 }
 
 func checkRemovalRace(t *testing.T, api string, db *fluxTesting.TestDB, token, other, w, actor, target string) {

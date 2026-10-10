@@ -13,6 +13,55 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Remove validates durable identity and requires fresh current SQL authority.
+func (s *TeamService) Remove(ctx context.Context, scope repository.Scope, target uuid.UUID,
+	key string,
+) (repository.MemberRemoval, error) {
+	keyOK, err := regexp.MatchString(`^[A-Za-z0-9_-]{16,128}$`, key)
+	if err != nil || !keyOK || target == uuid.Nil {
+		return repository.MemberRemoval{}, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if s == nil || s.workspace == nil {
+		return repository.MemberRemoval{}, workspaceFailure(errors.New("team unavailable"))
+	}
+	hash := sha256.Sum256([]byte(target.String()))
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	result, err := s.store.Remove(ctx, scope, target, key, hash[:], s.authorizeMutation,
+		func(actorRole, currentRole string) bool { return AllowsRoleChange(actorRole, currentRole, currentRole) })
+	return result, teamMutationFailure(err)
+}
+
+func (s *TeamService) authorizeMutation(ctx context.Context, tx pgx.Tx, scope repository.Scope) (string, error) {
+	if err := s.workspace.RequireCapability(ctx, tx, scope, CapabilityTeam); err != nil {
+		return "", err
+	}
+	var current string
+	err := tx.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE",
+		scope.WorkspaceID, scope.ActorID).Scan(&current)
+	if err != nil {
+		return "", workspaceFailure(err)
+	}
+	if !Allows(current, CapabilityTeam) {
+		return "", errs.NewForbiddenError("You do not have permission for this action.", false)
+	}
+	return current, nil
+}
+
+func teamMutationFailure(err error) error {
+	if errors.Is(err, repository.ErrOwnerRequired) {
+		return &errs.HTTPError{Code: "OWNER_REQUIRED", Message: "Promote another owner first", Status: http.StatusConflict}
+	}
+	if errors.Is(err, repository.ErrTeamForbidden) {
+		return errs.NewForbiddenError("You do not have permission for this action.", false)
+	}
+	var denied *errs.HTTPError
+	if errors.As(err, &denied) {
+		return denied
+	}
+	return workspaceFailure(err)
+}
+
 // ChangeRole validates canonical input and keeps authorization in the effect transaction.
 func (s *TeamService) ChangeRole(ctx context.Context, scope repository.Scope, target uuid.UUID,
 	role, key string,
@@ -27,34 +76,8 @@ func (s *TeamService) ChangeRole(ctx context.Context, scope repository.Scope, ta
 	hash := sha256.Sum256([]byte(target.String() + "\n" + role))
 	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
 	defer cancel()
-	result, err := s.store.ChangeRole(ctx, scope, target, role, key, hash[:],
-		func(ctx context.Context, tx pgx.Tx, scope repository.Scope) (string, error) {
-			if capabilityErr := s.workspace.RequireCapability(ctx, tx, scope, CapabilityTeam); capabilityErr != nil {
-				return "", capabilityErr
-			}
-			var current string
-			readErr := tx.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE",
-				scope.WorkspaceID, scope.ActorID).Scan(&current)
-			if readErr != nil {
-				return "", workspaceFailure(readErr)
-			}
-			if !Allows(current, CapabilityTeam) {
-				return "", errs.NewForbiddenError("You do not have permission for this action.", false)
-			}
-			return current, nil
-		}, AllowsRoleChange)
-	if errors.Is(err, repository.ErrOwnerRequired) {
-		return repository.TeamMember{}, &errs.HTTPError{Code: "OWNER_REQUIRED",
-			Message: "Promote another owner first", Status: http.StatusConflict}
-	}
-	if errors.Is(err, repository.ErrTeamForbidden) {
-		return repository.TeamMember{}, errs.NewForbiddenError("You do not have permission for this action.", false)
-	}
-	var denied *errs.HTTPError
-	if errors.As(err, &denied) {
-		return repository.TeamMember{}, denied
-	}
-	return result, workspaceFailure(err)
+	result, err := s.store.ChangeRole(ctx, scope, target, role, key, hash[:], s.authorizeMutation, AllowsRoleChange)
+	return result, teamMutationFailure(err)
 }
 
 // TeamService requires current SQL Team capability on every page.

@@ -79,6 +79,46 @@ func workspaceUnavailable() error {
 		Message: "Workspace temporarily unavailable", Status: http.StatusServiceUnavailable}
 }
 
+// RemoveMember accepts the canonical empty JSON request and returns committed identity.
+func (h *ProductHandler) RemoveMember(c echo.Context) error {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return err
+	}
+	workspace, err := uuid.Parse(c.Param("workspaceId"))
+	if err != nil || workspace == uuid.Nil || workspace.String() != c.Param("workspaceId") {
+		return errs.NewNotFoundError("Member not found", false, nil)
+	}
+	target, err := uuid.Parse(c.Param("memberId"))
+	if err != nil || target == uuid.Nil || target.String() != c.Param("memberId") {
+		return errs.NewNotFoundError("Member not found", false, nil)
+	}
+	if h.team == nil {
+		return workspaceUnavailable()
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var body *transport.TransportRemoveMemberRequest
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&body); err != nil || body == nil || len(*body) != 0 {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	result, err := h.team.Remove(c.Request().Context(), repository.Scope{WorkspaceID: workspace, ActorID: user.ID},
+		target, c.Request().Header.Get("Idempotency-Key"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportMemberRemovalResponse{
+		RemovedUserId: result.UserID.String(), WorkspaceId: result.WorkspaceID.String(), SelfRemoved: result.SelfRemoved,
+	})
+}
+
 // ChangeMemberRole accepts only the canonical role DTO and returns committed state.
 func (h *ProductHandler) ChangeMemberRole(c echo.Context) error {
 	user, err := h.workspaceActor(c)

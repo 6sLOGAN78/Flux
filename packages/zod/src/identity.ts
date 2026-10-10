@@ -117,6 +117,20 @@ export const ZMemberListQuery = z
   .object({ after: extendApi(z.string().uuid(), { "x-go-type": "string" }).optional() })
   .strict();
 
+export const ZRemoveMemberRequest = extendApi(z.object({}).strict(), {
+  title: "transport.RemoveMemberRequest",
+});
+export const ZMemberRemovalResponse = extendApi(
+  z
+    .object({
+      removedUserId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      selfRemoved: z.boolean(),
+    })
+    .strict(),
+  { title: "transport.MemberRemovalResponse" },
+);
+
 export const ZIdentityResponse = extendApi(
   z
     .object({

@@ -149,6 +149,17 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   ]);
   const createWorkspace = document.paths["/api/v1/workspaces"].post;
   const changeRole = document.paths["/api/v1/workspaces/{workspaceId}/members/{memberId}"].patch;
+  const removeMember = document.paths["/api/v1/workspaces/{workspaceId}/members/{memberId}"].delete;
+  assert.deepEqual(removeMember.security, [{ bearerAuth: [] }]);
+  for (const status of [200, 400, 401, 403, 404, 409, 413, 415, 429, 503])
+    assert.ok(removeMember.responses[status]);
+  assert.ok(removeMember.requestBody.content["application/json"].schema);
+  assert.ok(
+    removeMember.parameters.some(
+      (parameter: { name: string; required?: boolean }) =>
+        parameter.name === "idempotency-key" && parameter.required,
+    ),
+  );
   assert.deepEqual(changeRole.security, [{ bearerAuth: [] }]);
   for (const status of [200, 400, 401, 403, 404, 409, 413, 415, 429, 503])
     assert.ok(changeRole.responses[status]);

@@ -13,6 +13,130 @@ import (
 // ErrOwnerRequired prevents removing the workspace's final owner capability.
 var ErrOwnerRequired = errors.New("workspace owner required")
 
+// MemberRemoval exposes only committed removal identity, never a private role snapshot.
+type MemberRemoval struct {
+	UserID      uuid.UUID `json:"removedUserId"`
+	WorkspaceID uuid.UUID `json:"workspaceId"`
+	SelfRemoved bool      `json:"selfRemoved"`
+}
+
+type removalSnapshot struct {
+	Role string `json:"role"`
+	MemberRemoval
+}
+
+// Remove serializes workspace -> current actor -> scoped target. Actor policy
+// precedes ledger access. A missing target can replay only its committed snapshot;
+// snapshot target policy is checked before reading/comparing its private hash.
+//
+//nolint:nonamedreturns // Bounded deferred rollback preserves cleanup failures.
+func (r *TeamRepository) Remove(ctx context.Context, scope Scope, target uuid.UUID,
+	key string, hash []byte, authorize TeamAuthorize, allow func(string, string) bool,
+) (result MemberRemoval, err error) {
+	if r == nil || r.pool == nil || authorize == nil || allow == nil {
+		return result, errors.New("team store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	actorRole, err := authorize(ctx, tx, scope)
+	if err != nil {
+		return result, err
+	}
+	var membership uuid.UUID
+	var currentRole string
+	targetErr := tx.QueryRow(ctx, "SELECT id,role FROM memberships WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE",
+		scope.WorkspaceID, target).Scan(&membership, &currentRole)
+	if targetErr != nil && !errors.Is(targetErr, pgx.ErrNoRows) {
+		return result, targetErr
+	}
+	if targetErr == nil && !allow(actorRole, currentRole) {
+		return result, ErrTeamForbidden
+	}
+	if _, err = tx.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation='member.remove' AND retain_until < now()", scope.WorkspaceID, scope.ActorID); err != nil {
+		return result, err
+	}
+	var snapshot []byte
+	err = tx.QueryRow(ctx, "SELECT result FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation='member.remove' AND request_key=$3", scope.WorkspaceID, scope.ActorID, key).Scan(&snapshot)
+	switch {
+	case err == nil:
+		result, err = replayMemberRemoval(ctx, tx, scope, actorRole, key, hash, snapshot, allow)
+		if err != nil {
+			return result, err
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		if targetErr != nil {
+			return result, targetErr
+		}
+		result, err = applyMemberRemoval(ctx, tx, scope, target, membership, currentRole, key, hash)
+		if err != nil {
+			return result, err
+		}
+	default:
+		return result, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return MemberRemoval{}, err
+	}
+	return result, nil
+}
+
+// Called only after current actor and any live target have been authorized.
+func replayMemberRemoval(ctx context.Context, tx pgx.Tx, scope Scope, actorRole, key string,
+	hash, snapshot []byte, allow func(string, string) bool,
+) (MemberRemoval, error) {
+	var stored removalSnapshot
+	if err := json.Unmarshal(snapshot, &stored); err != nil {
+		return MemberRemoval{}, err
+	}
+	if stored.WorkspaceID != scope.WorkspaceID || stored.UserID == uuid.Nil {
+		return MemberRemoval{}, errors.New("invalid removal snapshot")
+	}
+	if !allow(actorRole, stored.Role) {
+		return MemberRemoval{}, ErrTeamForbidden
+	}
+	var storedHash []byte
+	err := tx.QueryRow(ctx, "SELECT request_hash FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation='member.remove' AND request_key=$3", scope.WorkspaceID, scope.ActorID, key).Scan(&storedHash)
+	if err != nil {
+		return MemberRemoval{}, err
+	}
+	if err = matchRequest(hash, storedHash); err != nil {
+		return MemberRemoval{}, err
+	}
+	return stored.MemberRemoval, nil
+}
+
+func applyMemberRemoval(ctx context.Context, tx pgx.Tx, scope Scope, target, membership uuid.UUID,
+	role, key string, hash []byte,
+) (MemberRemoval, error) {
+	result := MemberRemoval{UserID: target, WorkspaceID: scope.WorkspaceID, SelfRemoved: target == scope.ActorID}
+	if err := protectFinalOwner(ctx, tx, scope, role, ""); err != nil {
+		return MemberRemoval{}, err
+	}
+	// Delete only the scoped membership. Links, key reservations, users and audit
+	// actors resolve to durable users and remain untouched.
+	if _, err := tx.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2",
+		scope.WorkspaceID, target); err != nil {
+		return MemberRemoval{}, err
+	}
+	if err := recordRemovalAudit(ctx, tx, scope, membership); err != nil {
+		return MemberRemoval{}, err
+	}
+	snapshot, err := json.Marshal(removalSnapshot{MemberRemoval: result, Role: role})
+	if err != nil {
+		return MemberRemoval{}, err
+	}
+	_, err = tx.Exec(ctx, "INSERT INTO mutation_requests "+
+		"(workspace_id,actor_id,operation,request_key,request_hash,result) "+
+		"VALUES($1,$2,'member.remove',$3,$4,$5)", scope.WorkspaceID, scope.ActorID, key, hash, snapshot)
+	return result, err
+}
+
 // TeamAuthorize locks the workspace and actor, then returns current authority.
 type TeamAuthorize func(context.Context, pgx.Tx, Scope) (string, error)
 
