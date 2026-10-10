@@ -2,7 +2,6 @@
 package repository
 
 import (
-	"github.com/6sLOGAN78/flux/internal/server"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -14,11 +13,7 @@ type Repositories struct {
 }
 
 // NewRepositories constructs the persistence registry.
-func NewRepositories(s *server.Server) *Repositories {
-	var pool *pgxpool.Pool
-	if s.DB != nil {
-		pool = s.DB.Pool
-	}
+func NewRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
 		Users: NewUserRepository(pool), Workspaces: NewWorkspaceRepository(pool), Team: NewTeamRepository(pool),
 	}

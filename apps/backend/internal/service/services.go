@@ -22,7 +22,11 @@ type Services struct {
 func NewServices(s *server.Server, stores *repository.Repositories) (*Services, error) {
 	authService := NewAuthService(s)
 	if stores == nil {
-		stores = repository.NewRepositories(s)
+		var pool *pgxpool.Pool
+		if s.DB != nil {
+			pool = s.DB.Pool
+		}
+		stores = repository.NewRepositories(pool)
 	}
 
 	workspace := NewWorkspaceService(stores.Workspaces)

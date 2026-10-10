@@ -372,6 +372,8 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 			name = "worker_deadline"
 		}
 		t.Run(name, func(t *testing.T) {
+			pg, closePG := backendTesting.SetupTestPostgres(t)
+			defer closePG()
 			queue, closeQueue := backendTesting.SetupTestRedis(t)
 			defer closeQueue()
 			active, release := make(chan struct{}, 2), make(chan struct{})
@@ -392,7 +394,7 @@ func TestSIGTERMRoleProcesses(t *testing.T) {
 				filepath.Join(binaries,
 					"worker"),
 				address,
-				append(binaryTestEnv(),
+				append(append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...),
 					"GORACE=atexit_sleep_ms=0",
 					"FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT="+budget,
 					"FLUX_REDIS.ADDRESS="+queue.Config.Address,

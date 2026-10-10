@@ -18,6 +18,7 @@ export const artifactManifest = [
   "apps/backend/static/openapi.json",
   "apps/backend/internal/transport/health.gen.go",
   "apps/backend/templates/emails/welcome.html",
+  "apps/backend/templates/emails/invitation.html",
 ] as const;
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 

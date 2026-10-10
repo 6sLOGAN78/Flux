@@ -1036,18 +1036,31 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
-test("invitation-delivery: actual durable worker acknowledgement becomes visible", async ({ page, request }) => {
+test("invitation-delivery: actual durable worker acknowledgement becomes visible", async ({
+  page,
+  request,
+}) => {
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   await installProviderTransport(page, fixture.client);
-  const headers = { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100",
-    "Idempotency-Key": "browser-delivery-workspace-01" };
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-delivery-workspace-01",
+  };
   const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
-    headers, data: { name: "Delivery Team" },
+    headers,
+    data: { name: "Delivery Team" },
   });
   expect(created.status()).toBe(201);
   const { workspace } = await created.json();
+  let failPoll = false;
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
+    if (failPoll && url.pathname.endsWith("/invitations") && route.request().method() === "GET") {
+      failPoll = false;
+      await route.fulfill({ status: 503, json: { message: "Temporary fixture read outage" } });
+      return;
+    }
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
     await route.fulfill({ response });
   });
@@ -1057,10 +1070,27 @@ test("invitation-delivery: actual durable worker acknowledgement becomes visible
   await form.getByRole("button", { name: "Invite member", exact: true }).click();
   const list = page.getByRole("list", { name: "Workspace invitations" });
   await expect(list).toContainText("Delivery status: Queued");
+  const before = await request.get(`${fixture.api}/api/v1/workspaces/${workspace.id}/invitations`, {
+    headers,
+  });
+  expect((await before.json()).items[0].status).toBe("Queued");
+  failPoll = true;
+  expect((await request.post(`${fixture.api}/__test/delivery-release`)).status()).toBe(204);
   await expect(list).toContainText("Delivery status: Delivered", { timeout: 20000 });
-  const response = await request.get(`${fixture.api}/api/v1/workspaces/${workspace.id}/invitations`, { headers });
+  const response = await request.get(
+    `${fixture.api}/api/v1/workspaces/${workspace.id}/invitations`,
+    { headers },
+  );
   expect(response.status()).toBe(200);
-  expect((await response.json()).items.find((item: { email: string }) => item.email === "delivery@example.test").status).toBe("Delivered");
+  expect(
+    (await response.json()).items.find(
+      (item: { email: string }) => item.email === "delivery@example.test",
+    ).status,
+  ).toBe("Delivered");
+  const evidence = await (
+    await request.get(`${fixture.api}/__test/delivery-evidence?workspace=${workspace.id}`)
+  ).json();
+  expect(evidence).toEqual({ acknowledgements: 1, erasedDeliveries: 1 });
 });
 
 test("invitation-queue: actual API queue, expiry, duplicate and draft boundaries", async ({

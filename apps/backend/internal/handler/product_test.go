@@ -522,6 +522,8 @@ func checkInvitationStatusProjection(t *testing.T, api string, db *fluxTesting.T
 	require.NoError(t, err)
 	_, err = db.Pool.Exec(ctx, "INSERT INTO invitation_delivery_intents(workspace_id,id,invitation_id,key_id,ciphertext,state) SELECT $3,id,invitation_id,key_id,ciphertext,'failed' FROM invitation_delivery_intents WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, foreign)
 	require.NoError(t, err)
+	var originalCiphertext []byte
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT ciphertext FROM invitation_delivery_intents WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite).Scan(&originalCiphertext))
 	for _, test := range []struct{ state, delivery, status string }{
 		{"pending", "queued", "Queued"}, {"pending", "leased", "Queued"},
 		{"pending", "delivered", "Delivered"}, {"pending", "failed", "Failed"},
@@ -530,7 +532,7 @@ func checkInvitationStatusProjection(t *testing.T, api string, db *fluxTesting.T
 	} {
 		_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", workspace, invite, test.state)
 		require.NoError(t, err)
-		_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state=$3,lease_until=CASE WHEN $3='leased' THEN now()+interval '1 minute' END,delivered_at=CASE WHEN $3='delivered' THEN now() END WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, test.delivery)
+		_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state=$3,ciphertext=CASE WHEN $3='delivered' THEN NULL::bytea ELSE $4::bytea END,lease_until=CASE WHEN $3='leased' THEN now()+interval '1 minute' END,delivered_at=CASE WHEN $3='delivered' THEN now() END WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, test.delivery, originalCiphertext)
 		require.NoError(t, err)
 		statusCode, listed := workspaceRequest(t, api, token, "GET", "/workspaces/"+workspace+"/invitations", "", "")
 		require.Equal(t, 200, statusCode)
@@ -544,7 +546,7 @@ func checkInvitationStatusProjection(t *testing.T, api string, db *fluxTesting.T
 	require.Equal(t, "Expired", elapsed["items"].([]any)[0].(map[string]any)["status"], "elapsed pending expiry precedes delivered projection")
 	_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state='pending',created_at=$3,expires_at=$4 WHERE workspace_id=$1 AND id=$2", workspace, invite, originalCreated, originalExpires)
 	require.NoError(t, err)
-	_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state='queued',delivered_at=NULL WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite)
+	_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state='queued',ciphertext=$3,delivered_at=NULL WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, originalCiphertext)
 	require.NoError(t, err)
 }
 

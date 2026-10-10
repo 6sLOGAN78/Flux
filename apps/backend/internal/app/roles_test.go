@@ -38,6 +38,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+//nolint:lll // Keep scoped SQL fences, bounded validation and exact fixture assertions together.
 func roleTestConfig() *config.Config {
 	return &config.Config{Invitations: config.InvitationConfig{ActiveKeyID: "fixture", EncryptionKeys: `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`, Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}, Primary: config.Primary{Env: "test"}, Observability: config.DefaultObservabilityConfig(),
 		API: config.RoleConfig{ListenAddress: "127.0.0.1:0",
@@ -296,8 +297,8 @@ func TestRoleResourceGraphs(t *testing.T) {
 			if !reflect.DeepEqual(opened, test.want) {
 				t.Fatalf("role graph %v, want %v", opened, test.want)
 			}
-			if role.Server.DB != nil && test.role != config.RoleAPI {
-				t.Fatal("non-API allocated PostgreSQL")
+			if (role.Server.DB != nil) != (test.role == config.RoleAPI || test.role == config.RoleWorker) {
+				t.Fatal("PostgreSQL ownership does not match the API/worker resource graph")
 			}
 			if test.role != config.RoleAPI {
 				for _, path := range []string{"/docs", "/static/openapi.json", "/api/v1/links"} {
@@ -701,6 +702,8 @@ func TestRoleBinaryStartup(t *testing.T) {
 		}
 	})
 	t.Run("worker", func(t *testing.T) {
+		pg, closePG := backendTesting.SetupTestPostgres(t)
+		defer closePG()
 		queue, closeQueue := backendTesting.SetupTestRedis(t)
 		defer closeQueue()
 		delivered := make(chan bool, 1)
@@ -725,7 +728,8 @@ func TestRoleBinaryStartup(t *testing.T) {
 		}))
 		defer transport.Close()
 		address := binaryTestAddress(t)
-		env := append(binaryTestEnv(), "FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT=1s",
+		env := append(append(binaryTestEnv(), binaryDatabaseEnv(pg.Config.Database)...),
+			"FLUX_WORKER.LISTEN_ADDRESS="+address, "FLUX_WORKER.DRAIN_TIMEOUT=1s",
 			"FLUX_REDIS.ADDRESS="+queue.Config.Address,
 			"FLUX_INTEGRATION.RESEND_API_KEY=local-test-key",
 			"RESEND_BASE_URL="+transport.URL+"/")

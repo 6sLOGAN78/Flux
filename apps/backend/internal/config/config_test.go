@@ -390,6 +390,9 @@ func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
 		t.Run(string(role), func(t *testing.T) {
 			values := configValues()
 			delete(values, "auth")
+			if role == RoleWorker {
+				delete(values, "links")
+			}
 			if role != RoleWorker {
 				delete(values, "integration")
 				delete(values, "redis")

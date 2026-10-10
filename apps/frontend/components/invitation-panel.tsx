@@ -24,6 +24,7 @@ export function InvitationPanel({
   const denied = useRef(accessLost);
   denied.current = accessLost;
   const submitting = useRef(false);
+  const pollUntil = useRef(0);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [items, setItems] = useState<InvitationsResponse["items"]>([]);
@@ -33,6 +34,7 @@ export function InvitationPanel({
   const [queued, setQueued] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     onDirty(email !== "" || role !== "member");
@@ -47,7 +49,8 @@ export function InvitationPanel({
   );
   useEffect(() => {
     const request = reads.current.begin();
-    setLoading(true);
+    setRefreshing(true);
+    setLoading(attempt === 0 || after !== undefined);
     setError("");
     void createAPI(getToken, { origin: window.location.origin })
       .request(`/workspaces/${workspaceId}/invitations`, {
@@ -68,10 +71,20 @@ export function InvitationPanel({
         } else setError("We couldn't load invitations. Try again.");
       })
       .finally(() => {
-        if (request.current()) setLoading(false);
+        if (request.current()) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       });
     return () => reads.current.clear();
   }, [getToken, workspaceId, after, attempt]);
+  useEffect(() => {
+    if (refreshing || !items.some((item) => item.status === "Queued")) return;
+    if (pollUntil.current === 0) pollUntil.current = Date.now() + 60000;
+    if (Date.now() >= pollUntil.current) return;
+    const timer = window.setTimeout(() => setAttempt((value) => value + 1), 2000);
+    return () => window.clearTimeout(timer);
+  }, [items, refreshing]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (submitting.current) return;
@@ -98,6 +111,7 @@ export function InvitationPanel({
       setEmail("");
       setRole("member");
       setQueued(true);
+      pollUntil.current = Date.now() + 60000;
       setAttempt((value) => value + 1);
     } catch (failure: unknown) {
       if (!request.current()) return;

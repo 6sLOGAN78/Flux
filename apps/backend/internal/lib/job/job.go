@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/6sLOGAN78/flux/internal/lifecycle"
 	"github.com/6sLOGAN78/flux/internal/observability"
+	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -18,30 +20,36 @@ import (
 )
 
 const (
-	workerConcurrency   = 10
-	criticalQueueWeight = 6
-	defaultQueueWeight  = 3
-	drainPollDivisor    = 10
+	workerConcurrency      = 10
+	criticalQueueWeight    = 6
+	defaultQueueWeight     = 3
+	drainPollDivisor       = 10
+	invitationPollInterval = 5 * time.Second
 )
 
 // JobService owns asynchronous producers and worker resources.
 //
 //nolint:revive // Preserve the established service type used by constructors and role adapters.
 type JobService struct {
-	emailClient  WelcomeEmailSender
-	stopErr      error
-	drainErr     error
-	tracer       trace.Tracer
-	replacements *asynq.Client
-	server       *asynq.Server
-	logger       *zerolog.Logger
-	shutdown     func() error
-	closeClient  func() error
-	Client       *asynq.Client
-	inspector    *asynq.Inspector
-	drainDone    chan struct{}
-	stopOnce     sync.Once
-	drainOnce    sync.Once
+	emailClient      WelcomeEmailSender
+	tracer           trace.Tracer
+	invitationSender InvitationSender
+	drainErr         error
+	stopErr          error
+	dispatchDone     chan struct{}
+	shutdown         func() error
+	dispatchCancel   context.CancelFunc
+	drainDone        chan struct{}
+	replacements     *asynq.Client
+	server           *asynq.Server
+	logger           *zerolog.Logger
+	deliveries       *repository.DeliveryRepository
+	closeClient      func() error
+	Client           *asynq.Client
+	inspector        *asynq.Inspector
+	invitationConfig config.InvitationConfig
+	stopOnce         sync.Once
+	drainOnce        sync.Once
 }
 
 // WelcomeEmailSender is the worker's narrow, injectable delivery boundary.
@@ -51,6 +59,9 @@ type WelcomeEmailSender interface {
 
 // StopIntake prevents new claims without closing the shared Redis connection.
 func (j *JobService) StopIntake() {
+	if j.dispatchCancel != nil {
+		j.dispatchCancel()
+	}
 	if j.server != nil {
 		j.server.Stop()
 	}
@@ -61,6 +72,10 @@ func (j *JobService) Drain(ctx context.Context) error {
 	j.drainOnce.Do(func() {
 		j.drainDone = make(chan struct{})
 		go func() {
+			if j.dispatchCancel != nil {
+				j.dispatchCancel()
+				<-j.dispatchDone
+			}
 			if j.shutdown != nil {
 				j.drainErr = j.shutdown()
 			}
@@ -184,12 +199,62 @@ func (j *JobService) Start() error {
 	// Register task handlers
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TaskWelcome, j.handleWelcomeEmailTask)
+	if j.deliveries != nil {
+		mux.HandleFunc(TaskInvitation, j.handleInvitationTask)
+	}
 
 	j.logger.Info().Msg("Starting background job server")
 	if err := j.server.Start(mux); err != nil {
 		return err
 	}
+	if j.deliveries != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		j.dispatchCancel = cancel
+		j.dispatchDone = make(chan struct{})
+		go j.dispatchInvitations(ctx)
+	}
 
+	return nil
+}
+
+func (j *JobService) dispatchInvitations(ctx context.Context) {
+	defer close(j.dispatchDone)
+	ticker := time.NewTicker(invitationPollInterval)
+	defer ticker.Stop()
+	for {
+		batchCtx, cancel := context.WithTimeout(ctx, invitationPollInterval)
+		err := j.dispatchInvitationBatch(batchCtx)
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			j.logger.Warn().Msg("invitation dispatch unavailable")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (j *JobService) dispatchInvitationBatch(ctx context.Context) error {
+	claims, err := j.deliveries.Claim(ctx)
+	if err != nil {
+		return err
+	}
+	for _, claim := range claims {
+		if err = j.prepareInvitation(ctx, claim); err != nil {
+			return err
+		}
+		task, taskErr := NewInvitationTask(claim)
+		if taskErr != nil {
+			return taskErr
+		}
+		taskID := claim.DeliveryID.String() + "/" + strconv.FormatInt(claim.Generation, 10)
+		_, err = j.replacements.EnqueueContext(ctx, task, asynq.TaskID(taskID))
+		if err != nil && !errors.Is(err, asynq.ErrTaskIDConflict) {
+			return err
+		}
+	}
 	return nil
 }
 

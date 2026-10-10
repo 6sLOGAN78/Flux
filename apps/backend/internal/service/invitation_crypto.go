@@ -1,7 +1,6 @@
 package service
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,34 +9,19 @@ import (
 	"errors"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/lib/invitationcrypto"
 	"github.com/6sLOGAN78/flux/internal/repository"
 	"github.com/google/uuid"
 )
 
 // InvitationEnvelope is private delivery material, never a response or log DTO.
-type InvitationEnvelope struct {
-	Token        string `json:"token"`
-	Email        string `json:"email"`
-	Sender       string `json:"sender"`
-	PublicOrigin string `json:"publicOrigin"`
-}
+type InvitationEnvelope = invitationcrypto.Envelope
 
 func invitationAAD(workspace, invitation, delivery uuid.UUID, keyID string) []byte {
-	return []byte("flux.invitation.v1\n" + workspace.String() + "\n" +
-		invitation.String() + "\n" + delivery.String() + "\n" + keyID)
+	return invitationcrypto.AAD(workspace, invitation, delivery, keyID)
 }
 
-func invitationCipher(key []byte) (cipher.AEAD, error) {
-	const keyBytes = 32
-	if len(key) != keyBytes {
-		return nil, errors.New("invalid invitation encryption key")
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, errors.New("invitation encryption unavailable")
-	}
-	return cipher.NewGCMWithRandomNonce(block)
-}
+func invitationCipher(key []byte) (cipher.AEAD, error) { return invitationcrypto.Cipher(key) }
 
 func sealInvitation(cfg config.InvitationConfig, scope repository.Scope, invite, delivery uuid.UUID,
 	email string,

@@ -3,11 +3,16 @@ package email
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
+	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/lib/invitationcrypto"
 	"github.com/6sLOGAN78/flux/templates"
 	"github.com/resend/resend-go/v2"
 	"github.com/rs/zerolog"
@@ -15,16 +20,53 @@ import (
 
 // Client renders templates and sends transactional emails.
 type Client struct {
-	client *resend.Client
-	logger *zerolog.Logger
+	client              *resend.Client
+	invitationClient    *resend.Client
+	invitationTransport *http.Transport
+	logger              *zerolog.Logger
 }
+
+const invitationSendTimeout = 10 * time.Second
 
 // NewClient constructs the configured transactional email transport.
 func NewClient(cfg *config.Config, logger *zerolog.Logger) *Client {
+	transport := &http.Transport{ForceAttemptHTTP2: true, TLSHandshakeTimeout: invitationSendTimeout}
+	transport.Proxy = nil
+	invitationClient := resend.NewCustomClient(&http.Client{Transport: transport, Timeout: invitationSendTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		cfg.Integration.ResendAPIKey)
+	invitationClient.BaseURL = &url.URL{Scheme: "https", Host: "api.resend.com", Path: "/"}
 	return &Client{
-		client: resend.NewClient(cfg.Integration.ResendAPIKey),
-		logger: logger,
+		client:              resend.NewClient(cfg.Integration.ResendAPIKey),
+		invitationClient:    invitationClient,
+		invitationTransport: transport,
+		logger:              logger,
 	}
+}
+
+// Close releases the invitation adapter's owned idle transport connections.
+func (c *Client) Close() error {
+	if c != nil && c.invitationTransport != nil {
+		c.invitationTransport.CloseIdleConnections()
+	}
+	return nil
+}
+
+// TemplateInvitation identifies the closed embedded invitation asset.
+const TemplateInvitation Template = "invitation"
+
+// SendInvitation uses the fixed HTTPS provider with a stable intent idempotency key.
+func (c *Client) SendInvitation(ctx context.Context, message invitationcrypto.Message) error {
+	if c == nil || c.invitationClient == nil {
+		return errors.New("invitation transport unavailable")
+	}
+	ack, err := c.invitationClient.Emails.SendWithOptions(ctx, &resend.SendEmailRequest{
+		From: message.From, To: []string{message.To}, Subject: message.Subject, Html: message.HTML},
+		&resend.SendEmailOptions{IdempotencyKey: message.IdempotencyKey})
+	if err != nil || ack == nil || ack.Id == "" {
+		return errors.New("invitation acknowledgement unavailable")
+	}
+	return nil
 }
 
 // Render formats an embedded template without contacting the email provider.
@@ -33,11 +75,13 @@ func (c *Client) Render(templateName Template, data map[string]string) (string, 
 	switch templateName {
 	case TemplateWelcome:
 		tmplPath = "emails/welcome.html"
+	case TemplateInvitation:
+		tmplPath = "emails/invitation.html"
 	default:
 		return "", errors.New("unsupported email template")
 	}
 
-	tmpl, err := template.New("welcome.html").Option("missingkey=error").ParseFS(templates.Assets, tmplPath)
+	tmpl, err := template.New(string(templateName)+".html").Option("missingkey=error").ParseFS(templates.Assets, tmplPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse email template %s: %w", templateName, err)
 	}

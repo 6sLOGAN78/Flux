@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -213,7 +214,7 @@ func healthRoleConfig() *config.Config {
 		Worker:        settings}
 }
 
-//nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
+//nolint:lll,gocognit // Keep exact wire readiness and ordered dependency failure assertions together.
 func TestRoleHealthActualHTTP(t *testing.T) {
 	db, _ := backendTesting.SetupTestPostgres(t)
 	queue, _ := backendTesting.SetupTestRedis(t)
@@ -230,6 +231,7 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 			cfg.Database = db.Config.Database
 			cfg.Redis = queue.Config
 			cfg.Integration.ResendAPIKey = "provider-secret"
+			cfg.Invitations = config.InvitationConfig{ActiveKeyID: "fixture", EncryptionKeys: `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`, Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}
 			var runtime *app.RoleRuntime
 			switch role {
 			case "api", "api-producer":
@@ -292,7 +294,7 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 			case "redirector":
 				fixture = `{"status":"ready","checks":[]}`
 			case "worker":
-				fixture = `{"status":"ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"ready"}]}`
+				fixture = `{"status":"ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"ready"},{"name":"email","state":"ready"}]}`
 			}
 			assertHealthContract(t, request("/ready"), "/ready", 200, fixture)
 			if role == "api-producer" {
@@ -313,8 +315,9 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 					request("/ready"),
 					"/ready",
 					503,
-					`{"status":"not_ready","checks":[{"name":"redis","state":"ready"},{"name":"email","state":"not_ready"}]}`)
+					`{"status":"not_ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"ready"},{"name":"email","state":"not_ready"}]}`)
 				cfg.Integration.ResendAPIKey = "provider-secret"
+				cfg.Invitations = config.InvitationConfig{ActiveKeyID: "fixture", EncryptionKeys: `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`, Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}
 			}
 			if role == "api" || role == "api-producer" {
 				runtime.Server.DB.Pool.Close()
@@ -334,7 +337,7 @@ func TestRoleHealthActualHTTP(t *testing.T) {
 				}
 				runtime.Server.Redis = failedQueue
 				t.Cleanup(func() { runtime.Server.Redis = activeQueue })
-				fixture = `{"status":"not_ready","checks":[{"name":"redis","state":"not_ready"},{"name":"email","state":"ready"}]}`
+				fixture = `{"status":"not_ready","checks":[{"name":"database","state":"ready"},{"name":"redis","state":"not_ready"},{"name":"email","state":"ready"}]}`
 			}
 			if role != "redirector" {
 				assertHealthContract(t, request("/ready"), "/ready", 503, fixture)

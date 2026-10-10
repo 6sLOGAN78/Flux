@@ -23,16 +23,18 @@ func TestInvitationConfigFailClosedAndRoleOwnership(t *testing.T) {
 	} {
 		values := configValues()
 		values["invitations"].(map[string]any)[test.field] = test.value
-		_, err := loadConfigForRole(configProvider{values: values}, RoleAPI)
-		if err == nil {
-			t.Fatal("invalid API invitation setting accepted")
+		for _, role := range []Role{RoleAPI, RoleWorker} {
+			_, err := loadConfigForRole(configProvider{values: values}, role)
+			if err == nil {
+				t.Fatal("invalid owned invitation setting accepted")
+			}
+			if test.value != "" && (strings.Contains(fmt.Sprint(err), test.value) ||
+				strings.Contains(fmt.Sprint(errors.Unwrap(err)), test.value)) {
+				t.Fatal("private setting disclosed")
+			}
 		}
-		if test.value != "" && (strings.Contains(fmt.Sprint(err), test.value) ||
-			strings.Contains(fmt.Sprint(errors.Unwrap(err)), test.value)) {
-			t.Fatal("private setting disclosed")
-		}
-		for _, role := range []Role{RoleRedirector, RoleWorker, RoleMigrator} {
-			if _, err = loadConfigForRole(configProvider{values: values}, role); err != nil {
+		for _, role := range []Role{RoleRedirector, RoleMigrator} {
+			if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
 				t.Fatal("unowned invitation setting blocked role")
 			}
 		}

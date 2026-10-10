@@ -137,6 +137,9 @@ func defaultRoleFactories() roleFactories {
 			func(context.Context) error,
 			error) {
 			consumer := job.NewConsumer(srv.Logger, srv.Config, srv.Redis, adapter, srv.Telemetry)
+			if err := consumer.ConfigureInvitations(srv.DB.Pool, srv.Config.Invitations, adapter); err != nil {
+				return consumer, func(context.Context) error { return consumer.Stop() }, err
+			}
 			return consumer, func(context.Context) error { return consumer.Stop() }, nil
 		},
 		startConsumer: func(consumer *job.JobService) error { return consumer.Start() },
@@ -219,7 +222,7 @@ func (r *RoleRuntime) constructResources(ctx context.Context, cfg *config.Config
 	if r.Role == config.RoleRedirector {
 		r.readiness = redirectorReadinessChecks()
 	}
-	if r.Role == config.RoleAPI {
+	if r.Role == config.RoleAPI || r.Role == config.RoleWorker {
 		db, closeDB, err180 := f.database(ctx, r.Server)
 		if err181 := r.own("database", closeDB, err180); err181 != nil {
 			return err181

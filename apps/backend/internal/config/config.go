@@ -104,6 +104,9 @@ func NormalizeLinkHost(value string) (string, error) {
 }
 
 func normalizeAPIPolicies(cfg *Config, role Role) error {
+	if role == RoleWorker {
+		return cfg.Invitations.Validate()
+	}
 	if role != RoleAPI {
 		return nil
 	}
@@ -242,23 +245,7 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if err := k.Load(provider, nil); err != nil {
 		return nil, &ConfigError{Stage: "load", cause: err}
 	}
-	// Do not decode numeric/duration settings owned by another process. An
-	// invalid database port or worker deadline cannot block a redirector.
-	for _, other := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
-		if other != role {
-			k.Delete(string(other))
-		}
-	}
-	if role == RoleRedirector || role == RoleWorker {
-		k.Delete("database")
-	}
-	if role == RoleMigrator {
-		k.Delete("server")
-	}
-	if role != RoleAPI {
-		k.Delete("links")
-		k.Delete("invitations")
-	}
+	excludeUnownedConfig(k, role)
 
 	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
 	if role == RoleMigrator {
@@ -302,6 +289,28 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	}
 
 	return mainConfig, nil
+}
+
+func excludeUnownedConfig(k *koanf.Koanf, role Role) {
+	// Do not decode numeric/duration settings owned by another process. An
+	// invalid database port or worker deadline cannot block a redirector.
+	for _, other := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
+		if other != role {
+			k.Delete(string(other))
+		}
+	}
+	if role == RoleRedirector {
+		k.Delete("database")
+	}
+	if role == RoleMigrator {
+		k.Delete("server")
+	}
+	if role != RoleAPI {
+		k.Delete("links")
+	}
+	if role != RoleAPI && role != RoleWorker {
+		k.Delete("invitations")
+	}
 }
 
 func normalizeHTTPRole(cfg *Config, role Role, k *koanf.Koanf) error {
@@ -389,12 +398,12 @@ func validateRoleSections(cfg *Config, role Role) error {
 	case RoleRedirector:
 		excluded = append(excluded, "Server", "Database", "Redis", "Integration")
 	case RoleWorker:
-		excluded = append(excluded, "Server", "Database")
+		excluded = append(excluded, "Server")
 	}
 	if err := validate.StructExcept(cfg, excluded...); err != nil {
 		return &ConfigError{Stage: stageValidate, cause: err}
 	}
-	if role == RoleMigrator || role == RoleAPI {
+	if role == RoleMigrator || role == RoleAPI || role == RoleWorker {
 		if err := validate.Var(cfg.Database.Port, "min=1,max=65535"); err != nil {
 			return &ConfigError{Stage: stageValidate, cause: err}
 		}

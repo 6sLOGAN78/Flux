@@ -11,6 +11,7 @@ const artifacts = [
   "apps/backend/static/openapi.json",
   "apps/backend/internal/transport/health.gen.go",
   "apps/backend/templates/emails/welcome.html",
+  "apps/backend/templates/emails/invitation.html",
 ];
 const repository = fileURLToPath(new URL("../", import.meta.url));
 type Generate = (options: {
