@@ -146,7 +146,7 @@ or `production`) and validate shared logging/optional telemetry settings.
 | --- | --- | --- |
 | API | PostgreSQL connection/pool settings; Redis address only when `FLUX_API.PRODUCER_ENABLED=true` | `FLUX_API.LISTEN_ADDRESS`, default `:8080`; database, plus Redis for the optional producer |
 | Redirector | Process/HTTP settings only at this foundation stage | `FLUX_REDIRECTOR.LISTEN_ADDRESS`, default `:8081`; no external dependency probes |
-| Worker | `FLUX_REDIS.ADDRESS`, `FLUX_INTEGRATION.RESEND_API_KEY`, email adapter and queue consumer | `FLUX_WORKER.LISTEN_ADDRESS`, default `127.0.0.1:8082`; Redis and local email configuration/embedded-template validation |
+| Worker | PostgreSQL connection/pool settings, `FLUX_REDIS.ADDRESS`, `FLUX_INTEGRATION.RESEND_API_KEY`, invitation encryption/sender/origin settings, email adapter and queue consumer | `FLUX_WORKER.LISTEN_ADDRESS`, default `127.0.0.1:8082`; actual PostgreSQL and Redis probes, local email/key validation and both embedded templates |
 | Migrator | PostgreSQL connection settings; pool defaults are supplied | One-shot command exit status; no HTTP, Redis, email or auth requirement |
 
 API startup never applies migrations or starts consumers. Producer mode creates
@@ -183,12 +183,15 @@ In separate terminals, from `apps/backend`:
 ```sh
 env 'FLUX_PRIMARY.ENV=local' \
   'FLUX_REDIRECTOR.LISTEN_ADDRESS=127.0.0.1:8081' go run ./cmd/redirector
-env 'FLUX_PRIMARY.ENV=local' 'FLUX_REDIS.ADDRESS=127.0.0.1:6379' \
+flux_postgres env 'FLUX_REDIS.ADDRESS=127.0.0.1:6379' \
   "FLUX_INTEGRATION.RESEND_API_KEY=$FLUX_LOCAL_EMAIL_KEY" \
   'FLUX_WORKER.LISTEN_ADDRESS=127.0.0.1:8082' go run ./cmd/worker
 ```
 
 Set `FLUX_LOCAL_EMAIL_KEY` privately before running a worker that sends mail.
+Provision the invitation settings below privately for both API and worker before
+running these commands; the worker has required PostgreSQL since plan 02-21.
+Run the explicit migrator first. Worker startup never applies migrations.
 The automated tests inject local delivery/transport dependencies and require no
 external email account. `go run ./cmd/flux` and `task run` remain API-only
 compatibility entrypoints. `task run:api`, `run:redirector`, `run:worker`, and
@@ -315,7 +318,7 @@ replicas through the deployment secret store; never expose it to the frontend.
 Redirector, worker and migrator do not require this key. Rotation invalidates
 existing link cursors; users can return to the first page. No fallback key exists.
 
-Invitation queue configuration belongs to the API in this slice:
+Invitation encryption and delivery configuration belongs to both API and worker:
 `FLUX_INVITATIONS.ACTIVE_KEY_ID`, `FLUX_INVITATIONS.ENCRYPTION_KEYS`,
 `FLUX_INVITATIONS.SENDER`, and `FLUX_INVITATIONS.PUBLIC_ORIGIN`.
 The encryption setting is JSON text mapping safe key IDs (1–64 letters, digits,
@@ -342,7 +345,25 @@ digest and inside the encrypted intent, never in Team responses or logs.
 Invitation expiry is seven days; duplicate elapsed pending invitations expire
 transactionally before replacement. Team displays scoped durable state:
 Queued, Delivered, Delivery failed, Accepted, Expired or Revoked, with full local
-expiry timestamps. This plan implements state projection, not worker sending.
-The API never consumes invitation intents or calls the email provider; worker
-delivery remains plan 02-21. Existing `FLUX_INTEGRATION.RESEND_API_KEY` remains
+expiry timestamps. The API never consumes invitation intents or calls the email
+provider. The independent worker polls durable PostgreSQL intents, publishes
+opaque references to Redis and records delivery only after acknowledgement.
+Existing `FLUX_INTEGRATION.RESEND_API_KEY` remains
 unchanged and is owned by the worker.
+
+Worker readiness renders welcome and invitation templates with local synthetic
+values, validates the complete encryption ring and active key, and checks its
+owned adapter is configured and open. It never sends mail, performs an email
+provider ping or waits for provider availability. `/ready` reports database,
+Redis and email components; `/live` remains process-only. Missing or malformed
+local configuration fails closed without returning key or provider diagnostics.
+
+Shutdown marks the worker unready and stops SQL dispatch/queue intake before
+draining active work. One caller deadline bounds the shutdown result. An active
+send retains its PostgreSQL and Redis dependencies until it finishes; deadline
+exhaustion returns a failure and the role command exits nonzero. Cleanup closes
+consumer, email adapter, Redis and PostgreSQL in reverse ownership order, with
+telemetry last. Partially allocated resources are released on startup failure,
+including an email adapter returned alongside an error. Existing welcome jobs,
+legacy retry/correlation migration, API-only optional producers, explicit
+migrators and independent redirectors keep their resource boundaries.

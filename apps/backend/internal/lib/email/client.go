@@ -9,6 +9,8 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -24,9 +26,14 @@ type Client struct {
 	invitationClient    *resend.Client
 	invitationTransport *http.Transport
 	logger              *zerolog.Logger
+	configured          bool
+	closed              atomic.Bool
 }
 
-const invitationSendTimeout = 10 * time.Second
+const (
+	invitationSendTimeout = 10 * time.Second
+	welcomeFirstNameField = "UserFirstName"
+)
 
 // NewClient constructs the configured transactional email transport.
 func NewClient(cfg *config.Config, logger *zerolog.Logger) *Client {
@@ -41,15 +48,38 @@ func NewClient(cfg *config.Config, logger *zerolog.Logger) *Client {
 		invitationClient:    invitationClient,
 		invitationTransport: transport,
 		logger:              logger,
+		configured:          strings.TrimSpace(cfg.Integration.ResendAPIKey) != "",
 	}
 }
 
 // Close releases the invitation adapter's owned idle transport connections.
 func (c *Client) Close() error {
-	if c != nil && c.invitationTransport != nil {
-		c.invitationTransport.CloseIdleConnections()
+	if c != nil && !c.closed.Swap(true) {
+		if c.invitationTransport != nil {
+			c.invitationTransport.CloseIdleConnections()
+		}
 	}
 	return nil
+}
+
+// CheckLocal validates the owned adapter and both embedded templates without
+// sending mail or probing provider availability. Render remains transport-free.
+func (c *Client) CheckLocal(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.closed.Load() || !c.configured || c.client == nil || c.invitationClient == nil {
+		return errors.New("email adapter unconfigured or closed")
+	}
+	if _, err := c.Render(TemplateWelcome, map[string]string{welcomeFirstNameField: "Health"}); err != nil {
+		return err
+	}
+	if _, err := c.Render(TemplateInvitation, map[string]string{
+		"WorkspaceName": "Health", "Role": "member", "InvitationURL": "https://app.flux.test/invitations",
+	}); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 // TemplateInvitation identifies the closed embedded invitation asset.
@@ -57,7 +87,7 @@ const TemplateInvitation Template = "invitation"
 
 // SendInvitation uses the fixed HTTPS provider with a stable intent idempotency key.
 func (c *Client) SendInvitation(ctx context.Context, message invitationcrypto.Message) error {
-	if c == nil || c.invitationClient == nil {
+	if c == nil || c.closed.Load() || !c.configured || c.invitationClient == nil {
 		return errors.New("invitation transport unavailable")
 	}
 	ack, err := c.invitationClient.Emails.SendWithOptions(ctx, &resend.SendEmailRequest{
@@ -99,7 +129,7 @@ func (c *Client) SendEmail(to, subject string, templateName Template, data map[s
 	if err != nil {
 		return err
 	}
-	if c == nil || c.client == nil {
+	if c == nil || c.closed.Load() || !c.configured || c.client == nil {
 		return errors.New("email transport is not configured")
 	}
 

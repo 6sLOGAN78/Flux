@@ -342,7 +342,9 @@ func boolInt(value bool) int {
 }
 
 func TestWorkerLocalReadinessRejectsUnusableAdapterAndKeys(t *testing.T) {
-	for _, mode := range []string{"ready", "empty adapter", "missing active key", "malformed key", "missing provider key", "canceled"} {
+	for _, mode := range []string{
+		"ready", "empty adapter", "missing active key", "malformed key", "missing provider key", "canceled",
+	} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := roleTestConfig()
 			cfg.Integration.ResendAPIKey = "test-only"

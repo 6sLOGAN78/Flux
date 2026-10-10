@@ -403,6 +403,9 @@ func validateRoleSections(cfg *Config, role Role) error {
 	if err := validate.StructExcept(cfg, excluded...); err != nil {
 		return &ConfigError{Stage: stageValidate, cause: err}
 	}
+	if role == RoleWorker && strings.TrimSpace(cfg.Integration.ResendAPIKey) == "" {
+		return &ConfigError{Stage: stageValidate, cause: errors.New("email adapter unconfigured")}
+	}
 	if role == RoleMigrator || role == RoleAPI || role == RoleWorker {
 		if err := validate.Var(cfg.Database.Port, "min=1,max=65535"); err != nil {
 			return &ConfigError{Stage: stageValidate, cause: err}

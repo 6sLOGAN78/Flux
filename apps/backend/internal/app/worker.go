@@ -45,13 +45,12 @@ func NewWorkerWithInvitationSender(ctx context.Context,
 
 func (r *RoleRuntime) constructWorker(f roleFactories) error {
 	adapter, err4 := f.email(r.Server)
-	if err4 != nil {
-		return &StartupError{Role: r.Role, Stage: "email", cause: err4}
-	}
+	var closeEmail func(context.Context) error
 	if adapter != nil {
-		if err5 := r.own("email", func(context.Context) error { return adapter.Close() }, nil); err5 != nil {
-			return err5
-		}
+		closeEmail = func(context.Context) error { return adapter.Close() }
+	}
+	if err5 := r.own("email", closeEmail, err4); err5 != nil {
+		return err5
 	}
 	consumer, closeConsumer, err4 := f.consumer(r.Server, adapter)
 	if err32 := r.own("consumer", closeConsumer, err4); err32 != nil {
@@ -75,16 +74,9 @@ func workerReadinessChecks(srv *server.Server, adapter *email.Client) []handler.
 				if adapter == nil || strings.TrimSpace(srv.Config.Integration.ResendAPIKey) == "" {
 					return errors.New("email adapter unconfigured")
 				}
-				// Exercise required embedded assets locally; never send email or ping
-				// the provider during queue-consumer readiness.
-				_,
-					err7 := adapter.Render(email.TemplateWelcome,
-					map[string]string{"UserFirstName": "Health"})
-				if err7 != nil {
+				if err7 := srv.Config.Invitations.Validate(); err7 != nil {
 					return err7
 				}
-				_, err7 = adapter.Render(email.TemplateInvitation, map[string]string{
-					"WorkspaceName": "Health", "Role": "member", "InvitationURL": "https://app.flux.test/invitations"})
-				return err7
+				return adapter.CheckLocal(ctx)
 			}})
 }

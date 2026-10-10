@@ -34,7 +34,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-//nolint:funlen // The registered suite shares real owned PostgreSQL and Redis fixtures.
 func TestInvitationWorkerRoleOwnership(t *testing.T) {
 	pg, closePG := backendTesting.SetupTestDB(t)
 	defer closePG()
@@ -54,8 +53,8 @@ func TestInvitationWorkerRoleOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			if err := worker.Close(context.Background()); err != nil && !errors.Is(err, redis.ErrClosed) {
-				t.Error(err)
+			if closeErr := worker.Close(context.Background()); closeErr != nil && !errors.Is(closeErr, redis.ErrClosed) {
+				t.Error(closeErr)
 			}
 		})
 		assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusOK, "")
@@ -77,7 +76,7 @@ func TestInvitationWorkerRoleOwnership(t *testing.T) {
 	})
 }
 
-//nolint:funlen,gocognit // Preserve the real factory graph and reverse cleanup assertions in one failure protocol.
+//nolint:gocognit // Preserve the real factory graph and reverse cleanup assertions in one failure protocol.
 func verifyInvitationWorkerStartupFailure(t *testing.T, cfg *config.Config, stage string) {
 	t.Helper()
 	f := defaultRoleFactories()
@@ -221,7 +220,8 @@ func verifyInvitationWorkerDrain(t *testing.T, cfg *config.Config, pool *pgxpool
 		t.Fatal("worker shutdown ignored shared deadline")
 	}
 	assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusServiceUnavailable, "")
-	if worker.Server.DB.Pool.Ping(context.Background()) != nil || worker.Server.Redis.Ping(context.Background()).Err() != nil {
+	if worker.Server.DB.Pool.Ping(context.Background()) != nil ||
+		worker.Server.Redis.Ping(context.Background()).Err() != nil {
 		t.Fatal("shared resource closed underneath active delivery")
 	}
 	release()
