@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-19-PLAN.md
-last_updated: "2026-10-10T10:59:43.953Z"
+stopped_at: Completed 02-20-PLAN.md
+last_updated: "2026-10-10T11:29:47.286Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 41
+  completed_plans: 42
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 20 of 35
+Plan: 21 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [███████░░░] 72%
+Progress: [███████░░░] 74%
 
 ## Performance Metrics
 
@@ -93,6 +93,7 @@ Progress: [███████░░░] 72%
 | Phase 2 P17 | 30min | 2 tasks | 19 files |
 | Phase 2 P18 | 24min | 2 tasks | 19 files |
 | Phase 2 P19 | 47min | 2 tasks | 32 files |
+| Phase 2 P20 | 20min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Queue invitations and encrypted intents atomically in PostgreSQL; API does not consume the queue or send email and Queued remains truthful until future worker acknowledgment.
 - [Phase 2]: API requires externally configured exact 32-byte AES keys with safe IDs; standard random-nonce GCM authenticates workspace, invitation, delivery and key identifiers, while durable users preserve invitation provenance.
 - [Phase 2]: Fresh locked actor and protected invitation role snapshot authorization precede replay hash access; native Team invitations preserve the existing safe-first dirty switch and request generation boundaries.
+- [Phase 2]: Project invitation delivery from the unique scoped intent with expiry, acceptance and revocation precedence; browser status fixtures prove presentation, not worker sending.
+- [Phase 2]: Extend actual canonical invitation enum with Delivered and Failed and regenerate both OpenAPI copies and Go transport together; preserve existing configuration names and external key provisioning.
+- [Phase 2]: Retain old encryption keys until live ciphertext drains or is safely re-encrypted; count messages across replicas and rotate before the per-key random-nonce limit.
 
 ### Pending Todos
 
@@ -201,6 +205,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T10:59:43.943Z
-Stopped at: Completed 02-19-PLAN.md
+Last session: 2026-10-10T11:29:47.275Z
+Stopped at: Completed 02-20-PLAN.md
 Resume file: None
