@@ -3,6 +3,44 @@ import { providerAssetCache } from "./provider-assets";
 
 const publicProviderAsset = providerAssetCache();
 
+test("invitation-accept inspects privately and joins only after explicit acceptance without workspace creation", async ({ page, request }) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const seeded = await request.post(`${fixture.api}/__test/invitation-arrival`);
+  expect(seeded.status()).toBe(200);
+  const arrival = await seeded.json();
+  await installProviderTransport(page, fixture.client);
+  let accepts = 0;
+  let creates = 0;
+  const exposed: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes(arrival.token) || (req.headers().referer ?? "").includes(arrival.token)) exposed.push("request");
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations/accept")) accepts++;
+    if (url.pathname.endsWith("/workspaces") && route.request().method() === "POST") creates++;
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/invitations#${arrival.token}`);
+  await expect(page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+  expect(accepts).toBe(0);
+  const headers = { Authorization: `Bearer ${fixture.token}` };
+  const before = await request.get(`${fixture.api}/api/v1/me`, { headers });
+  expect((await before.json()).workspaces.some((w: { id: string }) => w.id === arrival.workspace)).toBe(false);
+  expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie]))).not.toContain(arrival.token);
+  expect(await page.locator("html").innerHTML()).not.toContain(arrival.token);
+  await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${arrival.workspace}/links`));
+  await expect(page.getByRole("heading", { name: "Links", exact: true })).toBeVisible();
+  expect(accepts).toBe(1);
+  expect(creates).toBe(0);
+  expect(exposed).toEqual([]);
+  const after = await request.get(`${fixture.api}/api/v1/me`, { headers });
+  expect((await after.json()).lastWorkspace.id).toBe(arrival.workspace);
+});
+
 test("removal of another member retains creator links and invalidates their tab from fresh SQL authority", async ({
   page,
   context,

@@ -3,6 +3,8 @@ package testing_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,6 +30,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/jwks"
 	"github.com/clerk/clerk-sdk-go/v2/session"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
@@ -112,6 +115,10 @@ func TestBrowserProductFixture(t *testing.T) {
 				Invitations: service.NewInvitationService(repository.NewInvitationRepository(db.Pool), team, cfg.Invitations),
 				Workspace:   workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/__test/invitation-arrival" && r.Method == http.MethodPost {
+				seedInvitationArrival(db.Pool, w, r)
+				return
+			}
 			if r.URL.Path == "/__test/delivery-recovery" {
 				deliveryRecoveryEvidence(db.Pool, &recoveryAttempts, w, r)
 				return
@@ -134,6 +141,48 @@ func TestBrowserProductFixture(t *testing.T) {
 			product.ServeHTTP(w, r)
 		})
 	})
+}
+
+// This loopback-only fixture writes real SQL below the production router.
+func seedInvitationArrival(pool *pgxpool.Pool, w http.ResponseWriter, r *http.Request) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	secret := base64.RawURLEncoding.EncodeToString(raw)
+	digest := sha256.Sum256([]byte(secret))
+	workspace, invite := uuid.New(), uuid.New()
+	email := "local@example.test"
+	if r.URL.Query().Get("wrong") == "true" {
+		email = "wrong@example.test"
+	}
+	tx, err := pool.Begin(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	var owner uuid.UUID
+	err = tx.QueryRow(r.Context(), "INSERT INTO users(issuer,subject,verified_email) VALUES('https://fixture.clerk.accounts.dev','user_arrival_owner','owner@example.test') ON CONFLICT(issuer,subject) DO UPDATE SET verified_email=EXCLUDED.verified_email RETURNING id").Scan(&owner)
+	if err == nil {
+		_, err = tx.Exec(r.Context(), "INSERT INTO workspaces(id,name,created_by) VALUES($1,'Invited arrival tenant',$2)", workspace, owner)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2)", workspace, owner)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), "INSERT INTO invitations(workspace_id,id,inviter_id,email,role,token_digest) VALUES($1,$2,$3,$4,'viewer',$5)", workspace, invite, owner, email, digest[:])
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": secret, "workspace": workspace.String()})
 }
 
 //nolint:lll // Scoped test-only SQL evidence retains RED compatibility with the preceding migration.

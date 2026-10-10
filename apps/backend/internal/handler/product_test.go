@@ -417,6 +417,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("invitations", func(t *testing.T) {
 		checkInvitations(t, api.URL, db, p)
 	})
+	t.Run("invitation-accept", func(t *testing.T) {
+		checkInvitationAcceptance(t, api.URL, db, p)
+	})
 	t.Run("roles", func(t *testing.T) {
 		checkTeamRoles(t, api.URL, db, p)
 	})
@@ -430,6 +433,75 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
+}
+
+func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	owner := p.token(t, map[string]any{"sub": "user_accept_owner", "sid": "sess_user_accept_owner"})
+	invitee := p.token(t, map[string]any{"sub": "user_accept_recipient", "sid": "sess_user_accept_recipient"})
+	status, created := workspaceRequest(t, api, owner, "POST", "/workspaces", "accept-workspace-01", `{"name":"Explicit invitation tenant"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	status, _, _ = requestMe(t, api, invitee, false)
+	require.Equal(t, 200, status)
+	var actor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE subject='user_accept_recipient'").Scan(&actor))
+	seed := func(email, state string) string {
+		t.Helper()
+		raw := make([]byte, 32)
+		_, err := rand.Read(raw)
+		require.NoError(t, err)
+		secret := base64.RawURLEncoding.EncodeToString(raw)
+		digest := sha256.Sum256([]byte(secret))
+		_, err = db.Pool.Exec(ctx, "INSERT INTO invitations(workspace_id,id,inviter_id,email,role,token_digest,state) SELECT $1,$2,created_by,$3,'viewer',$4,$5 FROM workspaces WHERE id=$1", w, uuid.New(), email, digest[:], state)
+		require.NoError(t, err)
+		return secret
+	}
+	secret := seed("same@example.test", "pending")
+	body := `{"token":"` + secret + `"}`
+	status, inspection := workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", body)
+	require.Equal(t, 200, status, "authenticated inspection must exist before explicit acceptance")
+	require.Equal(t, "Explicit invitation tenant", inspection["invitation"].(map[string]any)["workspaceName"])
+	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
+	require.Zero(t, count, "inspection never joins a workspace")
+	for _, mode := range []string{"unverified", "failure"} {
+		p.mu.Lock()
+		p.profileMode = mode
+		p.mu.Unlock()
+		status, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
+		if mode == "failure" {
+			require.Equal(t, 503, status)
+		} else {
+			require.Equal(t, 401, status)
+		}
+		require.NotContains(t, fmt.Sprint(denied), w)
+	}
+	p.mu.Lock()
+	p.profileMode = ""
+	p.mu.Unlock()
+	for _, rejected := range []string{seed("wrong@example.test", "pending"), seed("revoked@example.test", "revoked"), strings.Repeat("A", 43), "malformed", secret + "extra"} {
+		status, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", `{"token":"`+rejected+`"}`)
+		require.Contains(t, []int{400, 404}, status)
+		require.NotContains(t, fmt.Sprint(denied), "Explicit invitation tenant")
+		require.NotContains(t, fmt.Sprint(denied), w)
+	}
+	status, accepted := workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
+	require.Equal(t, 200, status)
+	require.Equal(t, w, accepted["workspace"].(map[string]any)["id"])
+	require.Equal(t, "viewer", accepted["workspace"].(map[string]any)["role"])
+	status, _ = workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
+	require.Equal(t, 200, status, "same actor retry requires fresh membership")
+	status, _ = workspaceRequest(t, api, owner, "POST", "/invitations/accept", "", body)
+	require.Equal(t, 404, status, "different actor with matching email cannot replay")
+	_, err := db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
+	require.Equal(t, 404, status, "removed actor cannot rejoin from accepted credential")
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
+	require.Zero(t, count)
+	require.NotContains(t, p.logs.String(), secret)
 }
 
 func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
