@@ -88,7 +88,8 @@ type proofWire struct {
 	body []byte
 }
 type proofCapture struct {
-	wires []proofWire
+	beforeCapture func(proofWire)
+	wires         []proofWire
 	sync.Mutex
 	failed bool
 }
@@ -104,6 +105,12 @@ func (c *proofCapture) handler(forward string) http.HandlerFunc {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
+		}
+		c.Lock()
+		beforeCapture := c.beforeCapture
+		c.Unlock()
+		if beforeCapture != nil {
+			beforeCapture(proofWire{path: r.URL.Path, body: body})
 		}
 		c.Lock()
 		c.wires = append(c.wires, proofWire{path: r.URL.Path, body: body})
@@ -148,6 +155,8 @@ func proofEventually(t *testing.T, f func() bool) {
 	}
 	t.Fatal("integration condition exceeded its bounded deadline")
 }
+
+func proofExportComplete(wires []proofWire) bool { return len(wires) >= 3 }
 
 func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Container) {
 	t.Helper()
@@ -595,7 +604,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	proofClean(t, completed.Payload, secret, vendorState)
 	closeWorker()
 	closeAPI()
-	proofEventually(t, func() bool { return len(post.snapshot()) >= 3 })
+	proofEventually(t, func() bool { return proofExportComplete(post.snapshot()) })
 	pre.Lock()
 	failed := pre.failed
 	pre.Unlock()

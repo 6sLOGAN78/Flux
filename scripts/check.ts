@@ -158,6 +158,7 @@ export const integrationTests: Record<string, string[]> = {
     "TestSIGTERMActiveHTTPSubprocess",
     "TestSIGTERMRoleProcesses",
     "TestTracestateHTTPRedisOTLP",
+    "TestCollectorExportCompletenessBarrier",
     "TestCollectorRedactsAllSignals",
     "TestTelemetryOutageReadinessAndCleanup",
     "TestTelemetryOutageMigrator",
