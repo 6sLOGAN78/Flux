@@ -64,11 +64,11 @@ func TestCollectorExportCompletenessBarrier(t *testing.T) {
 	case <-time.After(8 * time.Second):
 		t.Fatal("controlled collector retry batch never reached output")
 	}
-	if proofExportComplete(post.snapshot()) {
+	if proofExportComplete(t, post.snapshot()) {
 		t.Fatal("collector barrier accepted unrelated exports before final retry spans")
 	}
 	unblock()
-	proofEventually(t, func() bool { return proofExportComplete(post.snapshot()) })
+	proofEventually(t, func() bool { return proofExportComplete(t, post.snapshot()) })
 	checkProofLineage(t, proofSignals(t, post.snapshot()), httpSpan, false)
 }
 
@@ -114,7 +114,8 @@ func collectorBarrierSpans(t *testing.T) ([]*tracepb.Span, string) {
 	attrs := func() []*commonpb.KeyValue {
 		return []*commonpb.KeyValue{
 			{Key: "request_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: proofRequestID}}},
-			{Key: "correlation_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: proofCorrelationID}}},
+			{Key: "correlation_id", Value: &commonpb.AnyValue{
+				Value: &commonpb.AnyValue_StringValue{StringValue: proofCorrelationID}}},
 		}
 	}
 	spans := []*tracepb.Span{{Name: "http.request", TraceId: traceID, SpanId: httpSpanID,

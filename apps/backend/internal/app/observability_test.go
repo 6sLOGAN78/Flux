@@ -156,7 +156,83 @@ func proofEventually(t *testing.T, f func() bool) {
 	t.Fatal("integration condition exceeded its bounded deadline")
 }
 
-func proofExportComplete(wires []proofWire) bool { return len(wires) >= 3 }
+// SDK shutdown flushes to the collector receiver, whose downstream batches may
+// still be pending. Count decoded evidence, not independent export requests.
+func proofExportComplete(t *testing.T, wires []proofWire) bool {
+	t.Helper()
+	evidence := proofExportEvidence{retries: map[int64]int{}}
+	for _, wire := range wires {
+		switch wire.path {
+		case "/v1/traces":
+			var request tracecollector.ExportTraceServiceRequest
+			if proto.Unmarshal(wire.body, &request) != nil {
+				t.Fatal("decode actual collector evidence protobuf")
+			}
+			evidence.addTraces(&request)
+		case "/v1/logs":
+			var request logcollector.ExportLogsServiceRequest
+			if proto.Unmarshal(wire.body, &request) != nil {
+				t.Fatal("decode actual collector evidence protobuf")
+			}
+			evidence.addLogs(&request)
+		case "/v1/metrics":
+			var request metriccollector.ExportMetricsServiceRequest
+			if proto.Unmarshal(wire.body, &request) != nil {
+				t.Fatal("decode actual collector evidence protobuf")
+			}
+			evidence.addMetrics(&request)
+		default:
+			t.Fatal("unexpected collector evidence path")
+		}
+	}
+	return evidence.httpSeen && evidence.jobs == 4 && evidence.retries[0] == 2 && evidence.retries[1] == 2 &&
+		evidence.logsSeen && evidence.metricsSeen
+}
+
+type proofExportEvidence struct {
+	retries                         map[int64]int
+	httpSeen, logsSeen, metricsSeen bool
+	jobs                            int
+}
+
+func (e *proofExportEvidence) addLogs(request *logcollector.ExportLogsServiceRequest) {
+	for _, resource := range request.GetResourceLogs() {
+		for _, scope := range resource.GetScopeLogs() {
+			e.logsSeen = e.logsSeen || len(scope.GetLogRecords()) > 0
+		}
+	}
+}
+
+func (e *proofExportEvidence) addMetrics(request *metriccollector.ExportMetricsServiceRequest) {
+	for _, resource := range request.GetResourceMetrics() {
+		for _, scope := range resource.GetScopeMetrics() {
+			e.metricsSeen = e.metricsSeen || len(scope.GetMetrics()) > 0
+		}
+	}
+}
+
+func (e *proofExportEvidence) addTraces(request *tracecollector.ExportTraceServiceRequest) {
+	for _, resource := range request.GetResourceSpans() {
+		for _, scope := range resource.GetScopeSpans() {
+			for _, span := range scope.GetSpans() {
+				e.addSpan(span)
+			}
+		}
+	}
+}
+
+func (e *proofExportEvidence) addSpan(span *tracepb.Span) {
+	e.httpSeen = e.httpSeen || span.GetName() == "http.request"
+	if span.GetName() != "job.process" {
+		return
+	}
+	e.jobs++
+	for _, attr := range span.GetAttributes() {
+		if attr.GetKey() == "retry.count" {
+			e.retries[attr.GetValue().GetIntValue()]++
+		}
+	}
+}
 
 func proofCollector(t *testing.T) (string, *proofCapture, testcontainers.Container) {
 	t.Helper()
@@ -604,7 +680,7 @@ func TestTracestateHTTPRedisOTLP(t *testing.T) {
 	proofClean(t, completed.Payload, secret, vendorState)
 	closeWorker()
 	closeAPI()
-	proofEventually(t, func() bool { return proofExportComplete(post.snapshot()) })
+	proofEventually(t, func() bool { return proofExportComplete(t, post.snapshot()) })
 	pre.Lock()
 	failed := pre.failed
 	pre.Unlock()
@@ -723,7 +799,8 @@ func checkProofLineage(t *testing.T, spans []*tracepb.Span, httpSpan string, lin
 		}
 	}
 	if !httpSeen || jobs != 4 || retries[0] != 2 || retries[1] != 2 {
-		t.Fatal("real HTTP, execution and retry spans were not all captured")
+		t.Fatalf("real HTTP, execution and retry spans were not all captured (http=%t jobs=%d initial=%d retry=%d)",
+			httpSeen, jobs, retries[0], retries[1])
 	}
 }
 
