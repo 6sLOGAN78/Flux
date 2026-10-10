@@ -41,7 +41,10 @@ test("export rendering is deterministic and preserves the Go substitution token"
   assert.doesNotMatch(first, /Hi John,/);
 });
 
-test("locked CLI exports repeatable bytes matching the embedded template", async () => {
+// Two bounded CLI exports need their own finite budget on slower CI runners.
+test("locked CLI exports repeatable bytes matching the embedded template", {
+  timeout: 130000,
+}, async () => {
   const directory = await mkdtemp(join(tmpdir(), "flux-email-test-"));
   const cwd = fileURLToPath(new URL("../../", import.meta.url));
   try {
