@@ -244,6 +244,171 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 		t.Fatal("per-send deadline did not return safe retry state")
 	})
 	store := repository.NewDeliveryRepository(pg.Pool)
+	t.Run("workspace winning revocation fences send", func(t *testing.T) {
+		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "workspace-winner@example.test")
+		claims, claimErr := store.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		current := findInvitationClaim(t, claims, claim)
+		tx, txErr := pg.Pool.Begin(context.Background())
+		if txErr != nil {
+			t.Fatal(txErr)
+		}
+		defer tx.Rollback(context.Background())
+		if _, txErr = tx.Exec(context.Background(), "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", claim.WorkspaceID); txErr != nil {
+			t.Fatal(txErr)
+		}
+		called, done := make(chan struct{}, 1), make(chan error, 1)
+		go func() {
+			done <- store.Deliver(context.Background(), current, func(context.Context, repository.DeliveryIntent, string, string) error {
+				called <- struct{}{}
+				return nil
+			})
+		}()
+		select {
+		case <-called:
+			t.Fatal("send bypassed workspace-winning mutation lock")
+		case <-time.After(150 * time.Millisecond):
+		}
+		if _, txErr = tx.Exec(context.Background(), "UPDATE invitations SET state='revoked' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.InvitationID); txErr != nil {
+			t.Fatal(txErr)
+		}
+		if txErr = tx.Commit(context.Background()); txErr != nil {
+			t.Fatal(txErr)
+		}
+		select {
+		case txErr = <-done:
+			if txErr != nil {
+				t.Fatal(txErr)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("send did not settle after winning revocation")
+		}
+		if len(called) != 0 {
+			t.Fatal("revoked bearer reached sender")
+		}
+	})
+	t.Run("expired uncertain provider window blocks automatic retry", func(t *testing.T) {
+		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "uncertain@example.test")
+		// Legacy attempted records have no durable first-dispatch timestamp. Their
+		// creation time is a conservative lower bound, never a fresh retry window.
+		if _, updateErr := pg.Pool.Exec(context.Background(), "UPDATE invitation_delivery_intents SET attempts=1,created_at=now()-interval '2 days' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID); updateErr != nil {
+			t.Fatal(updateErr)
+		}
+		claims, claimErr := store.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		current := findInvitationClaim(t, claims, claim)
+		called := false
+		if sendErr := store.Deliver(context.Background(), current, func(context.Context, repository.DeliveryIntent, string, string) error { called = true; return nil }); sendErr != nil {
+			t.Fatal(sendErr)
+		}
+		if called {
+			t.Fatal("uncertain outcome retried beyond provider idempotency window")
+		}
+		assertDeliveryState(t, pg.Pool, claim, "failed", false)
+		var reconciliation bool
+		if readErr := pg.Pool.QueryRow(context.Background(), "SELECT coalesce((to_jsonb(d)->>'reconciliation_required')::boolean,false) FROM invitation_delivery_intents d WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID).Scan(&reconciliation); readErr != nil || !reconciliation {
+			t.Fatal("uncertain outcome lacks operator reconciliation fence")
+		}
+	})
+	t.Run("terminal failed intents erase private envelopes", func(t *testing.T) {
+		for _, terminal := range []string{"accepted", "revoked", "expired"} {
+			t.Run(terminal, func(t *testing.T) {
+				claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, terminal+"-cleanup@example.test")
+				if _, updateErr := pg.Pool.Exec(context.Background(), "UPDATE invitation_delivery_intents SET state='failed',attempts=8 WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID); updateErr != nil {
+					t.Fatal(updateErr)
+				}
+				if _, updateErr := pg.Pool.Exec(context.Background(), "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.InvitationID, terminal); updateErr != nil {
+					t.Fatal(updateErr)
+				}
+				if _, claimErr := store.Claim(context.Background()); claimErr != nil {
+					t.Fatal(claimErr)
+				}
+				assertDeliveryState(t, pg.Pool, claim, "cancelled", true)
+			})
+		}
+	})
+	t.Run("send winning workspace lock precedes mutation", func(t *testing.T) {
+		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "send-winner@example.test")
+		claims, claimErr := store.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		current := findInvitationClaim(t, claims, claim)
+		entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+		var once sync.Once
+		defer once.Do(func() { close(release) })
+		go func() {
+			done <- store.Deliver(context.Background(), current, func(context.Context, repository.DeliveryIntent, string, string) error {
+				close(entered)
+				<-release
+				return nil
+			})
+		}()
+		select {
+		case <-entered:
+		case <-time.After(3 * time.Second):
+			t.Fatal("send did not start")
+		}
+		mutationCtx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+		_, mutationErr := pg.Pool.Exec(mutationCtx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", claim.WorkspaceID)
+		if mutationErr == nil {
+			t.Fatal("mutation passed send-winning workspace lock")
+		}
+		once.Do(func() { close(release) })
+		if sendErr := <-done; sendErr != nil {
+			t.Fatal(sendErr)
+		}
+		assertDeliveryState(t, pg.Pool, claim, "delivered", true)
+	})
+	t.Run("crash after provider acknowledgement retains first dispatch fence", func(t *testing.T) {
+		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "crash-ack@example.test")
+		claims, claimErr := store.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		current := findInvitationClaim(t, claims, claim)
+		sendErr := store.Deliver(context.Background(), current, func(context.Context, repository.DeliveryIntent, string, string) error {
+			// Kill only the isolated fixture's single sending transaction after the
+			// external effect, before its acknowledgement can commit.
+			var pid int
+			if readErr := pg.Pool.QueryRow(context.Background(), "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction' AND query LIKE '%d.lease_generation=$4%' AND pid<>pg_backend_pid()").Scan(&pid); readErr != nil {
+				t.Fatal(readErr)
+			}
+			if _, killErr := pg.Pool.Exec(context.Background(), "SELECT pg_terminate_backend($1)", pid); killErr != nil {
+				t.Fatal(killErr)
+			}
+			return nil
+		})
+		if sendErr == nil {
+			t.Fatal("terminated acknowledgement transaction reported success")
+		}
+		assertDeliveryState(t, pg.Pool, claim, "leased", false)
+		var started *string
+		if readErr := pg.Pool.QueryRow(context.Background(), "SELECT to_jsonb(d)->>'dispatch_started_at' FROM invitation_delivery_intents d WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID).Scan(&started); readErr != nil || started == nil {
+			t.Fatal("provider dispatch fence rolled back with acknowledgement")
+		}
+		if _, updateErr := pg.Pool.Exec(context.Background(), "UPDATE invitation_delivery_intents SET lease_until=now()-interval '1 second' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID); updateErr != nil {
+			t.Fatal(updateErr)
+		}
+		claims, claimErr = store.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		current = findInvitationClaim(t, claims, claim)
+		if retryErr := store.Deliver(context.Background(), current, func(context.Context, repository.DeliveryIntent, string, string) error { return nil }); retryErr != nil {
+			t.Fatal(retryErr)
+		}
+		var retried *string
+		if readErr := pg.Pool.QueryRow(context.Background(), "SELECT to_jsonb(d)->>'dispatch_started_at' FROM invitation_delivery_intents d WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.DeliveryID).Scan(&retried); readErr != nil || retried == nil || *retried != *started {
+			t.Fatal("recovery renewed the original dispatch window")
+		}
+		assertDeliveryState(t, pg.Pool, claim, "delivered", true)
+	})
 	t.Run("actual Redis malformed future and tampered references cannot send", func(t *testing.T) {
 		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "tampered@example.test")
 		claims, err8 := store.Claim(context.Background())
@@ -366,7 +531,7 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 		}
 	})
 	t.Run("expiry revocation and cross-tenant fences", func(t *testing.T) {
-		for _, mode := range []string{"expired", "revoked", "foreign", "future", "stale", "malformed"} {
+		for _, mode := range []string{"expired", "revoked", "accepted", "foreign", "future", "stale", "malformed", "foreign-delivery"} {
 			t.Run(mode, func(t *testing.T) {
 				claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, mode+"@example.test")
 				claims, err15 := store.Claim(context.Background())
@@ -379,6 +544,10 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 					_, err15 = pg.Pool.Exec(context.Background(), "UPDATE invitations SET created_at=now()-interval '8 days',expires_at=now()-interval '1 day' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.InvitationID)
 				case "revoked":
 					_, err15 = pg.Pool.Exec(context.Background(), "UPDATE invitations SET state='revoked' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.InvitationID)
+				case "accepted":
+					_, err15 = pg.Pool.Exec(context.Background(), "UPDATE invitations SET state='accepted' WHERE workspace_id=$1 AND id=$2", claim.WorkspaceID, claim.InvitationID)
+				case "foreign-delivery":
+					current.DeliveryID = uuid.New()
 				case "foreign":
 					current.WorkspaceID = uuid.New()
 				case "future":

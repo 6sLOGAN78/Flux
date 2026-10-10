@@ -62,3 +62,14 @@ func TestRenderMissingRequiredData(t *testing.T) {
 		t.Fatal("missing template data must not render a broken email")
 	}
 }
+
+func TestInvitationTemplateEscapesFixedOrigin(t *testing.T) {
+	client := &email.Client{}
+	body, err := client.Render(email.TemplateInvitation, map[string]string{"WorkspaceName": "<script>private-name</script>", "Role": "member<evil>", "InvitationURL": "https://app.flux.test/invitations#token=opaque&x=\"<"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "<script>") || strings.Contains(body, "<evil>") || !strings.Contains(body, "&lt;script&gt;") || !strings.Contains(body, `href="https://app.flux.test/invitations#token=opaque&amp;x=%22%3c"`) {
+		t.Fatal("invitation HTML or href was not escaped")
+	}
+}

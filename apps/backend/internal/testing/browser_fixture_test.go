@@ -67,12 +67,22 @@ func TestBrowserProductFixture(t *testing.T) {
 		var releaseOnce sync.Once
 		release := make(chan struct{})
 		var acknowledgements atomic.Int32
+		var recoveryAttempts atomic.Int32
 		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var payload struct {
 				HTML string   `json:"html"`
 				To   []string `json:"to"`
 			}
-			if json.NewDecoder(r.Body).Decode(&payload) != nil || len(payload.To) != 1 || payload.To[0] != "delivery@example.test" {
+			if json.NewDecoder(r.Body).Decode(&payload) != nil || len(payload.To) != 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if payload.To[0] == "recovery@example.test" {
+				recoveryAttempts.Add(1)
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if payload.To[0] != "delivery@example.test" {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
@@ -101,6 +111,37 @@ func TestBrowserProductFixture(t *testing.T) {
 				Invitations: service.NewInvitationService(repository.NewInvitationRepository(db.Pool), team, cfg.Invitations),
 				Workspace:   workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/__test/delivery-recovery" {
+				if r.Method == http.MethodPost {
+					// Simulate a long outage after an uncertain actual HTTP attempt.
+					// Column discovery keeps RED on behavior, not missing migration SQL.
+					var hasWindow bool
+					readErr := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='invitation_delivery_intents' AND column_name='dispatch_started_at')").Scan(&hasWindow)
+					if readErr != nil {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					query := `UPDATE invitation_delivery_intents d SET created_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
+					if hasWindow {
+						query = `UPDATE invitation_delivery_intents d SET dispatch_started_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
+					}
+					result, updateErr := db.Pool.Exec(r.Context(), query, r.URL.Query().Get("workspace"))
+					if updateErr != nil || result.RowsAffected() != 1 {
+						w.WriteHeader(http.StatusConflict)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				var failed int
+				readErr := db.Pool.QueryRow(r.Context(), `SELECT count(*) FROM invitation_delivery_intents d JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id WHERE d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='failed' AND d.ciphertext IS NOT NULL AND coalesce((to_jsonb(d)->>'reconciliation_required')::boolean,false)`, r.URL.Query().Get("workspace")).Scan(&failed)
+				if readErr != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]int{"providerAttempts": int(recoveryAttempts.Load()), "reconciliationBlocked": failed})
+				return
+			}
 			if r.URL.Path == "/__test/delivery-release" && r.Method == http.MethodPost {
 				releaseOnce.Do(func() { close(release) })
 				w.WriteHeader(http.StatusNoContent)
