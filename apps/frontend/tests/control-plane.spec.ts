@@ -1036,7 +1036,7 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
-test("team invitation queues through actual API and shows duplicate feedback", async ({
+test("invitation-queue: actual API queue, expiry, duplicate and draft boundaries", async ({
   page,
   request,
 }) => {
@@ -1070,6 +1070,22 @@ test("team invitation queues through actual API and shows duplicate feedback", a
   );
   await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText(
     "Expires",
+  );
+  await expect(page.getByRole("list", { name: "Workspace invitations" })).toContainText(
+    "Delivery status: Queued",
+  );
+  const time = page.getByRole("list", { name: "Workspace invitations" }).locator("time");
+  const expiresAt = await time.getAttribute("datetime");
+  expect(expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  await expect(time).toHaveText(
+    await page.evaluate(
+      (value) =>
+        new Intl.DateTimeFormat(undefined, {
+          dateStyle: "full",
+          timeStyle: "long",
+        }).format(new Date(value)),
+      expiresAt as string,
+    ),
   );
   await form.getByLabel("Email address", { exact: true }).fill("future+tag@example.test");
   await form.getByRole("button", { name: "Invite member", exact: true }).click();

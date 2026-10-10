@@ -2,6 +2,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -71,6 +72,64 @@ func TestInvitationEnvelopeIntegrity(t *testing.T) {
 
 		invitationAAD(scope.WorkspaceID, invite, delivery, intent.KeyID)); err == nil {
 		t.Fatal("tampered envelope authenticated")
+	}
+}
+
+func TestInvitationRotationAndFailClosedDecryption(t *testing.T) {
+	oldKey, newKey := make([]byte, 32), bytes.Repeat([]byte{1}, 32)
+	cfg := config.InvitationConfig{ActiveKeyID: "old",
+		EncryptionKeys: `{"old":"` + base64.StdEncoding.EncodeToString(oldKey) + `","new":"` + base64.StdEncoding.EncodeToString(newKey) + `"}`,
+		Sender:         "invites@example.test", PublicOrigin: "https://app.flux.test"}
+	scope := repository.Scope{WorkspaceID: uuid.New(), ActorID: uuid.New()}
+	invite, delivery := uuid.New(), uuid.New()
+	intent, _, err := sealInvitation(cfg, scope, invite, delivery, "rotation@example.test")
+	if err != nil {
+		t.Fatal("seal failed")
+	}
+	cfg.ActiveKeyID = "new"
+	rotated, _, err := sealInvitation(cfg, scope, invite, uuid.New(), "rotation@example.test")
+	if err != nil || rotated.KeyID != "new" || intent.KeyID != "old" {
+		t.Fatal("active rotation failed")
+	}
+	keys, err := cfg.Keys()
+	if err != nil {
+		t.Fatal("retained ring failed")
+	}
+	aead, err := invitationCipher(keys[intent.KeyID])
+	if err != nil {
+		t.Fatal("old key unavailable")
+	}
+	aad := invitationAAD(scope.WorkspaceID, invite, delivery, intent.KeyID)
+	plaintext, err := aead.Open(nil, nil, intent.Ciphertext, aad)
+	if err != nil || !bytes.Contains(plaintext, []byte("rotation@example.test")) {
+		t.Fatal("retained key cannot decrypt pending intent")
+	}
+	clear(plaintext)
+	for length := range 28 {
+		out, openErr := aead.Open(nil, nil, intent.Ciphertext[:length], aad)
+		if openErr == nil || len(out) != 0 {
+			t.Fatal("truncated envelope released plaintext")
+		}
+	}
+	wrong, err := invitationCipher(keys[cfg.ActiveKeyID])
+	if err != nil {
+		t.Fatal("new cipher unavailable")
+	}
+	if out, openErr := wrong.Open(nil, nil, intent.Ciphertext, aad); openErr == nil || len(out) != 0 {
+		t.Fatal("wrong key released plaintext")
+	}
+	for _, key := range [][]byte{keys["missing"], make([]byte, 16), make([]byte, 31), make([]byte, 33)} {
+		if aead, cipherErr := invitationCipher(key); cipherErr == nil || aead != nil {
+			t.Fatal("missing or malformed key accepted")
+		}
+	}
+	cfg.EncryptionKeys = `{"new":"` + base64.StdEncoding.EncodeToString(newKey) + `"}`
+	keys, err = cfg.Keys()
+	if err != nil {
+		t.Fatal("new ring failed")
+	}
+	if aead, cipherErr := invitationCipher(keys[intent.KeyID]); cipherErr == nil || aead != nil {
+		t.Fatal("retired key silently substituted")
 	}
 }
 

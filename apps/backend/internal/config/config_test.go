@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -36,6 +37,31 @@ func TestLinksCursorConfigOwnedByAPI(t *testing.T) {
 			if _, roleErr := loadConfigForRole(configProvider{values: values}, role); roleErr != nil {
 				t.Fatal("unowned cursor key blocked role")
 			}
+		}
+	}
+}
+
+func TestInvitationKeyRingBoundsAndPrivateDiagnostics(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	oversized := make(map[string]string)
+	for i := range 33 {
+		oversized[fmt.Sprintf("key%d", i)] = key
+	}
+	encoded, err := json.Marshal(oversized)
+	if err != nil {
+		t.Fatal("fixture encoding failed")
+	}
+	for _, ring := range []string{
+		`null`, `[]`, `{"fixture":null}`, `{"fixture":123}`, `{"fixture":"PRIVATE-KEY-CANARY"}`,
+		`{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 31)) + `"}`,
+		`{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 33)) + `"}`,
+		`{"fixture":"` + key + `\n"}`, string(encoded), strings.Repeat(" ", 16385),
+	} {
+		values := configValues()
+		values["invitations"].(map[string]any)["encryption_keys"] = ring
+		_, loadErr := loadConfigForRole(configProvider{values: values}, RoleAPI)
+		if loadErr == nil || strings.Contains(fmt.Sprint(loadErr, errors.Unwrap(loadErr)), "PRIVATE-KEY-CANARY") {
+			t.Fatal("malformed key ring accepted or disclosed")
 		}
 	}
 }
