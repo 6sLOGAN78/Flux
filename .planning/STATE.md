@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-17-PLAN.md
-last_updated: "2026-10-10T00:08:19.437Z"
+stopped_at: Completed 02-18-PLAN.md
+last_updated: "2026-10-10T10:07:47.679Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 39
+  completed_plans: 40
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 18 of 35
+Plan: 19 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [███████░░░] 68%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -91,6 +91,7 @@ Progress: [███████░░░] 68%
 | Phase 2 P15 | 20min | 2 tasks | 14 files |
 | Phase 2 P16 | 10min | 2 tasks | 21 files |
 | Phase 2 P17 | 30min | 2 tasks | 19 files |
+| Phase 2 P18 | 24min | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -173,6 +174,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Authorize actor and current target before replay hash reads; replay keeps the original member snapshot and current actor capability projection.
 - [Phase 2]: Committed self-demotion clears Team through the existing capability-loss refresh while retaining Links; mutation failure requires explicit reload and native confirmation.
 - [Phase 2]: Existing immutable audit_events and scoped mutation_requests provide durable user provenance and 24-hour replay; role changes require no schema migration or removable membership foreign key.
+- [Phase 2]: Missing-target removal replay uses its own committed target-role snapshot after fresh locked actor authorization, with target policy before replay hash.
+- [Phase 2]: Membership-only deletion reuses durable users, immutable audit and 24-hour ledger; links and reserved keys need no migration.
+- [Phase 2]: Committed removal sends fixed invalidation through the owned channel; explicit local self-disposal preserves signed-in session and fresh server membership authority.
 
 ### Pending Todos
 
@@ -193,6 +197,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T00:08:06.489Z
-Stopped at: Completed 02-17-PLAN.md
+Last session: 2026-10-10T10:07:47.668Z
+Stopped at: Completed 02-18-PLAN.md
 Resume file: None
