@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-21-PLAN.md
-last_updated: "2026-10-10T16:42:58.177Z"
+stopped_at: Completed 02-22-PLAN.md
+last_updated: "2026-10-10T21:57:24.114Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 43
+  completed_plans: 44
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 22 of 35
+Plan: 23 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -95,6 +95,7 @@ Progress: [████████░░] 75%
 | Phase 2 P19 | 47min | 2 tasks | 32 files |
 | Phase 2 P20 | 20min | 2 tasks | 17 files |
 | Phase 2 P21 | 47min | 2 tasks | 29 files |
+| Phase 2 P22 | 20min 31s | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Freeze complete provider requests inside the existing encrypted envelope before publication; immutable intent IDs identify content and lease generations only fence processing.
 - [Phase 2]: Commit Delivered and ciphertext erasure atomically after acknowledgement, preserving retryable state for errors and stale acknowledgements.
 - [Phase 2]: Keep old encryption keys while retained ciphertext needs them; future resend must replace the intent ID or introduce an explicit immutable content generation.
+- [Phase 2]: Persist first possible provider exposure independently of acknowledgement commit; never renew its conservative 23-hour retry window.
+- [Phase 2]: Hold workspace, invitation and intent locks in that order through bounded sends; erase retained failed ciphertext when invitation becomes terminal.
 
 ### Pending Todos
 
@@ -210,6 +213,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T16:42:58.161Z
-Stopped at: Completed 02-21-PLAN.md
+Last session: 2026-10-10T21:57:24.102Z
+Stopped at: Completed 02-22-PLAN.md
 Resume file: None
