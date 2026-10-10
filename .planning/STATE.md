@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-18-PLAN.md
-last_updated: "2026-10-10T10:07:47.679Z"
+stopped_at: Completed 02-19-PLAN.md
+last_updated: "2026-10-10T10:59:43.953Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 40
+  completed_plans: 41
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 19 of 35
+Plan: 20 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [███████░░░] 70%
+Progress: [███████░░░] 72%
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [███████░░░] 70%
 | Phase 2 P16 | 10min | 2 tasks | 21 files |
 | Phase 2 P17 | 30min | 2 tasks | 19 files |
 | Phase 2 P18 | 24min | 2 tasks | 19 files |
+| Phase 2 P19 | 47min | 2 tasks | 32 files |
 
 ## Accumulated Context
 
@@ -177,6 +178,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Missing-target removal replay uses its own committed target-role snapshot after fresh locked actor authorization, with target policy before replay hash.
 - [Phase 2]: Membership-only deletion reuses durable users, immutable audit and 24-hour ledger; links and reserved keys need no migration.
 - [Phase 2]: Committed removal sends fixed invalidation through the owned channel; explicit local self-disposal preserves signed-in session and fresh server membership authority.
+- [Phase 2]: Queue invitations and encrypted intents atomically in PostgreSQL; API does not consume the queue or send email and Queued remains truthful until future worker acknowledgment.
+- [Phase 2]: API requires externally configured exact 32-byte AES keys with safe IDs; standard random-nonce GCM authenticates workspace, invitation, delivery and key identifiers, while durable users preserve invitation provenance.
+- [Phase 2]: Fresh locked actor and protected invitation role snapshot authorization precede replay hash access; native Team invitations preserve the existing safe-first dirty switch and request generation boundaries.
 
 ### Pending Todos
 
@@ -197,6 +201,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T10:07:47.668Z
-Stopped at: Completed 02-18-PLAN.md
+Last session: 2026-10-10T10:59:43.943Z
+Stopped at: Completed 02-19-PLAN.md
 Resume file: None
