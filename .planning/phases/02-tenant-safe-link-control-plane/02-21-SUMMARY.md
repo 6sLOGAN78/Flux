@@ -123,3 +123,15 @@ None prevent independent durable invitation delivery. Initial empty UI collectio
 ## Self-Check: PASSED
 
 All seven created application/test/asset files exist; task commits 8aa47dc and 84034f6 exist. The 29 task paths are explicitly recorded, all required positive gates executed without skipped/flaky/infrastructure acceptance, and no tracked deletions or generated untracked outputs remain. Task work is clean; unrelated .serena/project.yml remains modified and unstaged.
+
+## Hosted CI Repair Addendum
+
+Hosted run 38068839933 failed at @flux/emails:test after earlier generation, formatting, lint, build and type gates passed. The root runner intentionally withheld subprocess stdout, so the hosted assertion is unknown. Local official email tests passed both in the existing checkout and a clean archived checkout with frozen Bun dependencies; these passes alone did not explain the hosted failure.
+
+The unchanged official command in that clean checkout under CPU contention reproduced a concrete failure: the existing locked CLI byte test reached Bun's default 5,000ms case limit, its export child was killed, and the command failed after 6.13s. That test performs two exports, each already bounded to 60 seconds, but lacked a matching outer test budget. This is proven local timeout behavior consistent with hosted timing, not confirmation of the hidden hosted assertion.
+
+Commit `47d4177` adds an explicit finite 130-second timeout only to packages/emails/src/templates/welcome.test.tsx's existing two-export case. All byte comparisons, substitution-token assertions and 60-second child deadlines are unchanged. Under the same clean-checkout CPU contention, all four email tests passed; the byte case took 6.203s, exceeding the old limit and demonstrating the repair. Email formatting, strict lint and typecheck passed, root generate:check completed successfully with no byte mismatches, and CI=true full scan passed with the same visible unused GO-2026-5932 inventory advisory. No tests were waived or skipped, and no gate, scanner, runtime, provider or workflow policy changed.
+
+This test-only timing repair does not repeat the previously completed 39-case browser or backend integration gates. The original 47-minute execution metric is unchanged; interruption time is excluded from repair evidence. Phase position remains 22/35 and no plan 22 work began. Root must push this repair and observe a new full hosted CI run before proceeding; hosted success is not yet claimed. The unrelated .serena/project.yml change remains untouched and unstaged.
+
+Repair self-check passed: the scoped test file and this addendum exist, commit 47d4177 exists, and no tracked files were deleted.
