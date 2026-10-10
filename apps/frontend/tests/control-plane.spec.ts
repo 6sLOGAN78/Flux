@@ -1033,6 +1033,33 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
+test("team invitation queues through actual API and shows duplicate feedback", async ({ page, request }) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100", "Idempotency-Key": "browser-invitation-workspace-01" },
+    data: { name: "Invitation Team" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/team`);
+  const form = page.getByRole("form", { name: "Invite member" });
+  await expect(form.getByLabel("Role", { exact: true })).toHaveValue("member");
+  await form.getByLabel("Email address", { exact: true }).fill("future+tag@example.test");
+  await form.getByRole("button", { name: "Invite member", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Invitations", exact: true }).getByRole("status")).toHaveText("Invitation queued");
+  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText("future+tag@example.test");
+  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText("Expires");
+  await form.getByLabel("Email address", { exact: true }).fill("future+tag@example.test");
+  await form.getByRole("button", { name: "Invite member", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Invitations", exact: true }).getByRole("alert")).toHaveText("An invitation is already pending for this email. Resend or revoke it.");
+});
+
 test("workspace requires an explicit name and opens authorized Links after commit", async ({
   page,
   request,

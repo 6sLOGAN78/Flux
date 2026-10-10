@@ -409,6 +409,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("team", func(t *testing.T) {
 		checkTeam(t, api.URL, db, p)
 	})
+	t.Run("invitations", func(t *testing.T) {
+		checkInvitations(t, api.URL, db, p)
+	})
 	t.Run("roles", func(t *testing.T) {
 		checkTeamRoles(t, api.URL, db, p)
 	})
@@ -422,6 +425,71 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
+}
+
+func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_invites", "sid": "sess_user_invites"})
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", "invite-workspace-01", `{"name":"Invitation tenant"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + w + "/invitations"
+	status, queued := workspaceRequest(t, api, token, "POST", path, "invitation-create-01", `{"email":"  Future+Tag@Example.Test  ","role":"member"}`)
+	require.Equal(t, 201, status, "a real authorized request must atomically queue an encrypted intent")
+	if status != 201 {
+		return
+	}
+	invite := queued["invitation"].(map[string]any)
+	require.Equal(t, "future+tag@example.test", invite["email"])
+	require.Equal(t, "Queued", invite["status"])
+	var intents, ledgers, audits int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitation_delivery_intents WHERE workspace_id=$1", w).Scan(&intents))
+	require.Equal(t, 1, intents)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND operation='invitation.create'", w).Scan(&ledgers))
+	require.Equal(t, 1, ledgers)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND operation='invitation.create'", w).Scan(&audits))
+	require.Equal(t, 1, audits)
+	status, replay := workspaceRequest(t, api, token, "POST", path, "invitation-create-01", `{"email":"future+tag@example.test","role":"member"}`)
+	require.Equal(t, 201, status)
+	require.Equal(t, queued, replay)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invitation-create-01", `{"email":"changed@example.test","role":"viewer"}`)
+	require.Equal(t, 409, status)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invitation-create-02", `{"email":"FUTURE+TAG@example.test","role":"member"}`)
+	require.Equal(t, 409, status)
+	status, listed := workspaceRequest(t, api, token, "GET", path, "", "")
+	require.Equal(t, 200, status)
+	require.Len(t, listed["items"], 1)
+	for _, private := range []string{"token", "digest", "ciphertext", "keyId", "envelope"} {
+		require.NotContains(t, fmt.Sprint(queued), private)
+		require.NotContains(t, fmt.Sprint(listed), private)
+	}
+	var actor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT user_id FROM memberships WHERE workspace_id=$1", w).Scan(&actor))
+	for _, role := range []string{"owner", "admin", "member", "viewer"} {
+		for _, grant := range []string{"owner", "admin", "member", "viewer"} {
+			_, roleErr := db.Pool.Exec(ctx, "UPDATE memberships SET role=$3 WHERE workspace_id=$1 AND user_id=$2", w, actor, role)
+			require.NoError(t, roleErr)
+			body := fmt.Sprintf(`{"email":"%s-%s@example.test","role":"%s"}`, role, grant, grant)
+			status, _ = workspaceRequest(t, api, token, "POST", path, "invite-role-"+role+"-"+grant, body)
+			expected := 403
+			if grant == "owner" {
+				expected = 400
+			} else if role == "owner" || (role == "admin" && (grant == "member" || grant == "viewer")) {
+				expected = 201
+			}
+			require.Equal(t, expected, status, role+" -> "+grant)
+		}
+	}
+	_, restoreErr := db.Pool.Exec(ctx, "UPDATE memberships SET role=$3 WHERE workspace_id=$1 AND user_id=$2", w, actor, "owner")
+	require.NoError(t, restoreErr)
+	_, err := db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invitation-create-01", `{"email":"changed@example.test","role":"viewer"}`)
+	require.Equal(t, 404, status, "removed inviter is denied before replay hash")
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND inviter_id=$2", w, actor).Scan(&intents))
+	require.Positive(t, intents, "durable inviter provenance survives membership deletion")
+	require.NotContains(t, p.logs.String(), "future+tag@example.test")
 }
 
 func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
