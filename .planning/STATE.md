@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-16-PLAN.md
-last_updated: "2026-10-09T23:34:21.666Z"
-last_activity: 2026-10-09
+stopped_at: Completed 02-17-PLAN.md
+last_updated: "2026-10-10T00:08:19.437Z"
+last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 38
+  completed_plans: 39
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 17 of 35
+Plan: 18 of 35
 Status: Ready to execute
-Last activity: 2026-10-09
+Last activity: 2026-10-10
 
-Progress: [███████░░░] 67%
+Progress: [███████░░░] 68%
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Progress: [███████░░░] 67%
 | Phase 2 P14 | 34min | 2 tasks | 23 files |
 | Phase 2 P15 | 20min | 2 tasks | 14 files |
 | Phase 2 P16 | 10min | 2 tasks | 21 files |
+| Phase 2 P17 | 30min | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,10 @@ Recent decisions affecting current work:
 - [Phase 2]: Read Team under current SQL owner/admin capability in the same workspace-first transaction as its fixed 25-row query; UUID continuation never grants authority.
 - [Phase 2]: Treat Team 403 as capability loss: dispose rows and refresh current workspace role without broadcasting membership removal; preserve valid Links access.
 - [Phase 2]: Keep Team role enum names distinct in canonical schema metadata and regenerate both OpenAPI copies and Go transport together.
+- [Phase 2]: Role mutation locks workspace then current actor and target; reuse the closed role matrix and count owners in the same atomic effect/audit/ledger transaction.
+- [Phase 2]: Authorize actor and current target before replay hash reads; replay keeps the original member snapshot and current actor capability projection.
+- [Phase 2]: Committed self-demotion clears Team through the existing capability-loss refresh while retaining Links; mutation failure requires explicit reload and native confirmation.
+- [Phase 2]: Existing immutable audit_events and scoped mutation_requests provide durable user provenance and 24-hour replay; role changes require no schema migration or removable membership foreign key.
 
 ### Pending Todos
 
@@ -188,6 +193,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-09T23:34:21.646Z
-Stopped at: Completed 02-16-PLAN.md
+Last session: 2026-10-10T00:08:06.489Z
+Stopped at: Completed 02-17-PLAN.md
 Resume file: None
