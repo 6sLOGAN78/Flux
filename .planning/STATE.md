@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-20-PLAN.md
-last_updated: "2026-10-10T11:29:47.286Z"
+stopped_at: Completed 02-21-PLAN.md
+last_updated: "2026-10-10T16:42:58.177Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 42
+  completed_plans: 43
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 21 of 35
+Plan: 22 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [███████░░░] 74%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Progress: [███████░░░] 74%
 | Phase 2 P18 | 24min | 2 tasks | 19 files |
 | Phase 2 P19 | 47min | 2 tasks | 32 files |
 | Phase 2 P20 | 20min | 2 tasks | 17 files |
+| Phase 2 P21 | 47min | 2 tasks | 29 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,10 @@ Recent decisions affecting current work:
 - [Phase 2]: Project invitation delivery from the unique scoped intent with expiry, acceptance and revocation precedence; browser status fixtures prove presentation, not worker sending.
 - [Phase 2]: Extend actual canonical invitation enum with Delivered and Failed and regenerate both OpenAPI copies and Go transport together; preserve existing configuration names and external key provisioning.
 - [Phase 2]: Retain old encryption keys until live ciphertext drains or is safely re-encrypted; count messages across replicas and rotate before the per-key random-nonce limit.
+- [Phase 2]: PostgreSQL owns eight total invitation attempts and lease recovery; failed Redis publication does not consume a send attempt and invitation Asynq retries are disabled.
+- [Phase 2]: Freeze complete provider requests inside the existing encrypted envelope before publication; immutable intent IDs identify content and lease generations only fence processing.
+- [Phase 2]: Commit Delivered and ciphertext erasure atomically after acknowledgement, preserving retryable state for errors and stale acknowledgements.
+- [Phase 2]: Keep old encryption keys while retained ciphertext needs them; future resend must replace the intent ID or introduce an explicit immutable content generation.
 
 ### Pending Todos
 
@@ -205,6 +210,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T11:29:47.275Z
-Stopped at: Completed 02-20-PLAN.md
+Last session: 2026-10-10T16:42:58.161Z
+Stopped at: Completed 02-21-PLAN.md
 Resume file: None
