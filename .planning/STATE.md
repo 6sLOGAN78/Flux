@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-22-PLAN.md
-last_updated: "2026-10-10T21:57:24.114Z"
+stopped_at: Completed 02-23-PLAN.md
+last_updated: "2026-10-10T22:14:49.593Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 44
+  completed_plans: 45
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 23 of 35
+Plan: 24 of 35
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [████████░░] 77%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [████████░░] 77%
 | Phase 2 P20 | 20min | 2 tasks | 17 files |
 | Phase 2 P21 | 47min | 2 tasks | 29 files |
 | Phase 2 P22 | 20min 31s | 2 tasks | 8 files |
+| Phase 2 P23 | 14min 48s | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -193,6 +194,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Keep old encryption keys while retained ciphertext needs them; future resend must replace the intent ID or introduce an explicit immutable content generation.
 - [Phase 2]: Persist first possible provider exposure independently of acknowledgement commit; never renew its conservative 23-hour retry window.
 - [Phase 2]: Hold workspace, invitation and intent locks in that order through bounded sends; erase retained failed ciphertext when invitation becomes terminal.
+- [Phase 2]: Readiness validates both embedded templates, the complete invitation configuration and an open configured email adapter locally; provider availability never gates readiness.
+- [Phase 2]: Register an email allocation before handling its factory error; retain dependencies beneath active delivery even when the caller shutdown deadline expires.
 
 ### Pending Todos
 
@@ -213,6 +216,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-10T21:57:24.102Z
-Stopped at: Completed 02-22-PLAN.md
+Last session: 2026-10-10T22:14:49.582Z
+Stopped at: Completed 02-23-PLAN.md
 Resume file: None
