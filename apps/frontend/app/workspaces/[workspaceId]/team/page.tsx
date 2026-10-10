@@ -13,6 +13,7 @@ export default function TeamPage() {
         <TeamList
           key={`${workspace.id}:${workspace.role}`}
           workspaceId={workspace.id}
+          actorRole={workspace.role}
           canInspect={workspaceCapabilities(workspace.role).team}
           accessLost={accessLost}
         />

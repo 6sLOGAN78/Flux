@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "transport.ChangeMemberRoleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "GrantOwner",
+              "GrantAdmin",
+              "GrantMember",
+              "GrantViewer"
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "transport.ChangeMemberRoleRequest",
+        "type": "object"
+      },
       "transport.CreateLinkRequest": {
         "additionalProperties": false,
         "description": "Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.",
@@ -393,6 +418,35 @@
           "nextCursor"
         ],
         "title": "transport.LinksResponse",
+        "type": "object"
+      },
+      "transport.MemberResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actorRole": {
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "CapabilityOwner",
+              "CapabilityAdmin",
+              "CapabilityMember",
+              "CapabilityViewer"
+            ]
+          },
+          "member": {
+            "$ref": "#/components/schemas/transport.TeamMember"
+          }
+        },
+        "required": [
+          "member",
+          "actorRole"
+        ],
+        "title": "transport.MemberResponse",
         "type": "object"
       },
       "transport.MembersResponse": {
@@ -1473,6 +1527,162 @@
           }
         ],
         "summary": "Inspect freshly authorized workspace members",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/members/{memberId}": {
+      "patch": {
+        "description": "Requires exact allowed Origin, JSON and Idempotency-Key. Locks workspace exclusively, then actor membership, then scoped target membership. Current PostgreSQL owners manage all roles; admins may target and grant member/viewer only, never admin/owner/self escalation. Provider claims never authorize. Last owner demotion returns 409 OWNER_REQUIRED: Promote another owner first. Ownership transfer explicitly promotes an existing member before demotion. Fresh actor and target authorization precedes hash/replay reads. SHA-256 canonical target/role hash and workspace/actor/member.role/key scope retain committed responses at least 24 hours. Identical authorized retries return the original result with one audit; changed payload returns 409 IDEMPOTENCY_CONFLICT. Role effect, immutable protected durable actor/action/target membership snapshot/time audit, and ledger commit atomically. Foreign or removed access returns safe 404. Unknown fields, nulls and invalid roles fail closed. No-store. 429 includes Retry-After and rate-limit metadata.",
+        "operationId": "changeMemberRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "memberId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.ChangeMemberRoleRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.MemberResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change a current workspace member's role",
         "tags": [
           "Identity"
         ]

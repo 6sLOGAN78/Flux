@@ -1,22 +1,38 @@
 import { expect, type Page, test } from "@playwright/test";
 
-test("roles safely confirm promotion then self demotion and preserve Links", async ({ page, request }) => {
+test("roles safely confirm promotion then self demotion and preserve Links", async ({
+  page,
+  request,
+}) => {
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   await installProviderTransport(page, fixture.client);
   const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
-    headers: { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100", "Idempotency-Key": "browser-role-changes" },
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-role-changes",
+    },
     data: { name: "Role change tenant" },
   });
   expect(created.status()).toBe(201);
   const { workspace } = await created.json();
-  expect((await request.post(`${process.env.FLUX_BROWSER_FIXTURE}/restore-member?workspace=${workspace.id}`)).status()).toBe(204);
+  expect(
+    (
+      await request.post(
+        `${process.env.FLUX_BROWSER_FIXTURE}/restore-member?workspace=${workspace.id}`,
+      )
+    ).status(),
+  ).toBe(204);
   let mutations = 0;
   let fail = false;
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (route.request().method() === "PATCH") {
       mutations++;
-      if (fail) { await route.fulfill({ status: 503, contentType: "application/json", body: "{}" }); return; }
+      if (fail) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+        return;
+      }
     }
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
     await route.fulfill({ response });
@@ -26,37 +42,56 @@ test("roles safely confirm promotion then self demotion and preserve Links", asy
   const own = team.getByRole("row").filter({ hasText: "local@example.test" });
   const colleague = team.getByRole("row").filter({ hasText: "colleague@example.test" });
   await expect(own.getByText("Promote another owner first", { exact: true })).toBeVisible();
+  await own.getByLabel("New role").selectOption("admin");
+  await own.getByRole("button", { name: "Change role", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Change role?", exact: true })
+    .getByRole("button", { name: "Change role", exact: true })
+    .click();
+  await expect(team.getByRole("alert")).toHaveText("Promote another owner first");
+  await expect(own.locator("td").nth(1)).toHaveText("Owner");
+  await team.getByRole("button", { name: "Reload team", exact: true }).click();
   await colleague.getByLabel("New role").selectOption("owner");
   const trigger = colleague.getByRole("button", { name: "Change role", exact: true });
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "Change role?", exact: true });
-  await expect(dialog.getByRole("button", { name: "Keep current role", exact: true })).toBeFocused();
+  await expect(
+    dialog.getByRole("button", { name: "Keep current role", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
-  expect(mutations).toBe(0);
+  expect(mutations).toBe(1);
   await trigger.click();
   fail = true;
   await dialog.getByRole("button", { name: "Change role", exact: true }).click();
-  await expect(team.getByRole("alert")).toHaveText("We couldn't change the role. Reload team before trying again.");
-  expect(mutations).toBe(1);
-  await expect(colleague.getByText("Member", { exact: true })).toBeVisible();
+  await expect(team.getByRole("alert")).toHaveText(
+    "We couldn't change the role. Reload team before trying again.",
+  );
+  expect(mutations).toBe(2);
+  await expect(colleague.locator("td").nth(1)).toHaveText("Member");
   fail = false;
   await team.getByRole("button", { name: "Reload team", exact: true }).click();
   await colleague.getByLabel("New role").selectOption("owner");
   await trigger.click();
   await dialog.getByRole("button", { name: "Change role", exact: true }).click();
   await expect(team.getByRole("status").filter({ hasText: "Role changed." })).toBeVisible();
-  await expect(colleague.getByText("Owner", { exact: true })).toBeVisible();
+  await expect(colleague.locator("td").nth(1)).toHaveText("Owner");
   await own.getByLabel("New role").selectOption("member");
   await own.getByRole("button", { name: "Change role", exact: true }).click();
-  await expect(dialog.getByText("This change removes the member's current management permissions.", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("This change removes the member's current management permissions.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await dialog.getByRole("button", { name: "Change role", exact: true }).click();
-  await expect(team.getByText("You do not have permission to view Team.", { exact: true })).toBeVisible();
+  await expect(
+    team.getByText("You do not have permission to view Team.", { exact: true }),
+  ).toBeVisible();
   await expect(team.getByRole("table")).toHaveCount(0);
   await page.getByRole("link", { name: "Links", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Links", exact: true })).toBeVisible();
-  expect(mutations).toBe(3);
+  expect(mutations).toBe(4);
 });
 
 test("team inspects actual members with responsive roles and truthful retry then scrubs removed access", async ({
@@ -90,10 +125,10 @@ test("team inspects actual members with responsive roles and truthful retry then
   await expect(page.getByRole("heading", { name: "Links", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Team", exact: true }).click({ timeout: 10000 });
   await expect(page.getByRole("table", { name: "Team members" })).toBeVisible();
-  await expect(page.getByRole("table").getByText("Owner", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").locator("tbody td").nth(1)).toHaveText("Owner");
   const identity = await page.getByRole("table").locator("tbody td").first().textContent();
   expect(identity).toContain("@");
-  expect(await page.getByRole("button", { name: /Invite|Remove|Change role/ }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /Invite|Remove/ }).count()).toBe(0);
   fail = true;
   await page.getByRole("button", { name: "Reload team", exact: true }).click();
   const team = page.getByRole("main", { name: "Team", exact: true });
@@ -105,9 +140,7 @@ test("team inspects actual members with responsive roles and truthful retry then
   await expect(team.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(page.getByRole("list", { name: "Team members" })).toBeVisible();
-  await expect(
-    page.getByRole("list", { name: "Team members" }).getByText("Owner", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("list", { name: "Team members" }).locator("dd").nth(1)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -170,9 +203,9 @@ test("team fresh role matrix disposes stale management access while retaining va
       await page.goto(`/workspaces/${workspace.id}/team`);
     }
     if (role === "owner" || role === "admin") {
-      await expect(
-        page.getByRole("table").getByText(role === "owner" ? "Owner" : "Admin", { exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole("table").locator("tbody td").nth(1)).toHaveText(
+        role === "owner" ? "Owner" : "Admin",
+      );
     } else {
       await expect(
         page.getByText("You do not have permission to view Team.", { exact: true }),

@@ -22,7 +22,8 @@ export class ApiError extends Error {
       | "KEY_UNAVAILABLE"
       | "REQUEST_REUSE_CONFLICT"
       | "INVALID_CUSTOM_KEY"
-      | "CURSOR_INVALID",
+      | "CURSOR_INVALID"
+      | "OWNER_REQUIRED",
   ) {
     super(messages[code]);
     this.name = "ApiError";
@@ -135,7 +136,9 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
                   const code = parsed.data.code;
                   if (
                     (response.status === 409 &&
-                      (code === "KEY_UNAVAILABLE" || code === "REQUEST_REUSE_CONFLICT")) ||
+                      (code === "KEY_UNAVAILABLE" ||
+                        code === "REQUEST_REUSE_CONFLICT" ||
+                        code === "OWNER_REQUIRED")) ||
                     (response.status === 400 &&
                       (code === "INVALID_CUSTOM_KEY" || code === "CURSOR_INVALID"))
                   )

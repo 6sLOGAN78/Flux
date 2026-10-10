@@ -440,31 +440,7 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	require.Equal(t, 404, status)
 	_, err := db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'member',$3)", w, target, actor)
 	require.NoError(t, err)
-	for _, actorRole := range []string{"owner", "admin", "member", "viewer"} {
-		for _, current := range []string{"owner", "admin", "member", "viewer"} {
-			for _, grant := range []string{"owner", "admin", "member", "viewer"} {
-				t.Run(actorRole+"-"+current+"-"+grant, func(t *testing.T) {
-					_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN $3 ELSE $4 END WHERE workspace_id=$1", w, actor, actorRole, current)
-					require.NoError(t, err)
-					status, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-matrix-"+uuid.NewString(), `{"role":"`+grant+`"}`)
-					allowed := actorRole == "owner" || (actorRole == "admin" && (current == "member" || current == "viewer") && (grant == "member" || grant == "viewer"))
-					if allowed {
-						require.Equal(t, 200, status)
-					} else {
-						require.Equal(t, 403, status)
-					}
-					var actual string
-					require.NoError(t, db.Pool.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, target).Scan(&actual))
-					if allowed {
-						require.Equal(t, grant, actual)
-					} else {
-						require.Equal(t, current, actual)
-					}
-					time.Sleep(70 * time.Millisecond)
-				})
-			}
-		}
-	}
+	checkTeamRoleMatrix(t, api, db, token, w, actor, target, path)
 	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN 'owner' ELSE 'member' END WHERE workspace_id=$1", w, actor)
 	require.NoError(t, err)
 	self := "/workspaces/" + w + "/members/" + actor
@@ -475,29 +451,48 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-invalid-0001", body)
 		require.Equal(t, 400, status)
 	}
+	var auditsBefore int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", w).Scan(&auditsBefore))
 	status, first := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
 	require.Equal(t, 200, status)
+	require.Equal(t, "owner", first["actorRole"])
 	status, replay := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
 	require.Equal(t, 200, status)
 	require.Equal(t, first, replay)
-	status, denied = workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"admin"}`)
+	status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"admin"}`)
 	require.Equal(t, 409, status)
 	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", w).Scan(&count))
+	require.Equal(t, auditsBefore+1, count, "identical replay and conflicting reuse never audit twice")
+	var validAudit bool
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM audit_events a JOIN memberships m ON "+
+		"m.workspace_id=a.workspace_id AND m.id=a.target_membership_id WHERE a.workspace_id=$1 AND a.actor_id=$2 "+
+		"AND a.operation='member.role' AND m.user_id=$3 AND a.created_at IS NOT NULL)", w, actor, target).Scan(&validAudit))
+	require.True(t, validAudit)
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key='roles-replay-0001' AND operation='member.role' AND retain_until >= created_at+interval '24 hours'", w).Scan(&count))
 	require.Equal(t, 1, count)
+	status, _ = workspaceRequest(t, api, other, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
+	require.Equal(t, 200, status, "same key is scoped to its durable actor")
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND operation='member.role' AND request_key='roles-replay-0001'", w).Scan(&count))
+	require.Equal(t, 2, count)
+	_, err = db.Pool.Exec(ctx, "INSERT INTO memberships(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2)", f, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "PATCH", "/workspaces/"+f+"/members/"+target, "roles-replay-0001", `{"role":"owner"}`)
+	require.Equal(t, 200, status, "same actor and key are scoped to their workspace")
 	// Serialize both current owners behind a real workspace lock, then release.
 	lock, err := db.Pool.Begin(ctx)
 	require.NoError(t, err)
+	defer lock.Rollback(ctx)
 	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
 	require.NoError(t, err)
-	results := make(chan int, 2)
+	results := make(chan roleRequestResult, 2)
 	go func() {
-		code, _ := workspaceRequest(t, api, token, "PATCH", self, "roles-race-0001", `{"role":"member"}`)
-		results <- code
+		result := roleStatus(api, token, self, "roles-race-00001", `{"role":"member"}`)
+		results <- result
 	}()
 	go func() {
-		code, _ := workspaceRequest(t, api, other, "PATCH", path, "roles-race-0002", `{"role":"member"}`)
-		results <- code
+		result := roleStatus(api, other, path, "roles-race-00002", `{"role":"member"}`)
+		results <- result
 	}()
 	require.Eventually(t, func() bool {
 		var waiting int
@@ -505,7 +500,9 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	}, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, lock.Commit(ctx))
 	a, b := <-results, <-results
-	require.ElementsMatch(t, []int{200, 409}, []int{a, b})
+	require.NoError(t, a.err)
+	require.NoError(t, b.err)
+	require.ElementsMatch(t, []int{200, 409}, []int{a.code, b.code})
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND role='owner'", w).Scan(&count))
 	require.Equal(t, 1, count)
 	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN 'owner' ELSE 'member' END WHERE workspace_id=$1", w, actor)
@@ -514,11 +511,12 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	// A pending operation must see the actor role committed before its lock.
 	lock, err = db.Pool.Begin(ctx)
 	require.NoError(t, err)
+	defer lock.Rollback(ctx)
 	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
 	require.NoError(t, err)
 	go func() {
-		code, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"viewer"}`)
-		results <- code
+		result := roleStatus(api, token, path, "roles-replay-0001", `{"role":"viewer"}`)
+		results <- result
 	}()
 	require.Eventually(t, func() bool {
 		var waiting int
@@ -527,7 +525,9 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	_, err = lock.Exec(ctx, "UPDATE memberships SET role='member' WHERE workspace_id=$1 AND user_id=$2", w, actor)
 	require.NoError(t, err)
 	require.NoError(t, lock.Commit(ctx))
-	require.Equal(t, 403, <-results, "fresh authorization precedes changed-hash replay")
+	pending := <-results
+	require.NoError(t, pending.err)
+	require.Equal(t, 403, pending.code, "fresh authorization precedes changed-hash replay")
 	for _, grant := range []string{"owner", "admin", "member", "viewer"} {
 		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
 		require.NoError(t, err)
@@ -536,6 +536,8 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	}
 	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
 	require.NoError(t, err)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND actor_id=$2", w, actor).Scan(&count))
+	require.Positive(t, count, "durable actor provenance survives membership removal")
 	status, _ = workspaceRequest(t, api, token, "PATCH", path, "roles-replay-0001", `{"role":"owner"}`)
 	require.Equal(t, 404, status)
 	_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='tampered' WHERE workspace_id=$1", w)
@@ -543,6 +545,57 @@ func checkTeamRoles(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	_, err = db.Pool.Exec(ctx, "DELETE FROM audit_events WHERE workspace_id=$1", w)
 	require.Error(t, err)
 	require.NotContains(t, p.logs.String(), "Role tenant")
+}
+
+func checkTeamRoleMatrix(t *testing.T, api string, db *fluxTesting.TestDB, token, w, actor, target, path string) {
+	t.Helper()
+	ctx := context.Background()
+	for _, actorRole := range []string{"owner", "admin", "member", "viewer"} {
+		for _, current := range []string{"owner", "admin", "member", "viewer"} {
+			for _, grant := range []string{"owner", "admin", "member", "viewer"} {
+				t.Run(actorRole+"-"+current+"-"+grant, func(t *testing.T) {
+					_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=CASE WHEN user_id=$2 THEN $3 ELSE $4 END WHERE workspace_id=$1", w, actor, actorRole, current)
+					require.NoError(t, err)
+					status, _ := workspaceRequest(t, api, token, "PATCH", path, "roles-matrix-"+uuid.NewString(), `{"role":"`+grant+`"}`)
+					allowed := actorRole == "owner" || (actorRole == "admin" && (current == "member" || current == "viewer") && (grant == "member" || grant == "viewer"))
+					expected := current
+					if allowed {
+						require.Equal(t, 200, status)
+						expected = grant
+					} else {
+						require.Equal(t, 403, status)
+					}
+					var actual string
+					require.NoError(t, db.Pool.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, target).Scan(&actual))
+					require.Equal(t, expected, actual)
+					time.Sleep(70 * time.Millisecond)
+				})
+			}
+		}
+	}
+}
+
+type roleRequestResult struct {
+	err  error
+	code int
+}
+
+// Goroutines return transport failures to the test goroutine; never require/Fatal here.
+func roleStatus(api, token, path, key, body string) roleRequestResult {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPatch, api+"/api/v1"+path, strings.NewReader(body))
+	if err != nil {
+		return roleRequestResult{err: err}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Origin", fixtureParty)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", key)
+	response, err := (&http.Client{Timeout: 4 * time.Second}).Do(req)
+	if err != nil {
+		return roleRequestResult{err: err}
+	}
+	_, readErr := io.Copy(io.Discard, io.LimitReader(response.Body, 65536))
+	return roleRequestResult{code: response.StatusCode, err: errors.Join(readErr, response.Body.Close())}
 }
 
 func checkRoleRollback(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, token, workspace, path, target string) {
@@ -612,7 +665,7 @@ func checkTeam(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvid
 		require.Equal(t, 400, code, query)
 	}
 	code, _ = workspaceRequest(t, api, token, "GET", path+"/"+uuid.NewString(), "", "")
-	require.Equal(t, 404, code)
+	require.Equal(t, 405, code, "role endpoint never exposes a member through unsupported GET")
 	// Fixed 25-row pages keep even worst-case JSON-escaped 320-character
 	// identities below the browser's existing 64 KiB success boundary.
 	_, err = db.Pool.Exec(ctx, "WITH seeded AS (INSERT INTO users(issuer,subject,verified_email) "+

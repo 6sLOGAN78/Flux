@@ -162,8 +162,11 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 			var err error
 			switch r.URL.Path {
 			case "/restore-member":
-				_, err = db.Pool.Exec(r.Context(), "WITH seeded AS (INSERT INTO users(issuer,subject,verified_email) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET verified_email=EXCLUDED.verified_email RETURNING id) "+
-					"INSERT INTO memberships(workspace_id,user_id,role,created_by) SELECT $4,id,'member',id FROM seeded ON CONFLICT(workspace_id,user_id) DO NOTHING",
+				_, err = db.Pool.Exec(r.Context(), "WITH seeded AS (INSERT INTO users(issuer,subject,verified_email) "+
+					"VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET "+
+					"verified_email=EXCLUDED.verified_email RETURNING id) "+
+					"INSERT INTO memberships(workspace_id,user_id,role,created_by) "+
+					"SELECT $4,id,'member',id FROM seeded ON CONFLICT(workspace_id,user_id) DO NOTHING",
 					fixtureIssuer, "user_browser_roles", "colleague@example.test", r.URL.Query().Get("workspace"))
 			case "/restore-role":
 				role := r.URL.Query().Get("role")

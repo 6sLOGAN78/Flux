@@ -87,6 +87,32 @@ export const ZMembersResponse = extendApi(
   { title: "transport.MembersResponse" },
 );
 export type MembersResponse = z.infer<typeof ZMembersResponse>;
+export const ZChangeMemberRoleRequest = extendApi(
+  z
+    .object({
+      role: extendApi(z.enum(["owner", "admin", "member", "viewer"]), {
+        "x-enum-varnames": ["GrantOwner", "GrantAdmin", "GrantMember", "GrantViewer"],
+      }),
+    })
+    .strict(),
+  { title: "transport.ChangeMemberRoleRequest" },
+);
+export const ZMemberResponse = extendApi(
+  z
+    .object({
+      member: ZTeamMember,
+      actorRole: extendApi(z.enum(["owner", "admin", "member", "viewer"]), {
+        "x-enum-varnames": [
+          "CapabilityOwner",
+          "CapabilityAdmin",
+          "CapabilityMember",
+          "CapabilityViewer",
+        ],
+      }),
+    })
+    .strict(),
+  { title: "transport.MemberResponse" },
+);
 export const ZMemberListQuery = z
   .object({ after: extendApi(z.string().uuid(), { "x-go-type": "string" }).optional() })
   .strict();

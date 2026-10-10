@@ -11,6 +11,8 @@ import {
   ZLinkListQuery,
   ZMembersResponse,
   ZMemberListQuery,
+  ZChangeMemberRoleRequest,
+  ZMemberResponse,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -19,6 +21,29 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  changeMemberRole: {
+    summary: "Change a current workspace member's role",
+    description:
+      "Requires exact allowed Origin, JSON and Idempotency-Key. Locks workspace exclusively, then actor membership, then scoped target membership. Current PostgreSQL owners manage all roles; admins may target and grant member/viewer only, never admin/owner/self escalation. Provider claims never authorize. Last owner demotion returns 409 OWNER_REQUIRED: Promote another owner first. Ownership transfer explicitly promotes an existing member before demotion. Fresh actor and target authorization precedes hash/replay reads. SHA-256 canonical target/role hash and workspace/actor/member.role/key scope retain committed responses at least 24 hours. Identical authorized retries return the original result with one audit; changed payload returns 409 IDEMPOTENCY_CONFLICT. Role effect, immutable protected durable actor/action/target membership snapshot/time audit, and ledger commit atomically. Foreign or removed access returns safe 404. Unknown fields, nulls and invalid roles fail closed. No-store. 429 includes Retry-After and rate-limit metadata.",
+    path: "/api/v1/workspaces/:workspaceId/members/:memberId",
+    method: "PATCH",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), memberId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZChangeMemberRoleRequest,
+    responses: {
+      200: ZMemberResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   listMembers: {
     summary: "Inspect freshly authorized workspace members",
     description:
