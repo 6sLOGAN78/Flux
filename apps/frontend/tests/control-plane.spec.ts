@@ -1036,11 +1036,21 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
-test("delivery-recovery: expired uncertain HTTP delivery becomes Failed without another send", async ({ page, request }) => {
+test("delivery-recovery: expired uncertain HTTP delivery becomes Failed without another send", async ({
+  page,
+  request,
+}) => {
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   await installProviderTransport(page, fixture.client);
-  const headers = { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100", "Idempotency-Key": "browser-recovery-workspace-01" };
-  const created = await request.post(`${fixture.api}/api/v1/workspaces`, { headers, data: { name: "Recovery Team" } });
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-recovery-workspace-01",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Recovery Team" },
+  });
   expect(created.status()).toBe(201);
   const { workspace } = await created.json();
   await page.route("**/api/v1/**", async (route) => {
@@ -1054,15 +1064,29 @@ test("delivery-recovery: expired uncertain HTTP delivery becomes Failed without 
   await form.getByRole("button", { name: "Invite member", exact: true }).click();
   const list = page.getByRole("list", { name: "Workspace invitations" });
   await expect(list).toContainText("Delivery status: Queued");
-  await expect.poll(async () => (await request.post(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)).status()).toBe(204);
-  await expect(list).toContainText("Delivery status: Failed", { timeout: 15000 });
-  await expect(list).toContainText("Invitation delivery failed. Resend the invitation to try again.");
+  await expect
+    .poll(async () =>
+      (
+        await request.post(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)
+      ).status(),
+    )
+    .toBe(204);
+  await expect(list).toContainText("Delivery status: Delivery failed", { timeout: 15000 });
+  await expect(list).toContainText(
+    "Invitation delivery failed. Resend the invitation to try again.",
+  );
   await expect(list.getByRole("button", { name: "Resend", exact: true })).toHaveCount(0);
-  const before = await (await request.get(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)).json();
+  const before = await (
+    await request.get(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)
+  ).json();
   expect(before.reconciliationBlocked).toBe(1);
   await page.getByRole("button", { name: "Reload invitations" }).click();
-  await expect(list).toContainText("Delivery status: Failed");
-  expect(await (await request.get(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)).json()).toEqual(before);
+  await expect(list).toContainText("Delivery status: Delivery failed");
+  expect(
+    await (
+      await request.get(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)
+    ).json(),
+  ).toEqual(before);
 });
 
 test("invitation-delivery: actual durable worker acknowledgement becomes visible", async ({

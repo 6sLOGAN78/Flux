@@ -51,13 +51,19 @@ func (r *DeliveryRepository) Prepare(ctx context.Context, claim DeliveryClaim,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err = lockDeliveryInvitation(ctx, tx, claim); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
 	intent := DeliveryIntent{ID: claim.DeliveryID, InvitationID: claim.InvitationID}
 	var name, role string
 	err = tx.QueryRow(ctx, `SELECT d.key_id,d.ciphertext,w.name,i.role FROM invitation_delivery_intents d
  JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id JOIN workspaces w ON w.id=d.workspace_id
  WHERE d.workspace_id=$1 AND d.id=$2 AND d.invitation_id=$3 AND d.lease_generation=$4
  AND d.state='leased' AND d.lease_until>clock_timestamp() AND i.state='pending' AND i.expires_at>clock_timestamp()
- FOR UPDATE OF d,i`, claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &name, &role)
+ FOR UPDATE OF d`, claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &name, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -98,9 +104,10 @@ func (r *DeliveryRepository) Claim(ctx context.Context) ([]DeliveryClaim, error)
 	// Terminal invitations cannot be delivered; expire private envelopes as well.
 	_, err = tx.Exec(ctx, `WITH terminal AS (SELECT d.workspace_id,d.id FROM invitation_delivery_intents d
  JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id
- WHERE d.state IN ('queued','leased') AND (i.state<>'pending' OR i.expires_at<=clock_timestamp())
+ WHERE d.state IN ('queued','leased','failed') AND (i.state<>'pending' OR i.expires_at<=clock_timestamp())
  ORDER BY d.available_at,d.id LIMIT 25 FOR UPDATE OF d SKIP LOCKED)
- UPDATE invitation_delivery_intents d SET state='cancelled',lease_until=NULL,ciphertext=NULL
+ UPDATE invitation_delivery_intents d SET state='cancelled',lease_until=NULL,
+ ciphertext=NULL,reconciliation_required=false
  FROM terminal t WHERE d.workspace_id=t.workspace_id AND d.id=t.id`)
 	if err != nil {
 		return nil, err
@@ -146,27 +153,53 @@ func (r *DeliveryRepository) Claim(ctx context.Context) ([]DeliveryClaim, error)
 func (r *DeliveryRepository) Deliver(ctx context.Context, claim DeliveryClaim,
 	send func(context.Context, DeliveryIntent, string, string) error,
 ) error {
+	// This autocommitted fence survives death after provider ACK but before the
+	// effect transaction commits. Never renew it on a lease generation/retry.
+	if err := r.reserveDispatch(ctx, claim); err != nil {
+		return err
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err = lockDeliveryInvitation(ctx, tx, claim); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
 	var intent DeliveryIntent
 	var workspace, role string
 	var attempts int
+	var withinWindow bool
 	intent.ID, intent.InvitationID = claim.DeliveryID, claim.InvitationID
-	err = tx.QueryRow(ctx, `SELECT d.key_id,d.ciphertext,w.name,i.role,d.attempts FROM invitation_delivery_intents d
+	err = tx.QueryRow(ctx, `SELECT d.key_id,d.ciphertext,w.name,i.role,d.attempts,
+ d.dispatch_started_at>clock_timestamp()-interval '23 hours' FROM invitation_delivery_intents d
  JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id
  JOIN workspaces w ON w.id=d.workspace_id
  WHERE d.workspace_id=$1 AND d.id=$2 AND d.invitation_id=$3 AND d.lease_generation=$4
  AND d.state='leased' AND d.lease_until>clock_timestamp() AND d.attempts<8
- AND i.state='pending' AND i.expires_at>clock_timestamp() FOR UPDATE OF d,i`,
-		claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &workspace, &role, &attempts)
+ AND i.state='pending' AND i.expires_at>clock_timestamp() FOR UPDATE OF d`,
+		claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &workspace, &role, &attempts, &withinWindow)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if !withinWindow {
+		clear(intent.Ciphertext)
+		// Resend retains idempotency for 24 hours. Use a conservative 23-hour
+		// window, leave encrypted evidence for an operator, and never resend an
+		// uncertain external effect automatically under a renewed key/window.
+		_, err = tx.Exec(ctx, `UPDATE invitation_delivery_intents SET state='failed',lease_until=NULL,
+ reconciliation_required=true WHERE workspace_id=$1 AND id=$2 AND invitation_id=$3 AND lease_generation=$4`,
+			claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	attempts++
 	sendErr := send(ctx, intent, workspace, role)
@@ -192,6 +225,30 @@ func (r *DeliveryRepository) Deliver(ctx context.Context, claim DeliveryClaim,
 		return err
 	}
 	return tx.Commit(finishCtx)
+}
+
+// Workspace -> invitation -> intent is the shared mutation/send lock order.
+// Holding the exclusive workspace lock through the bounded provider call makes
+// a winning revoke/resend transaction prevent the old token's subsequent send.
+func lockDeliveryInvitation(ctx context.Context, tx pgx.Tx, claim DeliveryClaim) error {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", claim.WorkspaceID).Scan(&id)
+	if err != nil {
+		return err
+	}
+	return tx.QueryRow(ctx, "SELECT id FROM invitations WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
+		claim.WorkspaceID, claim.InvitationID).Scan(&id)
+}
+
+func (r *DeliveryRepository) reserveDispatch(ctx context.Context, claim DeliveryClaim) error {
+	_, err := r.pool.Exec(ctx, `UPDATE invitation_delivery_intents d SET dispatch_started_at=coalesce(dispatch_started_at,
+ CASE WHEN attempts>0 THEN created_at ELSE clock_timestamp() END)
+ WHERE workspace_id=$1 AND id=$2 AND invitation_id=$3 AND lease_generation=$4
+ AND state='leased' AND lease_until>clock_timestamp() AND dispatch_started_at IS NULL
+ AND EXISTS(SELECT 1 FROM invitations i WHERE i.workspace_id=d.workspace_id AND i.id=d.invitation_id
+ AND i.state='pending' AND i.expires_at>clock_timestamp())`,
+		claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation)
+	return err
 }
 
 func recordInvitationDelivery(ctx context.Context, tx pgx.Tx, scope Scope, intent DeliveryIntent) error {

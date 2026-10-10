@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
@@ -244,6 +246,105 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 		t.Fatal("per-send deadline did not return safe retry state")
 	})
 	store := repository.NewDeliveryRepository(pg.Pool)
+	t.Run("lost Redis queue outage and restart reconstruct durable intent across key rotation", func(t *testing.T) {
+		recoveryPG, closeRecoveryPG := backendTesting.SetupTestDB(t)
+		defer closeRecoveryPG()
+		recoveryRedis, closeRecoveryRedis := backendTesting.SetupTestRedis(t)
+		defer closeRecoveryRedis()
+		recoveryCfg := roleTestConfig()
+		recoveryCfg.Database, recoveryCfg.Server, recoveryCfg.Redis = recoveryPG.Config.Database, recoveryPG.Config.Server, recoveryRedis.Config
+		recoveryCfg.Integration = config.IntegrationConfig{ResendAPIKey: "test-only"}
+		recoveryStore := repository.NewDeliveryRepository(recoveryPG.Pool)
+		oldIntent, _ := seedInvitationDelivery(t, recoveryPG.Pool, recoveryCfg, "old-key@example.test")
+		claims, claimErr := recoveryStore.Claim(context.Background())
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		oldLease := findInvitationClaim(t, claims, oldIntent)
+		task, taskErr := job.NewInvitationTask(oldLease)
+		if taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		producer := asynq.NewClientFromRedisClient(recoveryRedis.Client)
+		if _, taskErr = producer.Enqueue(task); taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		// This is the isolated queue owned by this test, never a shared service.
+		if taskErr = recoveryRedis.Client.FlushDB(context.Background()).Err(); taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		stopTimeout := time.Second
+		if taskErr = recoveryRedis.Container.Stop(context.Background(), &stopTimeout); taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		outageCtx, cancelOutage := context.WithTimeout(context.Background(), time.Second)
+		_, taskErr = producer.EnqueueContext(outageCtx, task)
+		cancelOutage()
+		if taskErr == nil {
+			t.Fatal("publication succeeded during actual Redis outage")
+		}
+		assertDeliveryState(t, recoveryPG.Pool, oldIntent, "leased", false)
+		var attempts int
+		if taskErr = recoveryPG.Pool.QueryRow(context.Background(), "SELECT attempts FROM invitation_delivery_intents WHERE workspace_id=$1 AND id=$2", oldIntent.WorkspaceID, oldIntent.DeliveryID).Scan(&attempts); taskErr != nil || attempts != 0 {
+			t.Fatal("Redis outage spent a provider attempt")
+		}
+		if taskErr = recoveryRedis.Container.Start(context.Background()); taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		// Docker may allocate a fresh ephemeral host port on restart.
+		port, portErr := recoveryRedis.Container.MappedPort(context.Background(), "6379")
+		if portErr != nil {
+			t.Fatal(portErr)
+		}
+		host, hostErr := recoveryRedis.Container.Host(context.Background())
+		if hostErr != nil {
+			t.Fatal(hostErr)
+		}
+		recoveryCfg.Redis.Address = net.JoinHostPort(host, port.Port())
+		reconnected := redis.NewClient(&redis.Options{Addr: recoveryCfg.Redis.Address})
+		defer reconnected.Close()
+		waitInvitation(t, func() bool { return reconnected.Ping(context.Background()).Err() == nil })
+		if _, taskErr = recoveryPG.Pool.Exec(context.Background(), "UPDATE invitation_delivery_intents SET lease_until=now()-interval '1 second' WHERE workspace_id=$1 AND id=$2", oldIntent.WorkspaceID, oldIntent.DeliveryID); taskErr != nil {
+			t.Fatal(taskErr)
+		}
+		recoveryCfg.Invitations.ActiveKeyID = "rotated"
+		recoveryCfg.Invitations.EncryptionKeys = `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `","rotated":"` + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x7a}, 32)) + `"}`
+		newIntent, _ := seedInvitationDelivery(t, recoveryPG.Pool, recoveryCfg, "new-key@example.test")
+		for _, expected := range []struct {
+			key   string
+			claim repository.DeliveryClaim
+		}{{"fixture", oldIntent}, {"rotated", newIntent}} {
+			var key string
+			if taskErr = recoveryPG.Pool.QueryRow(context.Background(), "SELECT key_id FROM invitation_delivery_intents WHERE workspace_id=$1 AND id=$2", expected.claim.WorkspaceID, expected.claim.DeliveryID).Scan(&key); taskErr != nil || key != expected.key {
+				t.Fatal("rotation did not preserve old pending and select new write key")
+			}
+		}
+		var calls atomic.Int32
+		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			_, _ = io.WriteString(w, `{"id":"recovered"}`)
+		}))
+		defer provider.Close()
+		restarted, workerErr := NewWorkerWithInvitationSender(context.Background(), recoveryCfg, invitationHTTPSender{endpoint: provider.URL, client: provider.Client()})
+		if workerErr != nil {
+			t.Fatal(workerErr)
+		}
+		defer func() {
+			if closeErr := restarted.Close(context.Background()); closeErr != nil {
+				t.Error(closeErr)
+			}
+		}()
+		waitInvitation(t, func() bool {
+			var delivered int
+			readErr := recoveryPG.Pool.QueryRow(context.Background(), "SELECT count(*) FROM invitation_delivery_intents WHERE state='delivered'").Scan(&delivered)
+			return readErr == nil && delivered == 2
+		})
+		assertDeliveryState(t, recoveryPG.Pool, oldIntent, "delivered", true)
+		assertDeliveryState(t, recoveryPG.Pool, newIntent, "delivered", true)
+		if calls.Load() != 2 {
+			t.Fatal("lost queue recovery duplicated or lost provider sends")
+		}
+	})
 	t.Run("workspace winning revocation fences send", func(t *testing.T) {
 		claim, _ := seedInvitationDelivery(t, pg.Pool, cfg, "workspace-winner@example.test")
 		claims, claimErr := store.Claim(context.Background())
@@ -427,9 +528,64 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 		if err8 != nil {
 			t.Fatal(err8)
 		}
-		_, err8 = producer.Enqueue(futureTask, asynq.TaskID("future-reference"))
+		_, err8 = producer.Enqueue(futureTask, asynq.TaskID("future-reference"), asynq.Retention(time.Minute))
 		if err8 != nil {
 			t.Fatal(err8)
+		}
+		foreign, _ := seedInvitationDelivery(t, pg.Pool, cfg, "foreign-tuple@example.test")
+		foreignClaims, foreignErr := store.Claim(context.Background())
+		if foreignErr != nil {
+			t.Fatal(foreignErr)
+		}
+		foreignLease := findInvitationClaim(t, foreignClaims, foreign)
+		if _, foreignErr = pg.Pool.Exec(context.Background(), "UPDATE invitation_delivery_intents SET lease_until=now()-interval '1 second' WHERE workspace_id=$1 AND id=$2", foreign.WorkspaceID, foreign.DeliveryID); foreignErr != nil {
+			t.Fatal(foreignErr)
+		}
+		if _, foreignErr = store.Claim(context.Background()); foreignErr != nil {
+			t.Fatal(foreignErr)
+		}
+		staleTask, staleErr := job.NewInvitationTask(foreignLease)
+		if staleErr != nil {
+			t.Fatal(staleErr)
+		}
+		if _, staleErr = producer.Enqueue(staleTask, asynq.TaskID("old-generation-reference"), asynq.Retention(time.Minute)); staleErr != nil {
+			t.Fatal(staleErr)
+		}
+		for _, terminal := range []string{"revoked", "accepted", "expired", "delivered"} {
+			terminalIntent, _ := seedInvitationDelivery(t, pg.Pool, cfg, terminal+"-redis@example.test")
+			terminalClaims, terminalErr := store.Claim(context.Background())
+			if terminalErr != nil {
+				t.Fatal(terminalErr)
+			}
+			terminalLease := findInvitationClaim(t, terminalClaims, terminalIntent)
+			if terminal == "delivered" {
+				terminalErr = store.Deliver(context.Background(), terminalLease, func(context.Context, repository.DeliveryIntent, string, string) error { return nil })
+			} else {
+				_, terminalErr = pg.Pool.Exec(context.Background(), "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", terminalIntent.WorkspaceID, terminalIntent.InvitationID, terminal)
+			}
+			if terminalErr != nil {
+				t.Fatal(terminalErr)
+			}
+			terminalTask, terminalErr := job.NewInvitationTask(terminalLease)
+			if terminalErr != nil {
+				t.Fatal(terminalErr)
+			}
+			if _, terminalErr = producer.Enqueue(terminalTask, asynq.TaskID(terminal+"-reference"), asynq.Retention(time.Minute)); terminalErr != nil {
+				t.Fatal(terminalErr)
+			}
+		}
+		for index, forged := range []repository.DeliveryClaim{
+			{WorkspaceID: foreignLease.WorkspaceID, InvitationID: current.InvitationID, DeliveryID: current.DeliveryID, Generation: current.Generation},
+			{WorkspaceID: current.WorkspaceID, InvitationID: foreignLease.InvitationID, DeliveryID: current.DeliveryID, Generation: current.Generation},
+			{WorkspaceID: current.WorkspaceID, InvitationID: current.InvitationID, DeliveryID: foreignLease.DeliveryID, Generation: current.Generation},
+		} {
+			forgedTask, buildErr := job.NewInvitationTask(forged)
+			if buildErr != nil {
+				t.Fatal(buildErr)
+			}
+			if _, buildErr = producer.Enqueue(forgedTask, asynq.TaskID("forged-tuple-"+string(rune('0'+index))), asynq.Retention(time.Minute)); buildErr != nil {
+				t.Fatal(buildErr)
+			}
 		}
 		malformed := asynq.NewTask(job.TaskInvitation, []byte(`{"email":"private-input-canary","generation":1}`), asynq.MaxRetry(0))
 		_, err8 = producer.Enqueue(malformed, asynq.TaskID("malformed-reference"))
@@ -469,6 +625,22 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 			info, err11 := inspector.GetTaskInfo("default", "malformed-reference")
 			return err11 == nil && info.State == asynq.TaskStateArchived
 		})
+		for index := range 3 {
+			waitInvitation(t, func() bool {
+				info, readErr := inspector.GetTaskInfo("default", "forged-tuple-"+string(rune('0'+index)))
+				return readErr == nil && info.State == asynq.TaskStateCompleted
+			})
+		}
+		for _, id := range []string{"future-reference", "old-generation-reference", "revoked-reference", "accepted-reference", "expired-reference", "delivered-reference"} {
+			waitInvitation(t, func() bool {
+				info, readErr := inspector.GetTaskInfo("default", id)
+				return readErr == nil && info.State == asynq.TaskStateCompleted
+			})
+		}
+		info, readErr := inspector.GetTaskInfo("default", "malformed-reference")
+		if readErr != nil || strings.Contains(info.LastErr, "private-input-canary") || strings.Contains(info.LastErr, "private-provider-response-canary") {
+			t.Fatal("private input persisted as retry error")
+		}
 		if calls.Load() != 0 {
 			t.Fatal("unsafe Redis or ciphertext reached provider")
 		}

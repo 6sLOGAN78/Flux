@@ -4,13 +4,12 @@ import { render } from "@react-email/components";
 import InvitationEmail from "./invitation.js";
 
 test("invitation escapes names, roles and href attributes without changing the fixed origin", async () => {
-  const html = await render(
-    <InvitationEmail
-      workspaceName={"<script>private-name</script>&"}
-      role={'member"<img>'}
-      invitationUrl={'https://app.flux.test/invitations#token=opaque&x="<'}
-    />,
-  );
+  const props = {
+    workspaceName: "<script>private-name</script>&",
+    role: 'member"<img>',
+    invitationUrl: 'https://app.flux.test/invitations#token=opaque&x="<',
+  };
+  const html = await render(<InvitationEmail {...props} />);
   assert.doesNotMatch(html, /<script>|<img>/);
   assert.match(html, /&lt;script&gt;private-name&lt;\/script&gt;&amp;/);
   assert.match(html, /member&quot;&lt;img&gt;/);

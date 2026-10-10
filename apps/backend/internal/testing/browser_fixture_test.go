@@ -28,6 +28,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/jwks"
 	"github.com/clerk/clerk-sdk-go/v2/session"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
 
@@ -112,34 +113,7 @@ func TestBrowserProductFixture(t *testing.T) {
 				Workspace:   workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/__test/delivery-recovery" {
-				if r.Method == http.MethodPost {
-					// Simulate a long outage after an uncertain actual HTTP attempt.
-					// Column discovery keeps RED on behavior, not missing migration SQL.
-					var hasWindow bool
-					readErr := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='invitation_delivery_intents' AND column_name='dispatch_started_at')").Scan(&hasWindow)
-					if readErr != nil {
-						w.WriteHeader(http.StatusInternalServerError)
-						return
-					}
-					query := `UPDATE invitation_delivery_intents d SET created_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
-					if hasWindow {
-						query = `UPDATE invitation_delivery_intents d SET dispatch_started_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
-					}
-					result, updateErr := db.Pool.Exec(r.Context(), query, r.URL.Query().Get("workspace"))
-					if updateErr != nil || result.RowsAffected() != 1 {
-						w.WriteHeader(http.StatusConflict)
-						return
-					}
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
-				var failed int
-				readErr := db.Pool.QueryRow(r.Context(), `SELECT count(*) FROM invitation_delivery_intents d JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id WHERE d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='failed' AND d.ciphertext IS NOT NULL AND coalesce((to_jsonb(d)->>'reconciliation_required')::boolean,false)`, r.URL.Query().Get("workspace")).Scan(&failed)
-				if readErr != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-				_ = json.NewEncoder(w).Encode(map[string]int{"providerAttempts": int(recoveryAttempts.Load()), "reconciliationBlocked": failed})
+				deliveryRecoveryEvidence(db.Pool, &recoveryAttempts, w, r)
 				return
 			}
 			if r.URL.Path == "/__test/delivery-release" && r.Method == http.MethodPost {
@@ -160,6 +134,39 @@ func TestBrowserProductFixture(t *testing.T) {
 			product.ServeHTTP(w, r)
 		})
 	})
+}
+
+//nolint:lll // Scoped test-only SQL evidence retains RED compatibility with the preceding migration.
+func deliveryRecoveryEvidence(pool *pgxpool.Pool, attempts *atomic.Int32, w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		w.WriteHeader(simulateDeliveryOutage(r.Context(), pool, r.URL.Query().Get("workspace")))
+		return
+	}
+	var failed int
+	err := pool.QueryRow(r.Context(), `SELECT count(*) FROM invitation_delivery_intents d JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id WHERE d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='failed' AND d.ciphertext IS NOT NULL AND coalesce((to_jsonb(d)->>'reconciliation_required')::boolean,false)`, r.URL.Query().Get("workspace")).Scan(&failed)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]int{"providerAttempts": int(attempts.Load()), "reconciliationBlocked": failed})
+}
+
+//nolint:lll // Simulate elapsed time only after an actual uncertain provider attempt.
+func simulateDeliveryOutage(ctx context.Context, pool *pgxpool.Pool, workspace string) int {
+	var hasWindow bool
+	err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='invitation_delivery_intents' AND column_name='dispatch_started_at')").Scan(&hasWindow)
+	if err != nil {
+		return http.StatusInternalServerError
+	}
+	query := `UPDATE invitation_delivery_intents d SET created_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
+	if hasWindow {
+		query = `UPDATE invitation_delivery_intents d SET dispatch_started_at=now()-interval '2 days',available_at=now() FROM invitations i WHERE d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.workspace_id::text=$1 AND i.email='recovery@example.test' AND d.state='queued' AND d.attempts>=1`
+	}
+	result, err := pool.Exec(ctx, query, workspace)
+	if err != nil || result.RowsAffected() != 1 {
+		return http.StatusConflict
+	}
+	return http.StatusNoContent
 }
 
 // Explicit test-only HTTP sender: no runtime environment can select it.
