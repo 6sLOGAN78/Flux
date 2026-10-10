@@ -98,3 +98,21 @@ Ready for **02-24**; it was not started. All broad requirement acceptance remain
 - Registered test inventory contains 106 Go units and 19 integration tests in six groups; required native gates passed as recorded above.
 - No source file was created by the tasks; the summary file is created and committed during closeout.
 - Unrelated pre-existing `.serena/project.yml` changes remain unstaged and untouched.
+
+## CI Tracing Repair Addendum — 2026-10-10
+
+After plan closeout, hosted run `38089621064` failed the registered `TestTracestateHTTPRedisOTLP` case. Its assertion text was unavailable in the hosted runner output. Three isolated original race runs and the original registered app group (12/12) passed locally; these passes did not establish a cause for the historical failure.
+
+**Confirmed defect:** the tracing proof waited for three collector export requests, although earlier trace, log and metric exports could satisfy that count before the collector's final asynchronous retry trace batch arrived. SDK shutdown flushes to the collector receiver and does not imply that downstream collector batches have completed. A deterministic regression using the actual digest-pinned collector held the final retry trace batch at its HTTP output while the three earlier signals arrived. The original barrier incorrectly declared completion and failed the new assertion in 1.41 seconds. This establishes the barrier defect under controlled ordering; it does not identify the hidden assertion from the historical hosted failure.
+
+**Repair:** decode actual official OTLP protobuf exports and wait for the HTTP span, exactly four job execution spans (two initial and two retry), and nonempty log and metric evidence. Preserve the original eight-second deadline, race execution, privacy checks and complete trace/parent/link/UUID assertions. Malformed protobuf and unexpected signal paths fail immediately with value-free messages. The final lineage assertion reports only numeric counts and a boolean. No production instrumentation, provider calls, telemetry privacy policy or collector configuration changed.
+
+**Fixture ownership:** new `apps/backend/internal/app/collector_barrier_test.go` owns the controlled HTTP sink gate and public synthetic OTLP span fixture. The gate releases on every exit; the existing collector factory owns the actual collector container, validated configuration and HTTP cleanup. `scripts/check.ts` registers `TestCollectorExportCompletenessBarrier` in the existing app integration group. Registered inventory is now 20 integration cases in six groups; Go unit inventory remains 106.
+
+**Atomic commits:**
+- `97bb1ff` — RED: reproduce incomplete collector export barrier with the actual pinned collector.
+- `afb7023` — GREEN: await complete decoded evidence and retain strict assertions.
+
+**Validation:** controlled regression plus original tracing race tests passed; the final exact registered app integration group passed 13/13 with `-race -count=1 -timeout=8m`. Native Go JSON stdout was retained in private OS temporary files (directory mode 0700, report mode 0600), with only test identifiers and counts reported. All 16 native `scripts/check.test.ts` checks passed, including compiled Go inventory and gate enforcement. Root format, lint and typecheck passed. Typecheck's production build output passed the exported `cleanFrontendBuild` ownership/manifest checks before disposal; `CI=true bun run scan` passed imported Go dependencies, Bun dependencies, worktree and full-history secret scans. Browser tests were not repeated for this test-only tracing repair. The earlier plan closeout's browser and production verification evidence remains recorded above.
+
+**Addendum self-check: PASSED.** The new collector fixture and both modified paths exist; both repair commits exist and contain no tracked deletions. `.serena/project.yml` remains untouched and unstaged. This addendum does not advance STATE/ROADMAP: plan 24 remains next, phase acceptance and live provider verification in plan 35 remain pending, and no push or subsequent plan was performed.
