@@ -39,7 +39,7 @@ import (
 )
 
 func roleTestConfig() *config.Config {
-	return &config.Config{Primary: config.Primary{Env: "test"}, Observability: config.DefaultObservabilityConfig(),
+	return &config.Config{Invitations: config.InvitationConfig{ActiveKeyID: "fixture", EncryptionKeys: `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`, Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}, Primary: config.Primary{Env: "test"}, Observability: config.DefaultObservabilityConfig(),
 		API: config.RoleConfig{ListenAddress: "127.0.0.1:0",
 			DrainTimeout:     time.Second,
 			ReadinessTimeout: time.Second},
@@ -137,7 +137,7 @@ func TestRoleTelemetryExportsAfterWorkAndDependencyClose(t *testing.T) {
 			}
 			spans := traces.GetSpans()
 			wantSpans := 1
-			if role == config.RoleAPI {
+			if role == config.RoleAPI || role == config.RoleWorker {
 				wantSpans++
 			}
 			if len(spans) != wantSpans {
@@ -277,6 +277,7 @@ func TestRoleResourceGraphs(t *testing.T) {
 			producer: false,
 			want: []string{"telemetry",
 				"logger",
+				"database",
 				"redis",
 				"email",
 				"consumer",
@@ -318,7 +319,7 @@ func TestRoleResourceGraphs(t *testing.T) {
 				}
 			}
 			if test.role == config.RoleWorker {
-				wantClosed = []string{"consumer", "redis", "logger", "telemetry"}
+				wantClosed = []string{"consumer", "redis", "database", "logger", "telemetry"}
 			}
 			if !reflect.DeepEqual(closed, wantClosed) {
 				t.Fatalf("close order %v, want %v", closed, wantClosed)
@@ -350,6 +351,7 @@ func TestRoleConstructionFailureUnwinds(t *testing.T) {
 		if role == config.RoleWorker {
 			stages = []string{"telemetry",
 				"logger",
+				"database",
 				"redis",
 				"email",
 				"consumer",
@@ -499,13 +501,14 @@ func TestRoleRealDependenciesRemainIndependent(t *testing.T) {
 	cfg = roleTestConfig()
 	cfg.Server = pg.Config.Server
 	cfg.Redis = queue.Config
+	cfg.Database = pg.Config.Database
 	cfg.Integration.ResendAPIKey = "test-key"
 	worker, err := NewWorker(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if worker.Server.DB != nil || worker.Server.Job.Client != nil {
-		t.Fatal("worker owns PostgreSQL or producer")
+	if worker.Server.DB == nil || worker.Server.Job.Client != nil {
+		t.Fatal("worker must own PostgreSQL and no API producer")
 	}
 	if err371 := worker.Close(ctx); err371 != nil {
 		t.Fatal(err371)
@@ -579,7 +582,7 @@ func TestRoleCloseAggregatesAndStartupReleasesListener(t *testing.T) {
 	if !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") {
 		t.Fatalf("close failure lost or leaked: %v", err)
 	}
-	for _, name := range []string{"consumer", "redis", "logger", "telemetry"} {
+	for _, name := range []string{"consumer", "redis", "database", "logger", "telemetry"} {
 		if !strings.Contains(err.Error(), name) {
 			t.Fatalf("close skipped %s: %v", name, err)
 		}

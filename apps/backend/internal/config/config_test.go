@@ -394,7 +394,7 @@ func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
 				delete(values, "integration")
 				delete(values, "redis")
 			}
-			if role != RoleAPI {
+			if role == RoleRedirector {
 				delete(values, "database")
 			}
 			cfg, err := loadConfigForRole(configProvider{values: values}, role)
@@ -487,6 +487,7 @@ func TestRoleEnvironmentSettings(t *testing.T) {
 			"sender":          "invites@example.test", "public_origin": "https://app.flux.test"},
 		"redis":       map[string]any{"address": "localhost:6379"},
 		"integration": map[string]any{"resend_api_key": "test-key"}}
+	values["database"] = configValues()["database"]
 	worker, err := loadConfigForRole(configProvider{values: values}, RoleWorker)
 	if err != nil || worker.Worker.ListenAddress != "127.0.0.1:8082" {
 		t.Fatalf("worker management default changed: %v", err)

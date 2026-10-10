@@ -150,6 +150,7 @@ type Context = {
 export const integrationTests: Record<string, string[]> = {
   "internal/app": [
     "TestAPIMigratorSpecialCredentials",
+    "TestInvitationWorkerActualRedisPostgres",
     "TestRoleRealDependenciesRemainIndependent",
     "TestRoleBinaryStartup",
     "TestPartialStartupRealLifecycleResources",

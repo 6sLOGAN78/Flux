@@ -1036,6 +1036,33 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
+test("invitation-delivery: actual durable worker acknowledgement becomes visible", async ({ page, request }) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-delivery-workspace-01" };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers, data: { name: "Delivery Team" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/team`);
+  const form = page.getByRole("form", { name: "Invite member" });
+  await form.getByLabel("Email address", { exact: true }).fill("delivery@example.test");
+  await form.getByRole("button", { name: "Invite member", exact: true }).click();
+  const list = page.getByRole("list", { name: "Workspace invitations" });
+  await expect(list).toContainText("Delivery status: Queued");
+  await expect(list).toContainText("Delivery status: Delivered", { timeout: 20000 });
+  const response = await request.get(`${fixture.api}/api/v1/workspaces/${workspace.id}/invitations`, { headers });
+  expect(response.status()).toBe(200);
+  expect((await response.json()).items.find((item: { email: string }) => item.email === "delivery@example.test").status).toBe("Delivered");
+});
+
 test("invitation-queue: actual API queue, expiry, duplicate and draft boundaries", async ({
   page,
   request,
