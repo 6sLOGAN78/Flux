@@ -834,7 +834,11 @@ func binaryTestEnv() []string {
 		}
 	}
 	return append(env, "FLUX_PRIMARY.ENV=test", "FLUX_LINKS.MANAGED_HOST=go.flux.test",
-		"FLUX_LINKS.CURSOR_KEY="+base64.StdEncoding.EncodeToString(make([]byte, 32)))
+		"FLUX_LINKS.CURSOR_KEY="+base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"FLUX_INVITATIONS.ACTIVE_KEY_ID=fixture",
+		`FLUX_INVITATIONS.ENCRYPTION_KEYS={"fixture":"`+base64.StdEncoding.EncodeToString(make([]byte, 32))+`"}`,
+		"FLUX_INVITATIONS.SENDER=invites@example.test",
+		"FLUX_INVITATIONS.PUBLIC_ORIGIN=https://app.flux.test")
 }
 
 func binaryDatabaseEnv(cfg config.DatabaseConfig) []string {

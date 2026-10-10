@@ -1,4 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
+import { providerAssetCache } from "./provider-assets";
+
+const publicProviderAsset = providerAssetCache();
 
 test("removal of another member retains creator links and invalidates their tab from fresh SQL authority", async ({
   page,
@@ -362,7 +365,7 @@ test("team inspects actual members with responsive roles and truthful retry then
   await expect(page.getByRole("table").locator("tbody td").nth(1)).toHaveText("Owner");
   const identity = await page.getByRole("table").locator("tbody td").first().textContent();
   expect(identity).toContain("@");
-  expect(await page.getByRole("button", { name: /Invite/ }).count()).toBe(0);
+  await expect(page.getByRole("form", { name: "Invite member" })).toBeVisible();
   fail = true;
   await page.getByRole("button", { name: "Reload team", exact: true }).click();
   const team = page.getByRole("main", { name: "Team", exact: true });
@@ -1033,11 +1036,18 @@ test("restore uses committed authorized selection and never trusts browser value
   expect(await page.getByRole("main").innerHTML()).not.toContain(workspace.id);
 });
 
-test("team invitation queues through actual API and shows duplicate feedback", async ({ page, request }) => {
+test("team invitation queues through actual API and shows duplicate feedback", async ({
+  page,
+  request,
+}) => {
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   await installProviderTransport(page, fixture.client);
   const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
-    headers: { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100", "Idempotency-Key": "browser-invitation-workspace-01" },
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-invitation-workspace-01",
+    },
     data: { name: "Invitation Team" },
   });
   expect(created.status()).toBe(201);
@@ -1052,12 +1062,47 @@ test("team invitation queues through actual API and shows duplicate feedback", a
   await expect(form.getByLabel("Role", { exact: true })).toHaveValue("member");
   await form.getByLabel("Email address", { exact: true }).fill("future+tag@example.test");
   await form.getByRole("button", { name: "Invite member", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Invitations", exact: true }).getByRole("status")).toHaveText("Invitation queued");
-  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText("future+tag@example.test");
-  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText("Expires");
+  await expect(
+    page.getByRole("region", { name: "Invitations", exact: true }).getByRole("status"),
+  ).toHaveText("Invitation queued");
+  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText(
+    "future+tag@example.test",
+  );
+  await expect(page.getByRole("region", { name: "Invitations", exact: true })).toContainText(
+    "Expires",
+  );
   await form.getByLabel("Email address", { exact: true }).fill("future+tag@example.test");
   await form.getByRole("button", { name: "Invite member", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Invitations", exact: true }).getByRole("alert")).toHaveText("An invitation is already pending for this email. Resend or revoke it.");
+  await expect(
+    page.getByRole("region", { name: "Invitations", exact: true }).getByRole("alert"),
+  ).toHaveText("An invitation is already pending for this email. Resend or revoke it.");
+  // A draft uses the existing native safe-first workspace-switch boundary.
+  const other = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-invitation-workspace-02",
+    },
+    data: { name: "Other invitation Team" },
+  });
+  expect(other.status()).toBe(201);
+  const second = (await other.json()).workspace;
+  await page.reload();
+  await form.getByLabel("Email address", { exact: true }).fill("draft@example.test");
+  await page.getByLabel("Switch workspace").selectOption(second.id);
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+  await expect(dialog.getByRole("button", { name: "Stay", exact: true })).toBeFocused();
+  await dialog.getByRole("button", { name: "Stay", exact: true }).click();
+  await expect(form.getByLabel("Email address", { exact: true })).toHaveValue("draft@example.test");
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${second.id}/links$`));
+  await page.getByRole("link", { name: "Team", exact: true }).click();
+  await expect(form.getByLabel("Email address", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("region", { name: "Invitations", exact: true })).not.toContainText(
+    "future+tag@example.test",
+  );
 });
 
 test("workspace requires an explicit name and opens authorized Links after commit", async ({
@@ -1264,11 +1309,28 @@ export const installProviderTransport = async (
     if (url.pathname.startsWith("/npm/")) {
       // Fetch provider-owned SDK assets, not fake application auth controls.
       const asset = (async () => {
-        const response = await route.fetch({
-          url: `https://cdn.jsdelivr.net${url.pathname.replace("@clerk/clerk-js@6/", "@clerk/clerk-js@6.38.1/").replace("@clerk/ui@1/", "@clerk/ui@1.39.1/")}${url.search}`,
-          timeout: 15000,
+        const pinnedURL = `https://cdn.jsdelivr.net${url.pathname.replace("@clerk/clerk-js@6/", "@clerk/clerk-js@6.38.1/").replace("@clerk/ui@1/", "@clerk/ui@1.39.1/")}${url.search}`;
+        const response = await publicProviderAsset(pinnedURL, async () => {
+          const fetched = await route.fetch({
+            url: pinnedURL,
+            timeout: 15000,
+            maxRedirects: 0,
+            headers: { accept: "*/*" },
+          });
+          try {
+            const contentType = fetched.headers()["content-type"] ?? "";
+            if (Number(fetched.headers()["content-length"] ?? 0) > 8 * 1024 * 1024)
+              throw new Error("Provider asset size limit");
+            return { status: fetched.status(), contentType, body: await fetched.body() };
+          } finally {
+            await fetched.dispose();
+          }
         });
-        await route.fulfill({ response });
+        await route.fulfill({
+          status: response.status,
+          contentType: response.contentType,
+          body: response.body,
+        });
       })();
       assets.add(asset);
       try {

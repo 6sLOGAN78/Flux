@@ -23,7 +23,8 @@ export class ApiError extends Error {
       | "REQUEST_REUSE_CONFLICT"
       | "INVALID_CUSTOM_KEY"
       | "CURSOR_INVALID"
-      | "OWNER_REQUIRED",
+      | "OWNER_REQUIRED"
+      | "INVITATION_PENDING",
   ) {
     super(messages[code]);
     this.name = "ApiError";
@@ -138,7 +139,8 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
                     (response.status === 409 &&
                       (code === "KEY_UNAVAILABLE" ||
                         code === "REQUEST_REUSE_CONFLICT" ||
-                        code === "OWNER_REQUIRED")) ||
+                        code === "OWNER_REQUIRED" ||
+                        code === "INVITATION_PENDING")) ||
                     (response.status === 400 &&
                       (code === "INVALID_CUSTOM_KEY" || code === "CURSOR_INVALID"))
                   )

@@ -44,9 +44,14 @@ func TestBrowserProductFixture(t *testing.T) {
 		cfg.Links = config.LinksConfig{CursorKey: base64.StdEncoding.EncodeToString(make([]byte, 32)),
 			ManagedHost: "go.flux.test", BlockedHosts: []string{"blocked.example"}}
 		workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
+		cfg.Invitations = config.InvitationConfig{ActiveKeyID: "fixture",
+			EncryptionKeys: ` {"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`,
+			Sender:         "invites@example.test", PublicOrigin: "https://app.flux.test"}
+		team := service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace)
 		return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)},
 			&service.Services{Auth: auth, Identity: identity,
-				Team:      service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace),
-				Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
+				Team:        team,
+				Invitations: service.NewInvitationService(repository.NewInvitationRepository(db.Pool), team, cfg.Invitations),
+				Workspace:   workspace, Links: service.NewLinkService(repository.NewLinkRepository(db.Pool), workspace, cfg.Links)})
 	})
 }

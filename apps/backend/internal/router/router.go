@@ -25,12 +25,14 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	var workspace *service.WorkspaceService
 	var links *service.LinkService
 	var team *service.TeamService
+	var invitations *service.InvitationService
 	if services != nil {
 		auth = services.Auth
 		identity = services.Identity
 		workspace = services.Workspace
 		links = services.Links
 		team = services.Team
+		invitations = services.Invitations
 	}
 	middlewares := middleware.NewMiddlewares(s)
 
@@ -81,7 +83,7 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	registerSystemRoutes(router, h)
 
 	// register versioned routes
-	product := handler.NewProductHandler(auth, identity, workspace, links, team)
+	product := handler.NewProductHandler(auth, identity, workspace, links, team, invitations)
 	group := router.Group("/api/v1")
 	group.GET("/me", product.Me)
 	group.PUT("/me/last-workspace", product.SelectWorkspace)
@@ -89,6 +91,8 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	group.POST("/workspaces", product.CreateWorkspace)
 	group.GET("/workspaces/:workspaceId", product.WorkspaceSummary)
 	group.GET("/workspaces/:workspaceId/members", product.ListMembers)
+	group.POST("/workspaces/:workspaceId/invitations", product.CreateInvitation)
+	group.GET("/workspaces/:workspaceId/invitations", product.ListInvitations)
 	group.PATCH("/workspaces/:workspaceId/members/:memberId", product.ChangeMemberRole)
 	group.DELETE("/workspaces/:workspaceId/members/:memberId", product.RemoveMember)
 	group.POST("/workspaces/:workspaceId/links", product.CreateLink)

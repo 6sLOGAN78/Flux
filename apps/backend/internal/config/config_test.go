@@ -184,6 +184,9 @@ func (p configProvider) ReadBytes() ([]byte, error)    { return nil, p.err }
 func configValues() map[string]any {
 	return map[string]any{
 		"primary": map[string]any{"env": "test"},
+		"invitations": map[string]any{"active_key_id": "fixture",
+			"encryption_keys": `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`,
+			"sender":          "invites@example.test", "public_origin": "https://app.flux.test"},
 		"links": map[string]any{
 			"cursor_key":   base64.StdEncoding.EncodeToString(make([]byte, 32)),
 			"managed_host": "go.flux.test", "blocked_hosts": []string{"blocked.example"},
@@ -453,6 +456,9 @@ func TestRoleEnvironmentSettings(t *testing.T) {
 		t.Fatalf("environment overrides changed: %+v", cfg.Redirector)
 	}
 	values := map[string]any{"primary": map[string]any{"env": "test"},
+		"invitations": map[string]any{"active_key_id": "fixture",
+			"encryption_keys": `{"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`,
+			"sender":          "invites@example.test", "public_origin": "https://app.flux.test"},
 		"redis":       map[string]any{"address": "localhost:6379"},
 		"integration": map[string]any{"resend_api_key": "test-key"}}
 	worker, err := loadConfigForRole(configProvider{values: values}, RoleWorker)

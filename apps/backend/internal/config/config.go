@@ -49,6 +49,7 @@ type Config struct {
 	Observability *ObservabilityConfig `koanf:"observability"`
 	Primary       Primary              `koanf:"primary" validate:"required"`
 	Links         LinksConfig          `koanf:"links"`
+	Invitations   InvitationConfig     `koanf:"invitations"`
 	Auth          AuthConfig           `koanf:"auth" validate:"required"`
 	Redis         RedisConfig          `koanf:"redis" validate:"required"`
 	Integration   IntegrationConfig    `koanf:"integration" validate:"required"`
@@ -102,7 +103,7 @@ func NormalizeLinkHost(value string) (string, error) {
 	return host, nil
 }
 
-func normalizeLinks(cfg *Config, role Role) error {
+func normalizeAPIPolicies(cfg *Config, role Role) error {
 	if role != RoleAPI {
 		return nil
 	}
@@ -120,7 +121,7 @@ func normalizeLinks(cfg *Config, role Role) error {
 			return err
 		}
 	}
-	return nil
+	return cfg.Invitations.Validate()
 }
 
 // RoleConfig controls an independently owned listener and operation deadlines.
@@ -256,6 +257,7 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	}
 	if role != RoleAPI {
 		k.Delete("links")
+		k.Delete("invitations")
 	}
 
 	mainConfig := &Config{Observability: DefaultObservabilityConfig()}
@@ -276,7 +278,7 @@ func loadConfigForRole(provider koanf.Provider, role Role) (*Config, error) {
 	if err := validateRoleSections(mainConfig, role); err != nil {
 		return nil, err
 	}
-	if err := normalizeLinks(mainConfig, role); err != nil {
+	if err := normalizeAPIPolicies(mainConfig, role); err != nil {
 		return nil, &ConfigError{Stage: stageValidate, cause: err}
 	}
 

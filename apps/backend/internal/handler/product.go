@@ -19,18 +19,110 @@ import (
 
 // ProductHandler adapts verified control-plane identity to canonical transports.
 type ProductHandler struct {
-	auth      *service.AuthService
-	identity  service.IdentityResolver
-	workspace *service.WorkspaceService
-	links     *service.LinkService
-	team      *service.TeamService
+	auth        *service.AuthService
+	identity    service.IdentityResolver
+	workspace   *service.WorkspaceService
+	links       *service.LinkService
+	team        *service.TeamService
+	invitations *service.InvitationService
 }
 
 // NewProductHandler injects the authentication boundary explicitly.
 func NewProductHandler(auth *service.AuthService, identity service.IdentityResolver,
 	workspace *service.WorkspaceService, links *service.LinkService, team *service.TeamService,
+	invitations ...*service.InvitationService,
 ) *ProductHandler {
-	return &ProductHandler{auth: auth, identity: identity, workspace: workspace, links: links, team: team}
+	h := &ProductHandler{auth: auth, identity: identity, workspace: workspace, links: links, team: team}
+	if len(invitations) > 0 {
+		h.invitations = invitations[0]
+	}
+	return h
+}
+
+func (h *ProductHandler) invitationScope(c echo.Context) (repository.Scope, error) {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return repository.Scope{}, err
+	}
+	id, err := uuid.Parse(c.Param("workspaceId"))
+	if err != nil || id == uuid.Nil || id.String() != c.Param("workspaceId") {
+		return repository.Scope{}, errs.NewNotFoundError("Workspace not found", false, nil)
+	}
+	if h.invitations == nil {
+		return repository.Scope{}, workspaceUnavailable()
+	}
+	return repository.Scope{WorkspaceID: id, ActorID: user.ID}, nil
+}
+
+// CreateInvitation uses canonical DTOs and strict, bounded JSON input.
+func (h *ProductHandler) CreateInvitation(c echo.Context) error {
+	scope, err := h.invitationScope(c)
+	if err != nil {
+		return err
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var body *transport.TransportCreateInvitationRequest
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&body); err != nil || body == nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	item, err := h.invitations.Create(c.Request().Context(), scope, body.Email, string(body.Role),
+		c.Request().Header.Get("Idempotency-Key"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusCreated, transport.TransportInvitationResponse{Invitation: invitationTransport(item)})
+}
+
+// ListInvitations projects safe invitation fields with bounded UUID pagination.
+func (h *ProductHandler) ListInvitations(c echo.Context) error {
+	scope, err := h.invitationScope(c)
+	if err != nil {
+		return err
+	}
+	raw := c.Request().URL.RawQuery
+	const maxQueryBytes = 256
+	if len(raw) > maxQueryBytes {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	query, err := url.ParseQuery(raw)
+	if err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var after uuid.UUID
+	for name, values := range query {
+		if name != "after" || len(values) != 1 {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+		after, err = uuid.Parse(values[0])
+		if err != nil || after == uuid.Nil || after.String() != values[0] {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+	}
+	items, next, err := h.invitations.List(c.Request().Context(), scope, after)
+	if err != nil {
+		return err
+	}
+	response := transport.TransportInvitationsResponse{
+		Items: make([]transport.TransportInvitation, 0, len(items)), NextAfter: next,
+	}
+	for _, item := range items {
+		response.Items = append(response.Items, invitationTransport(item))
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+func invitationTransport(item repository.Invitation) transport.TransportInvitation {
+	return transport.TransportInvitation{Id: item.ID.String(), WorkspaceId: item.WorkspaceID.String(), Email: item.Email,
+		Role: transport.TransportInvitationRole(item.Role), Status: transport.TransportInvitationStatus(item.Status),
+		ExpiresAt: item.ExpiresAt.Format(time.RFC3339Nano)}
 }
 
 // ListMembers exposes only current workspace-bound identities and closed roles.

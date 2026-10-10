@@ -26,6 +26,36 @@
         "title": "transport.ChangeMemberRoleRequest",
         "type": "object"
       },
+      "transport.CreateInvitationRequest": {
+        "additionalProperties": false,
+        "description": "Server trims and casefolds email, max 254 bytes, preserving dot/plus aliases; owner grants admin/member/viewer, admin grants member/viewer.",
+        "properties": {
+          "email": {
+            "maxLength": 1024,
+            "minLength": 3,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "InviteGrantAdmin",
+              "InviteGrantMember",
+              "InviteGrantViewer"
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "transport.CreateInvitationRequest",
+        "type": "object"
+      },
       "transport.CreateLinkRequest": {
         "additionalProperties": false,
         "description": "Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.",
@@ -262,6 +292,107 @@
           "user"
         ],
         "title": "transport.IdentityResponse",
+        "type": "object"
+      },
+      "transport.Invitation": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "InviteAdmin",
+              "InviteMember",
+              "InviteViewer"
+            ]
+          },
+          "status": {
+            "enum": [
+              "Queued",
+              "Expired",
+              "Accepted",
+              "Revoked"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "InviteQueued",
+              "InviteExpired",
+              "InviteAccepted",
+              "InviteRevoked"
+            ]
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspaceId",
+          "email",
+          "role",
+          "status",
+          "expiresAt"
+        ],
+        "title": "transport.Invitation",
+        "type": "object"
+      },
+      "transport.InvitationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "invitation": {
+            "$ref": "#/components/schemas/transport.Invitation"
+          }
+        },
+        "required": [
+          "invitation"
+        ],
+        "title": "transport.InvitationResponse",
+        "type": "object"
+      },
+      "transport.InvitationsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/transport.Invitation"
+            },
+            "maxItems": 25,
+            "type": "array"
+          },
+          "nextAfter": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string",
+            "x-go-type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextAfter"
+        ],
+        "title": "transport.InvitationsResponse",
         "type": "object"
       },
       "transport.Link": {
@@ -1091,6 +1222,258 @@
           }
         ],
         "summary": "Read a freshly authorized workspace summary",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/invitations": {
+      "get": {
+        "description": "Current SQL owner/admin Team capability required for every page, in workspace-first transaction. Fixed 25-row UUID seek page plus one lookahead, honest nextAfter or null, no totals. Exposes only scoped UUID, email, role, Queued/Expired/Accepted/Revoked status and expiry. API never claims delivered; independent worker is a later slice. No raw delivery material in response or logs. Foreign/missing/removed access returns safe 404, member/viewer 403. No-store with rate-limit metadata.",
+        "operationId": "listInvitations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "format": "uuid",
+              "type": "string",
+              "x-go-type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.InvitationsResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List freshly authorized workspace invitations",
+        "tags": [
+          "Identity"
+        ]
+      },
+      "post": {
+        "description": "Current SQL owner/admin authority is locked workspace then actor before replay hashes. Owners grant admin/member/viewer; admins grant member/viewer. Email trims and casefolds without dot/plus rewriting, maximum 254 bytes. Pending workspace/email uniqueness returns 409 INVITATION_PENDING. Elapsed pending records expire transactionally before the partial uniqueness check. Seven-day expiry. Atomic invitation, AES-256-GCM encrypted delivery envelope bound to workspace/invitation/delivery/key identity, SHA-256 digest of a 256-bit random token, protected durable actor audit and workspace/actor/invitation.create/key 24-hour ledger. Replay requires current authorization; changed content conflicts. Queued is truthful until independent worker acknowledgement. API performs no email delivery or consumer work. Responses never expose token, digest, key ID or ciphertext. Unknown fields, nulls, trailing JSON and query parameters fail closed. No-store; existing Origin/JSON/64 KiB limits and rate-limit metadata apply.",
+        "operationId": "createInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.CreateInvitationRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.InvitationResponse"
+                }
+              }
+            },
+            "description": "201"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Queue a tenant invitation with encrypted durable delivery intent",
         "tags": [
           "Identity"
         ]

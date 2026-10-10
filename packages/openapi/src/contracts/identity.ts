@@ -1,20 +1,23 @@
 import {
+  ZChangeMemberRoleRequest,
+  ZCreateInvitationRequest,
+  ZCreateLinkRequest,
+  ZCreateWorkspaceRequest,
   ZIdentityError,
   ZIdentityResponse,
-  ZWorkspaceResponse,
-  ZWorkspacesResponse,
-  ZCreateWorkspaceRequest,
-  ZWorkspacePreferenceRequest,
-  ZCreateLinkRequest,
+  ZInvitationResponse,
+  ZInvitationsResponse,
+  ZLinkListQuery,
   ZLinkResponse,
   ZLinksResponse,
-  ZLinkListQuery,
-  ZMembersResponse,
   ZMemberListQuery,
-  ZChangeMemberRoleRequest,
-  ZMemberResponse,
-  ZRemoveMemberRequest,
   ZMemberRemovalResponse,
+  ZMemberResponse,
+  ZMembersResponse,
+  ZRemoveMemberRequest,
+  ZWorkspacePreferenceRequest,
+  ZWorkspaceResponse,
+  ZWorkspacesResponse,
 } from "@flux/zod";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
@@ -23,6 +26,48 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  createInvitation: {
+    summary: "Queue a tenant invitation with encrypted durable delivery intent",
+    description:
+      "Current SQL owner/admin authority is locked workspace then actor before replay hashes. Owners grant admin/member/viewer; admins grant member/viewer. Email trims and casefolds without dot/plus rewriting, maximum 254 bytes. Pending workspace/email uniqueness returns 409 INVITATION_PENDING. Elapsed pending records expire transactionally before the partial uniqueness check. Seven-day expiry. Atomic invitation, AES-256-GCM encrypted delivery envelope bound to workspace/invitation/delivery/key identity, SHA-256 digest of a 256-bit random token, protected durable actor audit and workspace/actor/invitation.create/key 24-hour ledger. Replay requires current authorization; changed content conflicts. Queued is truthful until independent worker acknowledgement. API performs no email delivery or consumer work. Responses never expose token, digest, key ID or ciphertext. Unknown fields, nulls, trailing JSON and query parameters fail closed. No-store; existing Origin/JSON/64 KiB limits and rate-limit metadata apply.",
+    path: "/api/v1/workspaces/:workspaceId/invitations",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZCreateInvitationRequest,
+    responses: {
+      201: ZInvitationResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
+  listInvitations: {
+    summary: "List freshly authorized workspace invitations",
+    description:
+      "Current SQL owner/admin Team capability required for every page, in workspace-first transaction. Fixed 25-row UUID seek page plus one lookahead, honest nextAfter or null, no totals. Exposes only scoped UUID, email, role, Queued/Expired/Accepted/Revoked status and expiry. API never claims delivered; independent worker is a later slice. No raw delivery material in response or logs. Foreign/missing/removed access returns safe 404, member/viewer 403. No-store with rate-limit metadata.",
+    path: "/api/v1/workspaces/:workspaceId/invitations",
+    method: "GET",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid() }),
+    query: ZMemberListQuery,
+    responses: {
+      200: ZInvitationsResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   removeMember: {
     summary: "Remove a current workspace member while retaining durable creator provenance",
     description:

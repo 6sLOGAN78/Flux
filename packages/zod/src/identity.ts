@@ -1,6 +1,52 @@
 import { extendApi } from "@anatine/zod-openapi";
 import { z } from "zod";
 
+export const ZCreateInvitationRequest = extendApi(
+  z
+    .object({
+      email: z.string().min(3).max(1024),
+      role: extendApi(z.enum(["admin", "member", "viewer"]), {
+        "x-enum-varnames": ["InviteGrantAdmin", "InviteGrantMember", "InviteGrantViewer"],
+      }),
+    })
+    .strict(),
+  {
+    title: "transport.CreateInvitationRequest",
+    description:
+      "Server trims and casefolds email, max 254 bytes, preserving dot/plus aliases; owner grants admin/member/viewer, admin grants member/viewer.",
+  },
+);
+export const ZInvitation = extendApi(
+  z
+    .object({
+      id: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+      email: extendApi(z.string().email().max(254), { "x-go-type": "string" }),
+      role: extendApi(z.enum(["admin", "member", "viewer"]), {
+        "x-enum-varnames": ["InviteAdmin", "InviteMember", "InviteViewer"],
+      }),
+      status: extendApi(z.enum(["Queued", "Expired", "Accepted", "Revoked"]), {
+        "x-enum-varnames": ["InviteQueued", "InviteExpired", "InviteAccepted", "InviteRevoked"],
+      }),
+      expiresAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+    })
+    .strict(),
+  { title: "transport.Invitation" },
+);
+export const ZInvitationResponse = extendApi(z.object({ invitation: ZInvitation }).strict(), {
+  title: "transport.InvitationResponse",
+});
+export const ZInvitationsResponse = extendApi(
+  z
+    .object({
+      items: z.array(ZInvitation).max(25),
+      nextAfter: extendApi(z.string().uuid().nullable(), { "x-go-type": "string" }),
+    })
+    .strict(),
+  { title: "transport.InvitationsResponse" },
+);
+export type InvitationsResponse = z.infer<typeof ZInvitationsResponse>;
+
 export const ZIdentityError = extendApi(
   z
     .object({

@@ -27,6 +27,27 @@ func (e TransportChangeMemberRoleRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for TransportCreateInvitationRequestRole.
+const (
+	InviteGrantAdmin  TransportCreateInvitationRequestRole = "admin"
+	InviteGrantMember TransportCreateInvitationRequestRole = "member"
+	InviteGrantViewer TransportCreateInvitationRequestRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the TransportCreateInvitationRequestRole enum.
+func (e TransportCreateInvitationRequestRole) Valid() bool {
+	switch e {
+	case InviteGrantAdmin:
+		return true
+	case InviteGrantMember:
+		return true
+	case InviteGrantViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransportHealthLiveResponseStatus.
 const (
 	Alive TransportHealthLiveResponseStatus = "alive"
@@ -102,6 +123,51 @@ const (
 func (e TransportIdentityResponseAuthenticated) Valid() bool {
 	switch e {
 	case True:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransportInvitationRole.
+const (
+	InviteAdmin  TransportInvitationRole = "admin"
+	InviteMember TransportInvitationRole = "member"
+	InviteViewer TransportInvitationRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the TransportInvitationRole enum.
+func (e TransportInvitationRole) Valid() bool {
+	switch e {
+	case InviteAdmin:
+		return true
+	case InviteMember:
+		return true
+	case InviteViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransportInvitationStatus.
+const (
+	InviteAccepted TransportInvitationStatus = "Accepted"
+	InviteExpired  TransportInvitationStatus = "Expired"
+	InviteQueued   TransportInvitationStatus = "Queued"
+	InviteRevoked  TransportInvitationStatus = "Revoked"
+)
+
+// Valid indicates whether the value is a known member of the TransportInvitationStatus enum.
+func (e TransportInvitationStatus) Valid() bool {
+	switch e {
+	case InviteAccepted:
+		return true
+	case InviteExpired:
+		return true
+	case InviteQueued:
+		return true
+	case InviteRevoked:
 		return true
 	default:
 		return false
@@ -239,6 +305,15 @@ type TransportChangeMemberRoleRequest struct {
 // TransportChangeMemberRoleRequestRole defines model for TransportChangeMemberRoleRequest.Role.
 type TransportChangeMemberRoleRequestRole string
 
+// TransportCreateInvitationRequest Server trims and casefolds email, max 254 bytes, preserving dot/plus aliases; owner grants admin/member/viewer, admin grants member/viewer.
+type TransportCreateInvitationRequest struct {
+	Email string                               `json:"email"`
+	Role  TransportCreateInvitationRequestRole `json:"role"`
+}
+
+// TransportCreateInvitationRequestRole defines model for TransportCreateInvitationRequest.Role.
+type TransportCreateInvitationRequestRole string
+
 // TransportCreateLinkRequest Public HTTP(S) destination, optional title of at most 200 Unicode characters and optional ASCII customKey, lowercased before validation and hashing. Keys use 3–64 letters, digits, underscores or hyphens and start with a letter or digit; system paths are reserved. Creation never fetches the destination.
 type TransportCreateLinkRequest struct {
 	CustomKey   *string `json:"customKey,omitempty"`
@@ -311,6 +386,33 @@ type TransportIdentityResponse struct {
 
 // TransportIdentityResponseAuthenticated defines model for TransportIdentityResponse.Authenticated.
 type TransportIdentityResponseAuthenticated bool
+
+// TransportInvitation defines model for transport.Invitation.
+type TransportInvitation struct {
+	Email       string                    `json:"email"`
+	ExpiresAt   string                    `json:"expiresAt"`
+	Id          string                    `json:"id"`
+	Role        TransportInvitationRole   `json:"role"`
+	Status      TransportInvitationStatus `json:"status"`
+	WorkspaceId string                    `json:"workspaceId"`
+}
+
+// TransportInvitationRole defines model for TransportInvitation.Role.
+type TransportInvitationRole string
+
+// TransportInvitationStatus defines model for TransportInvitation.Status.
+type TransportInvitationStatus string
+
+// TransportInvitationResponse defines model for transport.InvitationResponse.
+type TransportInvitationResponse struct {
+	Invitation TransportInvitation `json:"invitation"`
+}
+
+// TransportInvitationsResponse defines model for transport.InvitationsResponse.
+type TransportInvitationsResponse struct {
+	Items     []TransportInvitation `json:"items"`
+	NextAfter *string               `json:"nextAfter"`
+}
 
 // TransportLink defines model for transport.Link.
 type TransportLink struct {
@@ -428,6 +530,16 @@ type CreateWorkspaceParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
 
+// ListInvitationsParams defines parameters for ListInvitations.
+type ListInvitationsParams struct {
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+}
+
+// CreateInvitationParams defines parameters for CreateInvitation.
+type CreateInvitationParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // ListLinksParams defines parameters for ListLinks.
 type ListLinksParams struct {
 	Limit  *string `form:"limit,omitempty" json:"limit,omitempty"`
@@ -466,6 +578,9 @@ type SelectWorkspaceJSONRequestBody = TransportWorkspacePreferenceRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest
+
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = TransportCreateInvitationRequest
 
 // CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
 type CreateLinkJSONRequestBody = TransportCreateLinkRequest

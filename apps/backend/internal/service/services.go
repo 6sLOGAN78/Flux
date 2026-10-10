@@ -9,12 +9,13 @@ import (
 
 // Services collects explicitly injected application services.
 type Services struct {
-	Auth      *AuthService
-	Identity  IdentityResolver
-	Workspace *WorkspaceService
-	Links     *LinkService
-	Team      *TeamService
-	Job       *job.JobService
+	Auth        *AuthService
+	Identity    IdentityResolver
+	Workspace   *WorkspaceService
+	Links       *LinkService
+	Team        *TeamService
+	Invitations *InvitationService
+	Job         *job.JobService
 }
 
 // NewServices constructs application service dependencies.
@@ -29,12 +30,14 @@ func NewServices(s *server.Server, stores *repository.Repositories) (*Services, 
 	if s.DB != nil {
 		pool = s.DB.Pool
 	}
+	team := NewTeamService(stores.Team, workspace)
 	return &Services{
-		Job:       s.Job,
-		Auth:      authService,
-		Identity:  NewIdentityService(stores.Users, authService),
-		Workspace: workspace,
-		Team:      NewTeamService(stores.Team, workspace),
-		Links:     NewLinkService(repository.NewLinkRepository(pool), workspace, s.Config.Links),
+		Job:         s.Job,
+		Auth:        authService,
+		Identity:    NewIdentityService(stores.Users, authService),
+		Workspace:   workspace,
+		Team:        team,
+		Invitations: NewInvitationService(repository.NewInvitationRepository(pool), team, s.Config.Invitations),
+		Links:       NewLinkService(repository.NewLinkRepository(pool), workspace, s.Config.Links),
 	}, nil
 }

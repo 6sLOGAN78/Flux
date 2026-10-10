@@ -4,6 +4,8 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -185,10 +187,13 @@ func productRouterWithRandom(cfg *config.Config, db *database.Database, p *signe
 	auth := service.NewAuthServiceWithClients(cfg.Auth, service.AuthClients{
 		JWKS: jwks.NewClient(clients), Sessions: session.NewClient(clients), Users: user.NewClient(clients)})
 	workspace := service.NewWorkspaceService(repository.NewWorkspaceRepository(db.Pool))
+	cfg.Invitations = config.InvitationConfig{ActiveKeyID: "fixture", EncryptionKeys: ` {"fixture":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}`, Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}
+	team := service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace)
 	return router.NewRouter(srv, &handler.Handlers{OpenAPI: handler.NewOpenAPIHandler(srv)}, &service.Services{Auth: auth,
-		Identity:  service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
-		Team:      service.NewTeamService(repository.NewTeamRepository(db.Pool), workspace),
-		Workspace: workspace, Links: service.NewLinkService(repository.NewLinkRepositoryWithRandom(db.Pool, random), workspace, cfg.Links)})
+		Identity:    service.NewIdentityService(repository.NewUserRepository(db.Pool), auth),
+		Team:        team,
+		Invitations: service.NewInvitationService(repository.NewInvitationRepository(db.Pool), team, cfg.Invitations),
+		Workspace:   workspace, Links: service.NewLinkService(repository.NewLinkRepositoryWithRandom(db.Pool, random), workspace, cfg.Links)})
 }
 
 func requestMe(t *testing.T, api string, token string, _ bool) (int, string, string) {
@@ -481,8 +486,13 @@ func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 			require.Equal(t, expected, status, role+" -> "+grant)
 		}
 	}
+	_, demoteErr := db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, demoteErr)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invite-role-owner-admin", `{"email":"changed@example.test","role":"member"}`)
+	require.Equal(t, 403, status, "protected committed grant policy precedes a changed replay hash")
 	_, restoreErr := db.Pool.Exec(ctx, "UPDATE memberships SET role=$3 WHERE workspace_id=$1 AND user_id=$2", w, actor, "owner")
 	require.NoError(t, restoreErr)
+	checkInvitationAtomicity(t, api, db, p, token, w, actor)
 	_, err := db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
 	require.NoError(t, err)
 	status, _ = workspaceRequest(t, api, token, "POST", path, "invitation-create-01", `{"email":"changed@example.test","role":"viewer"}`)
@@ -490,6 +500,214 @@ func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND inviter_id=$2", w, actor).Scan(&intents))
 	require.Positive(t, intents, "durable inviter provenance survives membership deletion")
 	require.NotContains(t, p.logs.String(), "future+tag@example.test")
+}
+
+func checkInvitationAtomicity(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, token, w string, actor uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	path := "/workspaces/" + w + "/invitations"
+	for _, body := range []string{`null`, `{}`, `{"email":"a@example.test","role":null}`, `{"email":"a@example.test","role":"member","extra":"private"}`, `{"email":"a@example.test","role":"member"} {}`, `{"email":"bad","role":"member"}`, `{"email":"a@b","role":"member"}`} {
+		status, _ := workspaceRequest(t, api, token, "POST", path, "invalid-invite-key-01", body)
+		require.Equal(t, 400, status)
+	}
+	for _, query := range []string{"?unknown=x", "?after=bad", "?after=&after=bad"} {
+		status, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
+		require.Equal(t, 400, status)
+	}
+	status, _ := workspaceRequest(t, api, token, "POST", path+"?unknown=x", "invalid-invite-key-02", `{"email":"a@example.test","role":"member"}`)
+	require.Equal(t, 400, status)
+	foreign := uuid.NewString()
+	status, _ = workspaceRequest(t, api, token, "GET", "/workspaces/"+foreign+"/invitations", "", "")
+	require.Equal(t, 404, status)
+	status, _ = workspaceRequest(t, api, token, "POST", "/workspaces/"+foreign+"/invitations", "invitation-create-01", `{"email":"a@example.test","role":"member"}`)
+	require.Equal(t, 404, status)
+
+	// Inspect real committed storage without printing any private material.
+	var digest, ciphertext []byte
+	var invite, delivery uuid.UUID
+	var keyID string
+	var created, expires time.Time
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT i.id,d.id,i.token_digest,d.ciphertext,d.key_id,i.created_at,i.expires_at FROM invitations i JOIN invitation_delivery_intents d ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id WHERE i.workspace_id=$1 AND i.email='future+tag@example.test'", w).Scan(&invite, &delivery, &digest, &ciphertext, &keyID, &created, &expires))
+	require.Equal(t, 7*24*time.Hour, expires.Sub(created))
+	block, err := aes.NewCipher(make([]byte, 32))
+	require.NoError(t, err)
+	aead, err := cipher.NewGCMWithRandomNonce(block)
+	require.NoError(t, err)
+	aad := []byte("flux.invitation.v1\n" + w + "\n" + invite.String() + "\n" + delivery.String() + "\n" + keyID)
+	plaintext, err := aead.Open(nil, nil, ciphertext, aad)
+	require.NoError(t, err)
+	defer clear(plaintext)
+	var envelope map[string]string
+	require.NoError(t, json.Unmarshal(plaintext, &envelope))
+	raw, err := base64.RawURLEncoding.DecodeString(envelope["token"])
+	require.NoError(t, err)
+	require.Len(t, raw, 32, "stored token has 256 random bits")
+	expected := sha256.Sum256([]byte(envelope["token"]))
+	require.True(t, bytes.Equal(expected[:], digest), "only matching acceptance digest is stored")
+	require.False(t, bytes.Contains(ciphertext, []byte(envelope["token"])))
+	if strings.Contains(p.logs.String(), envelope["token"]) {
+		t.Fatal("private token in logs")
+	}
+	_, err = aead.Open(nil, nil, ciphertext, []byte("foreign"))
+	require.Error(t, err)
+	var snapshots string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT string_agg(result::text,'') FROM mutation_requests WHERE workspace_id=$1", w).Scan(&snapshots))
+	if strings.Contains(snapshots, envelope["token"]) {
+		t.Fatal("private token in replay snapshot")
+	}
+	for _, label := range []string{"token", "ciphertext", "keyId", "digest"} {
+		require.NotContains(t, snapshots, label)
+	}
+
+	// Workspace lock serializes simultaneous normalized-email creation.
+	var wait sync.WaitGroup
+	codes := make(chan int, 2)
+	for i := range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			codes <- concurrentInvitationRequest(api, token, path, fmt.Sprintf("invite-concurrent-%02d", i))
+		}()
+	}
+	wait.Wait()
+	close(codes)
+	var successes, duplicates int
+	for code := range codes {
+		switch code {
+		case 201:
+			successes++
+		case 409:
+			duplicates++
+		}
+	}
+	require.Equal(t, 1, successes)
+	require.Equal(t, 1, duplicates)
+	// Old elapsed pending invite releases uniqueness inside the new transaction.
+	_, err = db.Pool.Exec(ctx, "UPDATE invitations SET created_at=now()-interval '8 days',expires_at=now()-interval '1 day' WHERE workspace_id=$1 AND email='race@example.test'", w)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invite-after-expiry-01", `{"email":"race@example.test","role":"viewer"}`)
+	require.Equal(t, 201, status)
+	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND email='race@example.test' AND state='expired'", w).Scan(&count))
+	require.Equal(t, 1, count)
+
+	// A failed ledger insert rolls back all preceding invitation/intent/audit writes.
+	_, err = db.Pool.Exec(ctx, "ALTER TABLE mutation_requests ADD CONSTRAINT deny_invite_test CHECK (request_key<>'invite-rollback-key-01')")
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invite-rollback-key-01", `{"email":"rollback@example.test","role":"member"}`)
+	require.Equal(t, 503, status)
+	_, err = db.Pool.Exec(ctx, "ALTER TABLE mutation_requests DROP CONSTRAINT deny_invite_test")
+	require.NoError(t, err)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND email='rollback@example.test'", w).Scan(&count))
+	require.Zero(t, count)
+	_, err = db.Pool.Exec(ctx, `CREATE FUNCTION deny_invitation_commit_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.email='commit-fail@example.test' THEN RAISE EXCEPTION 'synthetic commit failure'; END IF; RETURN NEW; END $$;
+CREATE CONSTRAINT TRIGGER deny_invitation_commit_test AFTER INSERT ON invitations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION deny_invitation_commit_test()`)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", path, "invite-commit-failure-01", `{"email":"commit-fail@example.test","role":"member"}`)
+	require.Equal(t, 503, status)
+	_, err = db.Pool.Exec(ctx, "DROP TRIGGER deny_invitation_commit_test ON invitations; DROP FUNCTION deny_invitation_commit_test()")
+	require.NoError(t, err)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND email='commit-fail@example.test'", w).Scan(&count))
+	require.Zero(t, count)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key='invite-commit-failure-01'", w).Scan(&count))
+	require.Zero(t, count)
+	var retained bool
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT bool_and(retain_until>=created_at+interval '24 hours') FROM mutation_requests WHERE workspace_id=$1 AND operation='invitation.create'", w).Scan(&retained))
+	require.True(t, retained)
+	_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='tampered' WHERE workspace_id=$1 AND operation='invitation.create'", w)
+	require.Error(t, err)
+
+	// Exhaust every bounded list page; continuations never authorize another tenant.
+	_, err = db.Pool.Exec(ctx, "INSERT INTO invitations(workspace_id,id,inviter_id,email,role,token_digest) SELECT $1,gen_random_uuid(),$2,'invite-page-'||n||'@example.test','member',decode(repeat('00',32),'hex') FROM generate_series(1,30) n", w, actor)
+	require.NoError(t, err)
+	seen := make(map[string]bool)
+	queryPath := path
+	for {
+		code, page := workspaceRequest(t, api, token, "GET", queryPath, "", "")
+		require.Equal(t, 200, code)
+		items := page["items"].([]any)
+		require.LessOrEqual(t, len(items), 25)
+		encoded, encodeErr := json.Marshal(page)
+		require.NoError(t, encodeErr)
+		require.Less(t, len(encoded), 65536)
+		for _, rawItem := range items {
+			item := rawItem.(map[string]any)
+			id := item["id"].(string)
+			require.False(t, seen[id])
+			seen[id] = true
+			require.Equal(t, w, item["workspaceId"])
+		}
+		if page["nextAfter"] == nil {
+			break
+		}
+		queryPath = path + "?after=" + page["nextAfter"].(string)
+	}
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1", w).Scan(&count))
+	require.Len(t, seen, count)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitation_delivery_intents d LEFT JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id WHERE d.workspace_id=$1 AND i.id IS NULL", w).Scan(&count))
+	require.Zero(t, count)
+
+	// Cancellation while waiting for the workspace lock produces no effect.
+	lock, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	_, err = lock.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
+	require.NoError(t, err)
+	cancelCtx, cancel := context.WithCancel(ctx)
+	request, err := http.NewRequestWithContext(cancelCtx, http.MethodPost, api+"/api/v1"+path, strings.NewReader(`{"email":"cancelled@example.test","role":"member"}`))
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Origin", fixtureParty)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "invite-cancelled-key-01")
+	done := make(chan error, 1)
+	go func() {
+		response, requestErr := http.DefaultClient.Do(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		done <- requestErr
+	}()
+	require.Eventually(t, func() bool {
+		var waiting int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'").Scan(&waiting) == nil && waiting > 0
+	}, 2*time.Second, 20*time.Millisecond)
+	cancel()
+	require.Error(t, <-done)
+	require.NoError(t, lock.Rollback(ctx))
+	require.Eventually(t, func() bool {
+		var idle int
+		return db.Pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'").Scan(&idle) == nil && idle == 0
+	}, 2*time.Second, 20*time.Millisecond)
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND email='cancelled@example.test'", w).Scan(&count))
+	require.Zero(t, count)
+	// Durable users, not removable memberships, retain inviter identity.
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND inviter_id=$2", w, actor).Scan(&count))
+	require.Positive(t, count)
+}
+
+func concurrentInvitationRequest(api, token, path, key string) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, api+"/api/v1"+path,
+		strings.NewReader(`{"email":"race@example.test","role":"member"}`))
+	if err != nil {
+		return 0
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Origin", fixtureParty)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", key)
+	request.Header.Set("X-Forwarded-For", netip.AddrFrom16(uuid.New()).String())
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return 0
+	}
+	defer response.Body.Close()
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return 0
+	}
+	return response.StatusCode
 }
 
 func checkTeamRemoval(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {

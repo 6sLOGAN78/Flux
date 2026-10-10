@@ -5,6 +5,8 @@ type Capability string
 
 // Workspace capabilities are denied by default for unknown roles or operations.
 const (
+	roleOwner                  = "owner"
+	roleAdmin                  = "admin"
 	CapabilityRead  Capability = "read"
 	CapabilityWrite Capability = "write"
 	CapabilityTeam  Capability = "team"
@@ -18,7 +20,7 @@ const (
 // Allows grants permissions only to the documented Flux roles.
 func Allows(role string, capability Capability) bool {
 	switch role {
-	case "owner", "admin":
+	case roleOwner, roleAdmin:
 		return capability == CapabilityRead || capability == CapabilityWrite || capability == CapabilityTeam
 	case roleMember:
 		return capability == CapabilityRead || capability == CapabilityWrite
@@ -35,9 +37,9 @@ func AllowsRoleChange(actorRole, currentRole, proposedRole string) bool {
 	if !Allows(currentRole, CapabilityRead) || !Allows(proposedRole, CapabilityRead) {
 		return false
 	}
-	if actorRole == "owner" {
+	if actorRole == roleOwner {
 		return true
 	}
-	return actorRole == "admin" && (currentRole == roleMember || currentRole == roleViewer) &&
+	return actorRole == roleAdmin && (currentRole == roleMember || currentRole == roleViewer) &&
 		(proposedRole == roleMember || proposedRole == roleViewer)
 }
