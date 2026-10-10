@@ -151,6 +151,7 @@ export const integrationTests: Record<string, string[]> = {
   "internal/app": [
     "TestAPIMigratorSpecialCredentials",
     "TestInvitationWorkerActualRedisPostgres",
+    "TestInvitationWorkerRoleOwnership",
     "TestRoleRealDependenciesRemainIndependent",
     "TestRoleBinaryStartup",
     "TestPartialStartupRealLifecycleResources",

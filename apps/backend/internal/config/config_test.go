@@ -415,6 +415,20 @@ func TestRoleConfigOnlyOwnedDependencies(t *testing.T) {
 	}
 }
 
+func TestWorkerRejectsBlankProviderCredential(t *testing.T) {
+	values := configValues()
+	delete(values, "auth")
+	values["integration"].(map[string]any)["resend_api_key"] = " \t\n"
+	if _, err := loadConfigForRole(configProvider{values: values}, RoleWorker); err == nil {
+		t.Fatal("worker accepted whitespace-only provider credential")
+	}
+	for _, role := range []Role{RoleAPI, RoleRedirector, RoleMigrator} {
+		if _, err := loadConfigForRole(configProvider{values: values}, role); err != nil {
+			t.Fatalf("unowned worker credential blocked %s", role)
+		}
+	}
+}
+
 func TestRoleConfigOverridesAndValidation(t *testing.T) {
 	for _, role := range []Role{RoleAPI, RoleRedirector, RoleWorker} {
 		values := configValues()

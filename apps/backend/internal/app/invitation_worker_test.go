@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/6sLOGAN78/flux/internal/config"
+	"github.com/6sLOGAN78/flux/internal/database"
 	"github.com/6sLOGAN78/flux/internal/lib/email"
 	"github.com/6sLOGAN78/flux/internal/lib/invitationcrypto"
 	"github.com/6sLOGAN78/flux/internal/lib/job"
@@ -32,6 +33,205 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
+
+//nolint:funlen // The registered suite shares real owned PostgreSQL and Redis fixtures.
+func TestInvitationWorkerRoleOwnership(t *testing.T) {
+	pg, closePG := backendTesting.SetupTestDB(t)
+	defer closePG()
+	queue, closeQueue := backendTesting.SetupTestRedis(t)
+	defer closeQueue()
+	cfg := roleTestConfig()
+	cfg.Database, cfg.Server, cfg.Redis = pg.Config.Database, pg.Config.Server, queue.Config
+	cfg.Integration.ResendAPIKey = "test-only"
+	for _, stage := range []string{"database", "redis", "email", "consumer", "start consumer"} {
+		t.Run("partial startup "+stage, func(t *testing.T) {
+			verifyInvitationWorkerStartupFailure(t, cfg, stage)
+		})
+	}
+	t.Run("readiness probes actual owned dependencies locally", func(t *testing.T) {
+		worker, err := NewWorker(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := worker.Close(context.Background()); err != nil && !errors.Is(err, redis.ErrClosed) {
+				t.Error(err)
+			}
+		})
+		assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusOK, "")
+		// Drain the real consumer before deliberately closing its shared resources.
+		// Closing Redis underneath Asynq also closes its PubSub channel.
+		worker.Server.Job.StopIntake()
+		if err = worker.Server.Job.Drain(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if err = worker.Server.Redis.Close(); err != nil {
+			t.Fatal(err)
+		}
+		assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusServiceUnavailable, "redis")
+		worker.Server.DB.Pool.Close()
+		assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusServiceUnavailable, "database")
+	})
+	t.Run("intake stops and active delivery drains before resources close", func(t *testing.T) {
+		verifyInvitationWorkerDrain(t, cfg, pg.Pool)
+	})
+}
+
+//nolint:funlen,gocognit // Preserve the real factory graph and reverse cleanup assertions in one failure protocol.
+func verifyInvitationWorkerStartupFailure(t *testing.T, cfg *config.Config, stage string) {
+	t.Helper()
+	f := defaultRoleFactories()
+	cause := errors.New("SECRET-MARKER startup")
+	var srv *server.Server
+	var adapter *email.Client
+	var closed []string
+	track := func(name string, closeResource func(context.Context) error) func(context.Context) error {
+		return func(ctx context.Context) error { closed = append(closed, name); return closeResource(ctx) }
+	}
+	dbFactory, redisFactory, emailFactory, consumerFactory := f.database, f.redis, f.email, f.consumer
+	f.database = func(ctx context.Context, s *server.Server) (*database.Database, func(context.Context) error, error) {
+		srv = s
+		db, closeResource, err := dbFactory(ctx, s)
+		if err != nil {
+			return db, closeResource, err
+		}
+		// Retain the real allocation even when construction reports failure.
+		s.DB = db
+		if stage == "database" {
+			err = cause
+		}
+		return db, track("database", closeResource), err
+	}
+	f.redis = func(ctx context.Context, s *server.Server) (*redis.Client, func(context.Context) error, error) {
+		client, closeResource, err := redisFactory(ctx, s)
+		if err != nil {
+			return client, closeResource, err
+		}
+		s.Redis = client
+		if stage == "redis" {
+			err = cause
+		}
+		return client, track("redis", closeResource), err
+	}
+	f.email = func(s *server.Server) (*email.Client, error) {
+		var err error
+		adapter, err = emailFactory(s)
+		if stage == "email" {
+			err = cause
+		}
+		return adapter, err
+	}
+	f.consumer = func(s *server.Server, e *email.Client) (*job.JobService, func(context.Context) error, error) {
+		j, closeResource, err := consumerFactory(s, e)
+		if stage == "consumer" {
+			err = cause
+		}
+		return j, track("consumer", closeResource), err
+	}
+	f.startConsumer = func(j *job.JobService) error {
+		if err := j.Start(); err != nil {
+			return err
+		}
+		return cause
+	}
+	r, err := newRole(context.Background(), config.RoleWorker, cfg, f)
+	if r != nil || !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") {
+		t.Fatal("real resource startup failure lost or disclosed cause")
+	}
+	if srv == nil || srv.DB.Pool.Stat().TotalConns() != 0 || srv.DB.Pool.Ping(context.Background()) == nil {
+		t.Fatal("partial startup leaked its real PostgreSQL pool")
+	}
+	if srv.Redis != nil && !errors.Is(srv.Redis.Ping(context.Background()).Err(), redis.ErrClosed) {
+		t.Fatal("partial startup leaked its real Redis client")
+	}
+	if adapter != nil && workerReadinessChecks(srv, adapter)[2].Check(context.Background()) == nil {
+		t.Fatal("partial startup leaked its email adapter")
+	}
+	want := []string{"database"}
+	if stage != "database" {
+		want = append([]string{"redis"}, want...)
+	}
+	if stage == "consumer" || stage == "start consumer" {
+		want = append([]string{"consumer"}, want...)
+	}
+	if strings.Join(closed, ",") != strings.Join(want, ",") {
+		t.Fatalf("cleanup %v, want %v", closed, want)
+	}
+}
+
+func assertInvitationWorkerReady(t *testing.T, r *RoleRuntime, status int, component string) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	r.HTTP.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if response.Code != status {
+		t.Fatalf("worker readiness %d, want %d", response.Code, status)
+	}
+	var body struct {
+		Checks []struct {
+			Name  string `json:"name"`
+			State string `json:"state"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if component != "" {
+		for _, check := range body.Checks {
+			if check.Name == component && check.State == "not_ready" {
+				return
+			}
+		}
+		t.Fatalf("readiness did not report unavailable %s", component)
+	}
+}
+
+type invitationDrainSender struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s invitationDrainSender) SendInvitation(context.Context, invitationcrypto.Message) error {
+	close(s.entered)
+	<-s.release
+	return nil
+}
+
+func verifyInvitationWorkerDrain(t *testing.T, cfg *config.Config, pool *pgxpool.Pool) {
+	t.Helper()
+	claim, _ := seedInvitationDelivery(t, pool, cfg, "drain@example.test")
+	sender := invitationDrainSender{entered: make(chan struct{}), release: make(chan struct{})}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(sender.release) }) }
+	t.Cleanup(release)
+	worker, err := NewWorkerWithInvitationSender(context.Background(), cfg, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { release(); _ = worker.Close(context.Background()) })
+	select {
+	case <-sender.entered:
+	case <-time.After(8 * time.Second):
+		t.Fatal("actual queued invitation never entered sender")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err = worker.Close(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > time.Second {
+		t.Fatal("worker shutdown ignored shared deadline")
+	}
+	assertInvitationWorkerReady(t, worker.RoleRuntime, http.StatusServiceUnavailable, "")
+	if worker.Server.DB.Pool.Ping(context.Background()) != nil || worker.Server.Redis.Ping(context.Background()).Err() != nil {
+		t.Fatal("shared resource closed underneath active delivery")
+	}
+	release()
+	waitInvitation(t, func() bool { return worker.Server.DB.Pool.Stat().TotalConns() == 0 })
+	assertDeliveryState(t, pool, claim, "delivered", true)
+	if !errors.Is(worker.Server.Redis.Ping(context.Background()).Err(), redis.ErrClosed) {
+		t.Fatal("worker Redis remained open after drain")
+	}
+	assertRoleListenerReleased(t, worker.Address())
+}
 
 //nolint:lll,gocognit,gocyclo,cyclop // Keep actual dependencies and ordered recovery scenarios in one registered suite.
 func TestInvitationWorkerActualRedisPostgres(t *testing.T) {

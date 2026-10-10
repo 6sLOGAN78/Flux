@@ -341,6 +341,71 @@ func boolInt(value bool) int {
 	return 0
 }
 
+func TestWorkerLocalReadinessRejectsUnusableAdapterAndKeys(t *testing.T) {
+	for _, mode := range []string{"ready", "empty adapter", "missing active key", "malformed key", "missing provider key", "canceled"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := roleTestConfig()
+			cfg.Integration.ResendAPIKey = "test-only"
+			log := zerolog.Nop()
+			srv := &server.Server{Config: cfg, Logger: &log}
+			adapter := email.NewClient(cfg, &log)
+			t.Cleanup(func() { _ = adapter.Close() })
+			ctx := context.Background()
+			switch mode {
+			case "empty adapter":
+				adapter = &email.Client{}
+			case "missing active key":
+				cfg.Invitations.ActiveKeyID = "missing"
+			case "malformed key":
+				cfg.Invitations.EncryptionKeys = "SECRET-MARKER"
+			case "missing provider key":
+				cfg.Integration.ResendAPIKey = " "
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			checks := workerReadinessChecks(srv, adapter)
+			if len(checks) != 3 || checks[0].Name != "database" || checks[1].Name != "redis" || checks[2].Name != "email" {
+				t.Fatal("worker readiness lost required resource checks")
+			}
+			err := checks[2].Check(ctx)
+			if (err == nil) != (mode == "ready") {
+				t.Fatalf("local readiness accepted unusable %s: %v", mode, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "SECRET-MARKER") {
+				t.Fatal("local readiness disclosed key material")
+			}
+		})
+	}
+}
+
+func TestWorkerPartialEmailFailureReleasesAdapter(t *testing.T) {
+	cfg := roleTestConfig()
+	cfg.Integration.ResendAPIKey = "test-only"
+	var opened, closed []string
+	f := roleSpies("", &opened, &closed, nil)
+	var adapter *email.Client
+	var srv *server.Server
+	cause := errors.New("SECRET-MARKER partial email")
+	f.email = func(s *server.Server) (*email.Client, error) {
+		srv = s
+		adapter = email.NewClient(cfg, s.Logger)
+		return adapter, cause
+	}
+	r, err := newRole(context.Background(), config.RoleWorker, cfg, f)
+	if r != nil || !errors.Is(err, cause) || strings.Contains(err.Error(), "SECRET-MARKER") {
+		t.Fatal("partial email failure lost or disclosed its cause")
+	}
+	checks := workerReadinessChecks(srv, adapter)
+	if checks[2].Check(context.Background()) == nil {
+		t.Fatal("partially constructed email adapter remained usable after failed startup")
+	}
+	if !reflect.DeepEqual(closed, []string{"redis", "database", "logger", "telemetry"}) {
+		t.Fatalf("partial email failure skipped reverse owned cleanup: %v", closed)
+	}
+}
+
 //nolint:gocognit // Keep this regression scenario and its ordered failure assertions together.
 func TestRoleConstructionFailureUnwinds(t *testing.T) {
 	cause := errors.New("SECRET-MARKER")
