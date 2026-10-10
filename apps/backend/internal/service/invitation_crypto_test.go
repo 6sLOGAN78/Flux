@@ -4,6 +4,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -56,6 +57,9 @@ func TestInvitationEnvelopeIntegrity(t *testing.T) {
 	if err != nil || string(second.Ciphertext) == string(intent.Ciphertext) {
 		t.Fatal("random token and nonce repeated")
 	}
+	if bytes.Equal(second.Ciphertext[:12], intent.Ciphertext[:12]) {
+		t.Fatal("random 96-bit nonce repeated")
+	}
 	for _, aad := range [][]byte{
 		invitationAAD(uuid.New(), invite, delivery, intent.KeyID),
 		invitationAAD(scope.WorkspaceID, uuid.New(), delivery, intent.KeyID),
@@ -78,8 +82,9 @@ func TestInvitationEnvelopeIntegrity(t *testing.T) {
 func TestInvitationRotationAndFailClosedDecryption(t *testing.T) {
 	oldKey, newKey := make([]byte, 32), bytes.Repeat([]byte{1}, 32)
 	cfg := config.InvitationConfig{ActiveKeyID: "old",
-		EncryptionKeys: `{"old":"` + base64.StdEncoding.EncodeToString(oldKey) + `","new":"` + base64.StdEncoding.EncodeToString(newKey) + `"}`,
-		Sender:         "invites@example.test", PublicOrigin: "https://app.flux.test"}
+		EncryptionKeys: `{"old":"` + base64.StdEncoding.EncodeToString(oldKey) +
+			`","new":"` + base64.StdEncoding.EncodeToString(newKey) + `"}`,
+		Sender: "invites@example.test", PublicOrigin: "https://app.flux.test"}
 	scope := repository.Scope{WorkspaceID: uuid.New(), ActorID: uuid.New()}
 	invite, delivery := uuid.New(), uuid.New()
 	intent, _, err := sealInvitation(cfg, scope, invite, delivery, "rotation@example.test")
@@ -106,20 +111,15 @@ func TestInvitationRotationAndFailClosedDecryption(t *testing.T) {
 	}
 	clear(plaintext)
 	for length := range 28 {
-		out, openErr := aead.Open(nil, nil, intent.Ciphertext[:length], aad)
-		if openErr == nil || len(out) != 0 {
-			t.Fatal("truncated envelope released plaintext")
-		}
+		assertNoInvitationPlaintext(t, aead, intent.Ciphertext[:length], aad)
 	}
 	wrong, err := invitationCipher(keys[cfg.ActiveKeyID])
 	if err != nil {
 		t.Fatal("new cipher unavailable")
 	}
-	if out, openErr := wrong.Open(nil, nil, intent.Ciphertext, aad); openErr == nil || len(out) != 0 {
-		t.Fatal("wrong key released plaintext")
-	}
+	assertNoInvitationPlaintext(t, wrong, intent.Ciphertext, aad)
 	for _, key := range [][]byte{keys["missing"], make([]byte, 16), make([]byte, 31), make([]byte, 33)} {
-		if aead, cipherErr := invitationCipher(key); cipherErr == nil || aead != nil {
+		if unavailable, cipherErr := invitationCipher(key); cipherErr == nil || unavailable != nil {
 			t.Fatal("missing or malformed key accepted")
 		}
 	}
@@ -128,8 +128,15 @@ func TestInvitationRotationAndFailClosedDecryption(t *testing.T) {
 	if err != nil {
 		t.Fatal("new ring failed")
 	}
-	if aead, cipherErr := invitationCipher(keys[intent.KeyID]); cipherErr == nil || aead != nil {
+	if unavailable, cipherErr := invitationCipher(keys[intent.KeyID]); cipherErr == nil || unavailable != nil {
 		t.Fatal("retired key silently substituted")
+	}
+}
+
+func assertNoInvitationPlaintext(t *testing.T, aead cipher.AEAD, ciphertext, aad []byte) {
+	t.Helper()
+	if out, err := aead.Open(nil, nil, ciphertext, aad); err == nil || len(out) != 0 {
+		t.Fatal("unauthenticated envelope released plaintext")
 	}
 }
 
@@ -142,6 +149,10 @@ func TestInvitationInputAndRolePolicy(t *testing.T) {
 	}
 	if email, err := normalizeInvitationEmail("  A.B+Tag@Example.Test  "); err != nil || email != "a.b+tag@example.test" {
 		t.Fatal("email alias was rewritten")
+	}
+	maxEmail := strings.Repeat("a", 241) + "@example.test"
+	if email, err := normalizeInvitationEmail(maxEmail); err != nil || len(email) != 254 {
+		t.Fatal("valid maximum byte-length email rejected")
 	}
 	for _, actor := range []string{"owner", "admin", "member", "viewer", "forged"} {
 		for _, role := range []string{"owner", "admin", "member", "viewer", "forged"} {

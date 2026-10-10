@@ -513,22 +513,36 @@ func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signe
 func checkInvitationStatusProjection(t *testing.T, api string, db *fluxTesting.TestDB, token, workspace, invite string) {
 	t.Helper()
 	ctx := context.Background()
+	var originalCreated, originalExpires time.Time
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT created_at,expires_at FROM invitations WHERE workspace_id=$1 AND id=$2", workspace, invite).Scan(&originalCreated, &originalExpires))
+	code, foreignCreated := workspaceRequest(t, api, token, "POST", "/workspaces", "invite-status-foreign-01", `{"name":"Foreign status tenant"}`)
+	require.Equal(t, 201, code)
+	foreign := foreignCreated["workspace"].(map[string]any)["id"].(string)
+	_, err := db.Pool.Exec(ctx, "INSERT INTO invitations(workspace_id,id,inviter_id,email,role,token_digest) SELECT $3,id,inviter_id,email,role,token_digest FROM invitations WHERE workspace_id=$1 AND id=$2", workspace, invite, foreign)
+	require.NoError(t, err)
+	_, err = db.Pool.Exec(ctx, "INSERT INTO invitation_delivery_intents(workspace_id,id,invitation_id,key_id,ciphertext,state) SELECT $3,id,invitation_id,key_id,ciphertext,'failed' FROM invitation_delivery_intents WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, foreign)
+	require.NoError(t, err)
 	for _, test := range []struct{ state, delivery, status string }{
 		{"pending", "queued", "Queued"}, {"pending", "leased", "Queued"},
 		{"pending", "delivered", "Delivered"}, {"pending", "failed", "Failed"},
 		{"accepted", "delivered", "Accepted"}, {"revoked", "delivered", "Revoked"},
 		{"expired", "delivered", "Expired"},
 	} {
-		_, err := db.Pool.Exec(ctx, "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", workspace, invite, test.state)
+		_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", workspace, invite, test.state)
 		require.NoError(t, err)
 		_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state=$3,lease_until=CASE WHEN $3='leased' THEN now()+interval '1 minute' END,delivered_at=CASE WHEN $3='delivered' THEN now() END WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite, test.delivery)
 		require.NoError(t, err)
-		code, listed := workspaceRequest(t, api, token, "GET", "/workspaces/"+workspace+"/invitations", "", "")
-		require.Equal(t, 200, code)
+		statusCode, listed := workspaceRequest(t, api, token, "GET", "/workspaces/"+workspace+"/invitations", "", "")
+		require.Equal(t, 200, statusCode)
 		require.Len(t, listed["items"], 1)
 		require.Equal(t, test.status, listed["items"].([]any)[0].(map[string]any)["status"], test.state+"/"+test.delivery)
 	}
-	_, err := db.Pool.Exec(ctx, "UPDATE invitations SET state='pending' WHERE workspace_id=$1 AND id=$2", workspace, invite)
+	_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state='pending',created_at=now()-interval '8 days',expires_at=now()-interval '1 day' WHERE workspace_id=$1 AND id=$2", workspace, invite)
+	require.NoError(t, err)
+	code, elapsed := workspaceRequest(t, api, token, "GET", "/workspaces/"+workspace+"/invitations", "", "")
+	require.Equal(t, 200, code)
+	require.Equal(t, "Expired", elapsed["items"].([]any)[0].(map[string]any)["status"], "elapsed pending expiry precedes delivered projection")
+	_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state='pending',created_at=$3,expires_at=$4 WHERE workspace_id=$1 AND id=$2", workspace, invite, originalCreated, originalExpires)
 	require.NoError(t, err)
 	_, err = db.Pool.Exec(ctx, "UPDATE invitation_delivery_intents SET state='queued',delivered_at=NULL WHERE workspace_id=$1 AND invitation_id=$2", workspace, invite)
 	require.NoError(t, err)
@@ -542,16 +556,7 @@ func checkInvitationAtomicity(t *testing.T, api string, db *fluxTesting.TestDB, 
 		status, _ := workspaceRequest(t, api, token, "POST", path, "invalid-invite-key-01", body)
 		require.Equal(t, 400, status)
 	}
-	for _, email := range []string{
-		"name <private-canary@example.test>", "private-canary@example.test\r\nInjected: value",
-		strings.Repeat("a", 242) + "@example.test", strings.Repeat(" ", 65536) + "private-canary@example.test",
-	} {
-		body, encodeErr := json.Marshal(map[string]string{"email": email, "role": "member"})
-		require.NoError(t, encodeErr)
-		code, _ := workspaceRequest(t, api, token, "POST", path, "invalid-invite-bound-01", string(body))
-		require.Contains(t, []int{400, 413}, code)
-	}
-	require.NotContains(t, p.logs.String(), "private-canary")
+	checkInvitationInputBounds(t, api, token, path, p)
 	for _, query := range []string{"?unknown=x", "?after=bad", "?after=&after=bad"} {
 		status, _ := workspaceRequest(t, api, token, "GET", path+query, "", "")
 		require.Equal(t, 400, status)
@@ -632,21 +637,7 @@ func checkInvitationAtomicity(t *testing.T, api string, db *fluxTesting.TestDB, 
 	// Old elapsed pending invite releases uniqueness inside the new transaction.
 	_, err = db.Pool.Exec(ctx, "UPDATE invitations SET created_at=now()-interval '8 days',expires_at=now()-interval '1 day' WHERE workspace_id=$1 AND email='race@example.test'", w)
 	require.NoError(t, err)
-	expiryCodes := make(chan int, 2)
-	for i := range 2 {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			expiryCodes <- concurrentInvitationRequest(api, token, path, fmt.Sprintf("invite-after-expiry-%02d", i))
-		}()
-	}
-	wait.Wait()
-	close(expiryCodes)
-	var expiryResults []int
-	for code := range expiryCodes {
-		expiryResults = append(expiryResults, code)
-	}
-	require.ElementsMatch(t, []int{201, 409}, expiryResults)
+	checkInvitationExpiryRace(t, api, token, path)
 	var count int
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND email='race@example.test' AND state='expired'", w).Scan(&count))
 	require.Equal(t, 1, count)
@@ -743,6 +734,20 @@ CREATE CONSTRAINT TRIGGER deny_invitation_commit_test AFTER INSERT ON invitation
 	// Durable users, not removable memberships, retain inviter identity.
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitations WHERE workspace_id=$1 AND inviter_id=$2", w, actor).Scan(&count))
 	require.Positive(t, count)
+}
+
+func checkInvitationInputBounds(t *testing.T, api, token, path string, p *signedProvider) {
+	t.Helper()
+	for _, email := range []string{
+		"name <private-canary@example.test>", "private-canary@example.test\r\nInjected: value",
+		strings.Repeat("a", 242) + "@example.test", strings.Repeat(" ", 65536) + "private-canary@example.test",
+	} {
+		body, err := json.Marshal(map[string]string{"email": email, "role": "member"})
+		require.NoError(t, err)
+		code, _ := workspaceRequest(t, api, token, "POST", path, "invalid-invite-bound-01", string(body))
+		require.Contains(t, []int{400, 413}, code)
+	}
+	require.NotContains(t, p.logs.String(), "private-canary")
 }
 
 func concurrentInvitationRequest(api, token, path, key string) int {
@@ -2252,4 +2257,24 @@ func checkLinkSearch(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	code, body = workspaceRequest(t, api, token, "GET", paths[0]+"?search=Literal&cursor="+url.QueryEscape(cursor), "", "")
 	require.Equal(t, 404, code)
 	require.NotContains(t, fmt.Sprint(body), "Literal")
+}
+
+func checkInvitationExpiryRace(t *testing.T, api, token, path string) {
+	t.Helper()
+	var wait sync.WaitGroup
+	expiryCodes := make(chan int, 2)
+	for i := range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			expiryCodes <- concurrentInvitationRequest(api, token, path, fmt.Sprintf("invite-after-expiry-%02d", i))
+		}()
+	}
+	wait.Wait()
+	close(expiryCodes)
+	var expiryResults []int
+	for code := range expiryCodes {
+		expiryResults = append(expiryResults, code)
+	}
+	require.ElementsMatch(t, []int{201, 409}, expiryResults)
 }

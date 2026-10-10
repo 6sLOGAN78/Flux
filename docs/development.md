@@ -314,3 +314,35 @@ The API also requires private `FLUX_LINKS.CURSOR_KEY`: standard Base64 of exactl
 replicas through the deployment secret store; never expose it to the frontend.
 Redirector, worker and migrator do not require this key. Rotation invalidates
 existing link cursors; users can return to the first page. No fallback key exists.
+
+Invitation queue configuration belongs to the API in this slice:
+`FLUX_INVITATIONS.ACTIVE_KEY_ID`, `FLUX_INVITATIONS.ENCRYPTION_KEYS`,
+`FLUX_INVITATIONS.SENDER`, and `FLUX_INVITATIONS.PUBLIC_ORIGIN`.
+The encryption setting is JSON text mapping safe key IDs (1–64 letters, digits,
+hyphens or underscores) to canonical standard-Base64 strings encoding exactly
+32 random bytes: `{"current":"<base64-32-byte-key>"}` is a shape illustration,
+not a deployable key. The ring holds at most 32 keys and 16 KiB of JSON. Provision
+it privately from an external secret store; never paste real keys into logs,
+commits, browser configuration or support messages. The active ID must exist.
+There is no plaintext fallback. The sender is an email address and public origin
+is an HTTPS origin without credentials, path, query or fragment.
+
+AES-256-GCM uses Go's standard `NewGCMWithRandomNonce`, authenticating workspace,
+invitation, delivery and key IDs. It generates a 96-bit random nonce and prepends
+it to ciphertext. Count encryptions across every replica and retry/resend using
+the same key; rotate before the per-key limit of 2^32 messages. Select a new
+active ID while retaining previous keys until pending intents drain or are
+safely re-encrypted. Never drop a key that live ciphertext still references.
+Missing or malformed keys and authentication failures must fail closed.
+
+The API atomically records invitations, encrypted delivery intents, immutable
+audits and canonical-payload replay records retained for at least 24 hours.
+Current SQL authority is checked before replay. Tokens are stored only as a
+digest and inside the encrypted intent, never in Team responses or logs.
+Invitation expiry is seven days; duplicate elapsed pending invitations expire
+transactionally before replacement. Team displays scoped durable state:
+Queued, Delivered, Delivery failed, Accepted, Expired or Revoked, with full local
+expiry timestamps. This plan implements state projection, not worker sending.
+The API never consumes invitation intents or calls the email provider; worker
+delivery remains plan 02-21. Existing `FLUX_INTEGRATION.RESEND_API_KEY` remains
+unchanged and is owned by the worker.

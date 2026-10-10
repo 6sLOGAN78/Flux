@@ -155,9 +155,12 @@ func (r *InvitationRepository) List(ctx context.Context, scope Scope, after uuid
 	}
 	rows, err := tx.Query(ctx, "SELECT i.id,i.workspace_id,i.email,i.role,CASE "+
 		"WHEN i.state='pending' AND i.expires_at<=now() THEN 'Expired' "+
-		"WHEN i.state='pending' THEN 'Queued' WHEN i.state='expired' THEN 'Expired' "+
-		"WHEN i.state='accepted' THEN 'Accepted' ELSE 'Revoked' END,i.expires_at "+
-		"FROM invitations i WHERE i.workspace_id=$1 AND i.id>$2 ORDER BY i.id LIMIT 26", scope.WorkspaceID, after)
+		"WHEN i.state='expired' THEN 'Expired' WHEN i.state='accepted' THEN 'Accepted' "+
+		"WHEN i.state='revoked' THEN 'Revoked' WHEN d.state='delivered' THEN 'Delivered' "+
+		"WHEN d.state='failed' THEN 'Failed' ELSE 'Queued' END,i.expires_at "+
+		"FROM invitations i LEFT JOIN invitation_delivery_intents d "+
+		"ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id "+
+		"WHERE i.workspace_id=$1 AND i.id>$2 ORDER BY i.id LIMIT 26", scope.WorkspaceID, after)
 	if err != nil {
 		return nil, err
 	}

@@ -25,9 +25,19 @@ export const ZInvitation = extendApi(
       role: extendApi(z.enum(["admin", "member", "viewer"]), {
         "x-enum-varnames": ["InviteAdmin", "InviteMember", "InviteViewer"],
       }),
-      status: extendApi(z.enum(["Queued", "Expired", "Accepted", "Revoked"]), {
-        "x-enum-varnames": ["InviteQueued", "InviteExpired", "InviteAccepted", "InviteRevoked"],
-      }),
+      status: extendApi(
+        z.enum(["Queued", "Delivered", "Failed", "Expired", "Accepted", "Revoked"]),
+        {
+          "x-enum-varnames": [
+            "InviteQueued",
+            "InviteDelivered",
+            "InviteFailed",
+            "InviteExpired",
+            "InviteAccepted",
+            "InviteRevoked",
+          ],
+        },
+      ),
       expiresAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
     })
     .strict(),

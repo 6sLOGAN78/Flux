@@ -1121,6 +1121,111 @@ test("invitation-queue: actual API queue, expiry, duplicate and draft boundaries
   );
 });
 
+// Presentation fixtures exercise canonical states only. Actual worker delivery
+// will be exercised in 02-21; this test cannot stand in for a provider send.
+test("invitation-queue: canonical status presentation fixture, no worker delivery claim", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-status-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Status presentation Team" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const queued = await request.post(
+    `${fixture.api}/api/v1/workspaces/${workspace.id}/invitations`,
+    {
+      headers: { ...headers, "Idempotency-Key": "browser-status-invite-01" },
+      data: { email: "status@example.test", role: "member" },
+    },
+  );
+  expect(queued.status()).toBe(201);
+  const { invitation } = await queued.json();
+  expect(invitation.status).toBe("Queued");
+  let projectedStatus = "Queued";
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations") && route.request().method() === "GET") {
+      await route.fulfill({
+        json: { items: [{ ...invitation, status: projectedStatus }], nextAfter: null },
+      });
+    } else {
+      const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+      await route.fulfill({ response });
+    }
+  });
+  await page.goto(`/workspaces/${workspace.id}/team`);
+  const panel = page.getByRole("region", { name: "Invitations", exact: true });
+  for (const [status, label] of [
+    ["Queued", "Queued"],
+    ["Delivered", "Delivered"],
+    ["Failed", "Delivery failed"],
+    ["Accepted", "Accepted"],
+    ["Expired", "Expired"],
+    ["Revoked", "Revoked"],
+  ]) {
+    projectedStatus = status as string;
+    await panel.getByRole("button", { name: "Reload invitations" }).click();
+    await expect(panel.getByRole("list")).toContainText(`Delivery status: ${label}`);
+    await expect(panel.locator("time")).toHaveAttribute("datetime", invitation.expiresAt);
+    await expect(panel).not.toContainText("Sent");
+  }
+});
+
+test("invitation-queue: fresh SQL roles restrict invitation form and grants", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers: {
+      Authorization: `Bearer ${fixture.token}`,
+      Origin: "http://127.0.0.1:3100",
+      "Idempotency-Key": "browser-invite-capability",
+    },
+    data: { name: "Invitation capability Team" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  for (const role of ["owner", "admin", "member", "viewer"]) {
+    expect(
+      (
+        await request.post(
+          `${process.env.FLUX_BROWSER_FIXTURE}/restore-role?workspace=${workspace.id}&role=${role}`,
+        )
+      ).status(),
+    ).toBe(204);
+    await page.goto(`/workspaces/${workspace.id}/team`);
+    const form = page.getByRole("form", { name: "Invite member" });
+    if (role === "owner" || role === "admin") {
+      await expect(form.getByLabel("Role", { exact: true })).toHaveValue("member");
+      await expect(form.getByLabel("Role", { exact: true }).locator("option")).toHaveText(
+        role === "owner" ? ["Admin", "Member", "Viewer"] : ["Member", "Viewer"],
+      );
+    } else {
+      await expect(
+        page.getByText("You do not have permission to view Team.", { exact: true }),
+      ).toBeVisible();
+      await expect(form).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "Invitations", exact: true })).toHaveCount(0);
+    }
+  }
+});
+
 test("workspace requires an explicit name and opens authorized Links after commit", async ({
   page,
   request,

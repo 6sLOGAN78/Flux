@@ -329,6 +329,8 @@
           "status": {
             "enum": [
               "Queued",
+              "Delivered",
+              "Failed",
               "Expired",
               "Accepted",
               "Revoked"
@@ -336,6 +338,8 @@
             "type": "string",
             "x-enum-varnames": [
               "InviteQueued",
+              "InviteDelivered",
+              "InviteFailed",
               "InviteExpired",
               "InviteAccepted",
               "InviteRevoked"

@@ -152,10 +152,12 @@ func (e TransportInvitationRole) Valid() bool {
 
 // Defines values for TransportInvitationStatus.
 const (
-	InviteAccepted TransportInvitationStatus = "Accepted"
-	InviteExpired  TransportInvitationStatus = "Expired"
-	InviteQueued   TransportInvitationStatus = "Queued"
-	InviteRevoked  TransportInvitationStatus = "Revoked"
+	InviteAccepted  TransportInvitationStatus = "Accepted"
+	InviteDelivered TransportInvitationStatus = "Delivered"
+	InviteExpired   TransportInvitationStatus = "Expired"
+	InviteFailed    TransportInvitationStatus = "Failed"
+	InviteQueued    TransportInvitationStatus = "Queued"
+	InviteRevoked   TransportInvitationStatus = "Revoked"
 )
 
 // Valid indicates whether the value is a known member of the TransportInvitationStatus enum.
@@ -163,7 +165,11 @@ func (e TransportInvitationStatus) Valid() bool {
 	switch e {
 	case InviteAccepted:
 		return true
+	case InviteDelivered:
+		return true
 	case InviteExpired:
+		return true
+	case InviteFailed:
 		return true
 	case InviteQueued:
 		return true
