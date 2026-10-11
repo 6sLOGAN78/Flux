@@ -6,6 +6,8 @@ import {
   ZIdentityError,
   ZIdentityResponse,
   ZInvitationResponse,
+  ZInvitationTokenRequest,
+  ZInvitationInspectionResponse,
   ZInvitationsResponse,
   ZLinkListQuery,
   ZLinkResponse,
@@ -26,6 +28,46 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  inspectInvitation: {
+    summary: "Review an invitation after fresh verified recipient checks",
+    description:
+      "Exact Origin and JSON bearer request. A fresh trusted provider primary verified email and SHA-256 token digest match precede all workspace details. No membership is created. Invalid, wrong-recipient, expired, revoked, ambiguous and removed accepted actor credentials disclose no details. Token only in bounded body; no-store.",
+    path: "/api/v1/invitations/inspect",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    body: ZInvitationTokenRequest,
+    responses: {
+      200: ZInvitationInspectionResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
+  acceptInvitation: {
+    summary: "Explicitly accept a valid verified-recipient invitation",
+    description:
+      "Rechecks fresh provider profile under workspace, durable actor, invitation exclusive locks. Seven-day pending expiry and unrevoked token digest required; owner invitations forbidden. Atomic membership insert-if-absent preserves any current role, marks accepted actor, erases delivery ciphertext including failed reconciliation evidence and saves workspace preference. Repeat accepted actor requires fresh membership; removed actors cannot rejoin and other subjects cannot replay even with matching email. No-store and existing mutation protections apply.",
+    path: "/api/v1/invitations/accept",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    body: ZInvitationTokenRequest,
+    responses: {
+      200: ZWorkspaceResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   createInvitation: {
     summary: "Queue a tenant invitation with encrypted durable delivery intent",
     description:

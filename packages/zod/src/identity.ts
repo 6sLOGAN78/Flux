@@ -295,6 +295,35 @@ export type LinksResponse = z.infer<typeof ZLinksResponse>;
 
 // Canonical query contract: Go normalizes surrounding Unicode whitespace before
 // binding the exact search text and lifecycle into its signed cursor.
+export const ZInvitationTokenRequest = extendApi(
+  z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict(),
+  {
+    title: "transport.InvitationTokenRequest",
+    description: "256-bit unpadded base64url secret; body only, never a URL or log field.",
+  },
+);
+export const ZInvitationInspectionResponse = extendApi(
+  z
+    .object({
+      invitation: z
+        .object({
+          workspaceId: extendApi(z.string().uuid(), { "x-go-type": "string" }),
+          workspaceName: z.string().min(1).max(100),
+          role: extendApi(z.enum(["admin", "member", "viewer"]), {
+            title: "transport.InvitationInspectionRole",
+          }),
+          status: extendApi(z.enum(["Pending", "Accepted"]), {
+            title: "transport.InvitationInspectionStatus",
+          }),
+          expiresAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+        })
+        .strict(),
+    })
+    .strict(),
+  { title: "transport.InvitationInspectionResponse" },
+);
+export type InvitationInspectionResponse = z.infer<typeof ZInvitationInspectionResponse>;
+
 export const ZLinkListQuery = extendApi(
   z
     .object({

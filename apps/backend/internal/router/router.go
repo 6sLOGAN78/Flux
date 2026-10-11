@@ -86,6 +86,8 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	product := handler.NewProductHandler(auth, identity, workspace, links, team, invitations)
 	group := router.Group("/api/v1")
 	group.GET("/me", product.Me)
+	group.POST("/invitations/inspect", product.InspectInvitation)
+	group.POST("/invitations/accept", product.AcceptInvitation)
 	group.PUT("/me/last-workspace", product.SelectWorkspace)
 	group.GET("/workspaces", product.ListWorkspaces)
 	group.POST("/workspaces", product.CreateWorkspace)

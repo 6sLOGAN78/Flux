@@ -144,6 +144,8 @@ func TestBrowserProductFixture(t *testing.T) {
 }
 
 // This loopback-only fixture writes real SQL below the production router.
+//
+//nolint:lll // Keep fixed synthetic scoped SQL readable in the private browser harness.
 func seedInvitationArrival(pool *pgxpool.Pool, w http.ResponseWriter, r *http.Request) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

@@ -257,3 +257,11 @@ func recordInvitationDelivery(ctx context.Context, tx pgx.Tx, scope Scope, inten
 		scope.WorkspaceID, intent.ID, intent.InvitationID, intent.KeyID, intent.Ciphertext)
 	return err
 }
+
+// cancelInvitationDelivery erases terminal bearer evidence in the acceptance transaction.
+func cancelInvitationDelivery(ctx context.Context, tx pgx.Tx, workspace, invite uuid.UUID) error {
+	_, err := tx.Exec(ctx, "UPDATE invitation_delivery_intents SET state='cancelled',ciphertext=NULL,"+
+		"lease_until=NULL,reconciliation_required=false WHERE workspace_id=$1 AND invitation_id=$2 "+
+		"AND state IN ('queued','leased','failed','cancelled')", workspace, invite)
+	return err
+}

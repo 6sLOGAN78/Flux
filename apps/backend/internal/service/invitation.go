@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/mail"
@@ -58,7 +59,8 @@ func (s *InvitationService) Create(ctx context.Context, scope repository.Scope,
 	}
 	validKey, keyErr := regexp.MatchString(`^[A-Za-z0-9_-]{16,128}$`, key)
 	if keyErr != nil || !validKey || !AllowsInvitation(roleOwner, role) {
-		return repository.Invitation{}, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		return repository.Invitation{}, errs.NewBadRequestError(
+			"Invalid request", false, nil, nil, nil)
 	}
 	if s == nil || s.team == nil {
 		return repository.Invitation{}, workspaceFailure(errors.New("invitation unavailable"))
@@ -102,4 +104,48 @@ func (s *InvitationService) List(ctx context.Context, scope repository.Scope,
 		next = &position
 	}
 	return items, next, nil
+}
+
+// Redeem checks only the configured trusted provider; cached SQL email is not authority.
+func (s *InvitationService) Redeem(ctx context.Context, user uuid.UUID, actor Actor,
+	auth *AuthService, token string, accept bool,
+) (repository.InvitationInspection, repository.Workspace, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(token) != 43 || len(raw) != 32 || base64.RawURLEncoding.EncodeToString(raw) != token {
+		return repository.InvitationInspection{}, repository.Workspace{}, errs.NewBadRequestError(
+			"Invalid request", false, nil, nil, nil)
+	}
+	clear(raw)
+	if s == nil || auth == nil || !auth.configured || auth.clients.Users == nil {
+		return repository.InvitationInspection{}, repository.Workspace{}, authUnavailable()
+	}
+	if actor.Issuer != auth.issuer || !providerID(actor.Subject, "user_") {
+		return repository.InvitationInspection{}, repository.Workspace{}, authDenied()
+	}
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	verified := func(ctx context.Context) (string, error) {
+		profileCtx, profileCancel := context.WithTimeout(ctx, authTimeout)
+		defer profileCancel()
+		profile, profileErr := auth.clients.Users.Get(profileCtx, actor.Subject)
+		if profileErr != nil {
+			return "", authUnavailable()
+		}
+		email, valid := verifiedEmail(profile, actor.Subject)
+		if !valid {
+			return "", authDenied()
+		}
+		return email, nil
+	}
+	digest := sha256.Sum256([]byte(token))
+	review, workspace, err := s.store.Redeem(ctx, user, digest[:], verified, accept)
+	if errors.Is(err, repository.ErrInvitationRecipient) {
+		return repository.InvitationInspection{}, repository.Workspace{}, errs.NewForbiddenError(
+			"Sign in with the invited, verified email address.", false)
+	}
+	if errors.Is(err, repository.ErrInvitationInvalid) {
+		return repository.InvitationInspection{}, repository.Workspace{}, errs.NewNotFoundError(
+			"This invitation is no longer valid.", false, nil)
+	}
+	return review, workspace, teamMutationFailure(err)
 }

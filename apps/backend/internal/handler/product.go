@@ -125,6 +125,53 @@ func invitationTransport(item repository.Invitation) transport.TransportInvitati
 		ExpiresAt: item.ExpiresAt.Format(time.RFC3339Nano)}
 }
 
+// InspectInvitation never performs a membership effect.
+func (h *ProductHandler) InspectInvitation(c echo.Context) error { return h.redeemInvitation(c, false) }
+
+// AcceptInvitation is the only explicit invitation membership operation.
+func (h *ProductHandler) AcceptInvitation(c echo.Context) error { return h.redeemInvitation(c, true) }
+
+func (h *ProductHandler) redeemInvitation(c echo.Context, accept bool) error {
+	user, err := h.workspaceActor(c)
+	if err != nil {
+		return err
+	}
+	if h.invitations == nil {
+		return workspaceUnavailable()
+	}
+	actor, ok := c.Get("actor").(service.Actor)
+	if !ok {
+		return workspaceUnavailable()
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var body *transport.TransportInvitationTokenRequest
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&body); err != nil || body == nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	review, workspace, err := h.invitations.Redeem(c.Request().Context(), user.ID, actor, h.auth, body.Token, accept)
+	if err != nil {
+		return err
+	}
+	if accept {
+		return c.JSON(http.StatusOK, transport.TransportWorkspaceResponse{Workspace: workspaceTransport(workspace)})
+	}
+	response := transport.TransportInvitationInspectionResponse{}
+	response.Invitation.ExpiresAt = review.ExpiresAt.Format(time.RFC3339Nano)
+	response.Invitation.Role = transport.TransportInvitationInspectionRole(review.Role)
+	response.Invitation.Status = transport.TransportInvitationInspectionStatus(review.Status)
+	response.Invitation.WorkspaceId = review.WorkspaceID.String()
+	response.Invitation.WorkspaceName = review.WorkspaceName
+	return c.JSON(http.StatusOK, response)
+}
+
 // ListMembers exposes only current workspace-bound identities and closed roles.
 func (h *ProductHandler) ListMembers(c echo.Context) error {
 	user, err := h.workspaceActor(c)

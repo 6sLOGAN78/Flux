@@ -52,16 +52,17 @@ const fixtureIssuer = "https://fixture.clerk.accounts.dev"
 const fixtureParty = "http://127.0.0.1:3100"
 
 type signedProvider struct {
-	key         *rsa.PrivateKey
-	server      *httptest.Server
-	status      string
-	profileMode string
-	issuer      string
-	logs        bytes.Buffer
-	mu          sync.Mutex
-	requests    int
-	profiles    int
-	failure     bool
+	key          *rsa.PrivateKey
+	server       *httptest.Server
+	status       string
+	profileMode  string
+	issuer       string
+	logs         bytes.Buffer
+	mu           sync.Mutex
+	requests     int
+	profiles     int
+	profileDelay time.Duration
+	failure      bool
 }
 
 func newSignedProvider(t *testing.T) *signedProvider {
@@ -83,6 +84,7 @@ func newSignedProvider(t *testing.T) *signedProvider {
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/users/") {
+			p.waitProfile()
 			id := strings.TrimPrefix(r.URL.Path, "/users/")
 			p.profiles++
 			verified := "verified"
@@ -150,6 +152,13 @@ func newSignedProvider(t *testing.T) *signedProvider {
 	}))
 	t.Cleanup(p.server.Close)
 	return p
+}
+
+// Called while the fixture mutex owns the delay configuration.
+func (p *signedProvider) waitProfile() {
+	if p.profileDelay > 0 {
+		time.Sleep(p.profileDelay)
+	}
 }
 
 func (p *signedProvider) token(t *testing.T, changes map[string]any) string {
@@ -470,11 +479,11 @@ func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB,
 		p.mu.Lock()
 		p.profileMode = mode
 		p.mu.Unlock()
-		status, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
+		denialStatus, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
 		if mode == "failure" {
-			require.Equal(t, 503, status)
+			require.Equal(t, 503, denialStatus)
 		} else {
-			require.Equal(t, 401, status)
+			require.Equal(t, 401, denialStatus)
 		}
 		require.NotContains(t, fmt.Sprint(denied), w)
 	}
@@ -482,8 +491,8 @@ func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB,
 	p.profileMode = ""
 	p.mu.Unlock()
 	for _, rejected := range []string{seed("wrong@example.test", "pending"), seed("revoked@example.test", "revoked"), strings.Repeat("A", 43), "malformed", secret + "extra"} {
-		status, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", `{"token":"`+rejected+`"}`)
-		require.Contains(t, []int{400, 404}, status)
+		denialStatus, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", `{"token":"`+rejected+`"}`)
+		require.Contains(t, []int{400, 403, 404}, denialStatus)
 		require.NotContains(t, fmt.Sprint(denied), "Explicit invitation tenant")
 		require.NotContains(t, fmt.Sprint(denied), w)
 	}
@@ -502,6 +511,153 @@ func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB,
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
 	require.Zero(t, count)
 	require.NotContains(t, p.logs.String(), secret)
+	checkInvitationAcceptanceTransactions(t, api, db, p, invitee, w, actor)
+}
+
+func checkInvitationAcceptanceTransactions(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, bearer, w string, actor uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	seed := func() (uuid.UUID, string) {
+		t.Helper()
+		raw := make([]byte, 32)
+		_, err := rand.Read(raw)
+		require.NoError(t, err)
+		secret := base64.RawURLEncoding.EncodeToString(raw)
+		digest := sha256.Sum256([]byte(secret))
+		invite := uuid.New()
+		_, err = db.Pool.Exec(ctx, "INSERT INTO invitations(workspace_id,id,inviter_id,email,role,token_digest) SELECT $1,$2,created_by,'same@example.test','viewer',$3 FROM workspaces WHERE id=$1", w, invite, digest[:])
+		require.NoError(t, err)
+		_, err = db.Pool.Exec(ctx, "INSERT INTO invitation_delivery_intents(workspace_id,id,invitation_id,key_id,ciphertext,state,reconciliation_required) VALUES($1,$2,$3,'fixture',$4,'failed',true)", w, uuid.New(), invite, make([]byte, 32))
+		require.NoError(t, err)
+		return invite, `{"token":"` + secret + `"}`
+	}
+	assertNoMembership := func() {
+		t.Helper()
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
+		require.Zero(t, count)
+	}
+	for _, terminal := range []string{"expired", "revoked"} {
+		t.Run(terminal+"-no-details-or-membership", func(t *testing.T) {
+			invite, body := seed()
+			query := "UPDATE invitations SET state='revoked' WHERE workspace_id=$1 AND id=$2"
+			if terminal == "expired" {
+				query = "UPDATE invitations SET created_at=clock_timestamp()-interval '8 days',expires_at=clock_timestamp()-interval '1 day' WHERE workspace_id=$1 AND id=$2"
+			}
+			_, err := db.Pool.Exec(ctx, query, w, invite)
+			require.NoError(t, err)
+			for _, operation := range []string{"inspect", "accept"} {
+				status, denied := workspaceRequest(t, api, bearer, "POST", "/invitations/"+operation, "", body)
+				require.Equal(t, 404, status)
+				require.NotContains(t, fmt.Sprint(denied), w)
+			}
+			_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state=$3 WHERE workspace_id=$1 AND id=$2", w, invite, terminal)
+			require.NoError(t, err)
+			assertNoMembership()
+		})
+	}
+	t.Run("commit-failure-rolls-back-membership-preference-state-cipher-audit", func(t *testing.T) {
+		invite, body := seed()
+		_, err := db.Pool.Exec(ctx, "CREATE FUNCTION deny_accept_commit_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='accepted' THEN RAISE EXCEPTION 'synthetic acceptance commit failure'; END IF; RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER deny_accept_commit_test AFTER UPDATE ON invitations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION deny_accept_commit_test()")
+		require.NoError(t, err)
+		status, _ := workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", body)
+		require.Equal(t, 503, status)
+		_, err = db.Pool.Exec(ctx, "DROP TRIGGER deny_accept_commit_test ON invitations; DROP FUNCTION deny_accept_commit_test()")
+		require.NoError(t, err)
+		assertNoMembership()
+		var retained bool
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT i.state='pending' AND i.accepted_user_id IS NULL AND d.state='failed' AND d.ciphertext IS NOT NULL AND d.reconciliation_required FROM invitations i JOIN invitation_delivery_intents d ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id WHERE i.workspace_id=$1 AND i.id=$2", w, invite).Scan(&retained))
+		require.True(t, retained)
+		_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state='revoked' WHERE workspace_id=$1 AND id=$2", w, invite)
+		require.NoError(t, err)
+	})
+	t.Run("inspection-expiry-during-provider-fetch", func(t *testing.T) {
+		invite, body := seed()
+		p.mu.Lock()
+		p.profileDelay = 400 * time.Millisecond
+		p.mu.Unlock()
+		_, err := db.Pool.Exec(ctx, "UPDATE invitations SET expires_at=clock_timestamp()+interval '200 milliseconds' WHERE workspace_id=$1 AND id=$2", w, invite)
+		require.NoError(t, err)
+		status, denied := workspaceRequest(t, api, bearer, "POST", "/invitations/inspect", "", body)
+		p.mu.Lock()
+		p.profileDelay = 0
+		p.mu.Unlock()
+		require.Equal(t, 404, status, "expired during fresh provider lookup must reveal no workspace details")
+		require.NotContains(t, fmt.Sprint(denied), w)
+		_, err = db.Pool.Exec(ctx, "UPDATE invitations SET state='expired' WHERE workspace_id=$1 AND id=$2", w, invite)
+		require.NoError(t, err)
+	})
+	for _, terminal := range []string{"expiry", "revoke"} {
+		t.Run("winning-"+terminal+"-denies-waiting-accept", func(t *testing.T) {
+			invite, body := seed()
+			tx, err := db.Pool.Begin(ctx)
+			require.NoError(t, err)
+			defer tx.Rollback(ctx)
+			_, err = tx.Exec(ctx, "SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", w)
+			require.NoError(t, err)
+			codes := make(chan int, 1)
+			go func() {
+				codes <- concurrentAcceptanceRequest(api, bearer, body)
+			}()
+			require.Eventually(t, func() bool {
+				var waiting bool
+				e := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT id FROM workspaces%')").Scan(&waiting)
+				return e == nil && waiting
+			}, time.Second, 10*time.Millisecond)
+			query := "UPDATE invitations SET state='revoked' WHERE workspace_id=$1 AND id=$2"
+			if terminal == "expiry" {
+				query = "UPDATE invitations SET created_at=clock_timestamp()-interval '8 days',expires_at=clock_timestamp()-interval '1 day',state='expired' WHERE workspace_id=$1 AND id=$2"
+			}
+			_, err = tx.Exec(ctx, query, w, invite)
+			require.NoError(t, err)
+			require.NoError(t, tx.Commit(ctx))
+			require.Equal(t, 404, <-codes)
+			assertNoMembership()
+		})
+	}
+	t.Run("concurrent-accept-one-membership-and-clean-failed-cipher", func(t *testing.T) {
+		invite, body := seed()
+		var group sync.WaitGroup
+		codes := make(chan int, 8)
+		for range 8 {
+			group.Go(func() {
+				codes <- concurrentAcceptanceRequest(api, bearer, body)
+			})
+		}
+		group.Wait()
+		close(codes)
+		for code := range codes {
+			require.Equal(t, 200, code)
+		}
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
+		require.Equal(t, 1, count)
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_invitation_id=$2 AND operation='invitation.accept'", w, invite).Scan(&count))
+		require.Equal(t, 1, count)
+		var clean bool
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT i.state='accepted' AND i.accepted_user_id=$3 AND d.ciphertext IS NULL AND NOT d.reconciliation_required AND d.state='cancelled' AND p.last_workspace_id=$1 FROM invitations i JOIN invitation_delivery_intents d ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id JOIN workspace_preferences p ON p.user_id=$3 WHERE i.workspace_id=$1 AND i.id=$2", w, invite, actor).Scan(&clean))
+		require.True(t, clean)
+	})
+	t.Run("existing-member-role-preserved", func(t *testing.T) {
+		_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+		require.NoError(t, err)
+		_, body := seed()
+		status, result := workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", body)
+		require.Equal(t, 200, status)
+		require.Equal(t, "admin", result["workspace"].(map[string]any)["role"])
+	})
+	t.Run("strict-body-and-query-and-foreign-credential", func(t *testing.T) {
+		for _, body := range []string{`null`, `{}`, `{"token":null}`, `{"token":"bad","workspaceId":"` + w + `"}`, `{"token":"bad"} {}`} {
+			status, _ := workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", body)
+			require.Equal(t, 400, status)
+		}
+		status, _ := workspaceRequest(t, api, bearer, "POST", "/invitations/inspect?token=foreign", "", `{"token":"bad"}`)
+		require.Equal(t, 400, status)
+		status, denied := workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", `{"token":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`)
+		require.Equal(t, 404, status)
+		require.NotContains(t, fmt.Sprint(denied), w)
+	})
+	require.NotContains(t, p.logs.String(), "token_digest")
 }
 
 func checkInvitations(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
@@ -2351,4 +2507,21 @@ func checkInvitationExpiryRace(t *testing.T, api, token, path string) {
 		expiryResults = append(expiryResults, code)
 	}
 	require.ElementsMatch(t, []int{201, 409}, expiryResults)
+}
+
+func concurrentAcceptanceRequest(api, bearer, body string) int {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, api+"/api/v1/invitations/accept", strings.NewReader(body))
+	if err != nil {
+		return 0
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Origin", fixtureParty)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", netip.AddrFrom16(uuid.New()).String())
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return 0
+	}
+	defer response.Body.Close()
+	return response.StatusCode
 }

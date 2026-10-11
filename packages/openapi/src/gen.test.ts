@@ -136,6 +136,8 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
   assert.equal(document.openapi, "3.0.2");
   assert.equal(document.info.version, "1.0.0");
   assert.deepEqual(Object.keys(document.paths).sort(), [
+    "/api/v1/invitations/accept",
+    "/api/v1/invitations/inspect",
     "/api/v1/me",
     "/api/v1/me/last-workspace",
     "/api/v1/workspaces",

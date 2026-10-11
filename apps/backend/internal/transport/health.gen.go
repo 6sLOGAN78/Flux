@@ -180,6 +180,45 @@ func (e TransportInvitationStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransportInvitationInspectionRole.
+const (
+	TransportInvitationInspectionRoleAdmin  TransportInvitationInspectionRole = "admin"
+	TransportInvitationInspectionRoleMember TransportInvitationInspectionRole = "member"
+	TransportInvitationInspectionRoleViewer TransportInvitationInspectionRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the TransportInvitationInspectionRole enum.
+func (e TransportInvitationInspectionRole) Valid() bool {
+	switch e {
+	case TransportInvitationInspectionRoleAdmin:
+		return true
+	case TransportInvitationInspectionRoleMember:
+		return true
+	case TransportInvitationInspectionRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransportInvitationInspectionStatus.
+const (
+	Accepted TransportInvitationInspectionStatus = "Accepted"
+	Pending  TransportInvitationInspectionStatus = "Pending"
+)
+
+// Valid indicates whether the value is a known member of the TransportInvitationInspectionStatus enum.
+func (e TransportInvitationInspectionStatus) Valid() bool {
+	switch e {
+	case Accepted:
+		return true
+	case Pending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransportLinkLifecycle.
 const (
 	TransportLinkLifecycleActive   TransportLinkLifecycle = "active"
@@ -254,22 +293,22 @@ func (e TransportTeamMemberRole) Valid() bool {
 
 // Defines values for TransportWorkspaceRole.
 const (
-	Admin  TransportWorkspaceRole = "admin"
-	Member TransportWorkspaceRole = "member"
-	Owner  TransportWorkspaceRole = "owner"
-	Viewer TransportWorkspaceRole = "viewer"
+	TransportWorkspaceRoleAdmin  TransportWorkspaceRole = "admin"
+	TransportWorkspaceRoleMember TransportWorkspaceRole = "member"
+	TransportWorkspaceRoleOwner  TransportWorkspaceRole = "owner"
+	TransportWorkspaceRoleViewer TransportWorkspaceRole = "viewer"
 )
 
 // Valid indicates whether the value is a known member of the TransportWorkspaceRole enum.
 func (e TransportWorkspaceRole) Valid() bool {
 	switch e {
-	case Admin:
+	case TransportWorkspaceRoleAdmin:
 		return true
-	case Member:
+	case TransportWorkspaceRoleMember:
 		return true
-	case Owner:
+	case TransportWorkspaceRoleOwner:
 		return true
-	case Viewer:
+	case TransportWorkspaceRoleViewer:
 		return true
 	default:
 		return false
@@ -409,9 +448,31 @@ type TransportInvitationRole string
 // TransportInvitationStatus defines model for TransportInvitation.Status.
 type TransportInvitationStatus string
 
+// TransportInvitationInspectionResponse defines model for transport.InvitationInspectionResponse.
+type TransportInvitationInspectionResponse struct {
+	Invitation struct {
+		ExpiresAt     string                              `json:"expiresAt"`
+		Role          TransportInvitationInspectionRole   `json:"role"`
+		Status        TransportInvitationInspectionStatus `json:"status"`
+		WorkspaceId   string                              `json:"workspaceId"`
+		WorkspaceName string                              `json:"workspaceName"`
+	} `json:"invitation"`
+}
+
+// TransportInvitationInspectionRole defines model for transport.InvitationInspectionRole.
+type TransportInvitationInspectionRole string
+
+// TransportInvitationInspectionStatus defines model for transport.InvitationInspectionStatus.
+type TransportInvitationInspectionStatus string
+
 // TransportInvitationResponse defines model for transport.InvitationResponse.
 type TransportInvitationResponse struct {
 	Invitation TransportInvitation `json:"invitation"`
+}
+
+// TransportInvitationTokenRequest 256-bit unpadded base64url secret; body only, never a URL or log field.
+type TransportInvitationTokenRequest struct {
+	Token string `json:"token"`
 }
 
 // TransportInvitationsResponse defines model for transport.InvitationsResponse.
@@ -578,6 +639,12 @@ type RemoveMemberParams struct {
 type ChangeMemberRoleParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
+
+// AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
+type AcceptInvitationJSONRequestBody = TransportInvitationTokenRequest
+
+// InspectInvitationJSONRequestBody defines body for InspectInvitation for application/json ContentType.
+type InspectInvitationJSONRequestBody = TransportInvitationTokenRequest
 
 // SelectWorkspaceJSONRequestBody defines body for SelectWorkspace for application/json ContentType.
 type SelectWorkspaceJSONRequestBody = TransportWorkspacePreferenceRequest

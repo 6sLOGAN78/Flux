@@ -36,6 +36,14 @@ export default function Layout({ children }: { children: ReactNode }) {
   );
   return (
     <html lang="en">
+      <head>
+        <meta name="referrer" content="no-referrer" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(location.pathname!=="/invitations")return;var fragment=location.hash.slice(1);history.replaceState(null,"","/invitations");var token=/^[A-Za-z0-9_-]{43}$/.test(fragment)?fragment:"";window.fluxInvitationArrival=function(){var value=token;token="";return value;};})();`,
+          }}
+        />
+      </head>
       <body>{content}</body>
     </html>
   );

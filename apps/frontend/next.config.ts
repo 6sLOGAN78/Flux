@@ -27,10 +27,20 @@ const config: NextConfig = {
   poweredByHeader: false,
   agentRules: false,
   async headers() {
-    return ["/", "/api/v1/:path*"].map((source) => ({
-      source,
-      headers: [{ key: "Cache-Control", value: "no-store" }],
-    }));
+    return ["/", "/api/v1/:path*"]
+      .map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      }))
+      .concat([
+        {
+          source: "/invitations",
+          headers: [
+            { key: "Cache-Control", value: "no-store" },
+            { key: "Referrer-Policy", value: "no-referrer" },
+          ],
+        },
+      ]);
   },
   async rewrites() {
     return [{ source: "/api/v1/:path*", destination: `${apiOrigin.origin}/api/v1/:path*` }];

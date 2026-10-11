@@ -236,7 +236,7 @@ func TestIdentityJSONMatchesCanonicalResponse(t *testing.T) {
 		t.Fatal(schemaErr)
 	}
 	value.Workspaces = []transport.TransportWorkspace{{
-		Id: "00000000-0000-4000-8000-000000000002", Name: "Current", Role: transport.Viewer,
+		Id: "00000000-0000-4000-8000-000000000002", Name: "Current", Role: transport.TransportWorkspaceRoleViewer,
 	}}
 	value.LastWorkspace = &value.Workspaces[0]
 	encoded, err = json.Marshal(value)

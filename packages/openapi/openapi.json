@@ -362,6 +362,67 @@
         "title": "transport.Invitation",
         "type": "object"
       },
+      "transport.InvitationInspectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "invitation": {
+            "additionalProperties": false,
+            "properties": {
+              "expiresAt": {
+                "format": "date-time",
+                "type": "string",
+                "x-go-type": "string"
+              },
+              "role": {
+                "$ref": "#/components/schemas/transport.InvitationInspectionRole"
+              },
+              "status": {
+                "$ref": "#/components/schemas/transport.InvitationInspectionStatus"
+              },
+              "workspaceId": {
+                "format": "uuid",
+                "type": "string",
+                "x-go-type": "string"
+              },
+              "workspaceName": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "workspaceId",
+              "workspaceName",
+              "role",
+              "status",
+              "expiresAt"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "invitation"
+        ],
+        "title": "transport.InvitationInspectionResponse",
+        "type": "object"
+      },
+      "transport.InvitationInspectionRole": {
+        "enum": [
+          "admin",
+          "member",
+          "viewer"
+        ],
+        "title": "transport.InvitationInspectionRole",
+        "type": "string"
+      },
+      "transport.InvitationInspectionStatus": {
+        "enum": [
+          "Pending",
+          "Accepted"
+        ],
+        "title": "transport.InvitationInspectionStatus",
+        "type": "string"
+      },
       "transport.InvitationResponse": {
         "additionalProperties": false,
         "properties": {
@@ -373,6 +434,21 @@
           "invitation"
         ],
         "title": "transport.InvitationResponse",
+        "type": "object"
+      },
+      "transport.InvitationTokenRequest": {
+        "additionalProperties": false,
+        "description": "256-bit unpadded base64url secret; body only, never a URL or log field.",
+        "properties": {
+          "token": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "transport.InvitationTokenRequest",
         "type": "object"
       },
       "transport.InvitationsResponse": {
@@ -784,6 +860,242 @@
   },
   "openapi": "3.0.2",
   "paths": {
+    "/api/v1/invitations/accept": {
+      "post": {
+        "description": "Rechecks fresh provider profile under workspace, durable actor, invitation exclusive locks. Seven-day pending expiry and unrevoked token digest required; owner invitations forbidden. Atomic membership insert-if-absent preserves any current role, marks accepted actor, erases delivery ciphertext including failed reconciliation evidence and saves workspace preference. Repeat accepted actor requires fresh membership; removed actors cannot rejoin and other subjects cannot replay even with matching email. No-store and existing mutation protections apply.",
+        "operationId": "acceptInvitation",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.InvitationTokenRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.WorkspaceResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Explicitly accept a valid verified-recipient invitation",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/invitations/inspect": {
+      "post": {
+        "description": "Exact Origin and JSON bearer request. A fresh trusted provider primary verified email and SHA-256 token digest match precede all workspace details. No membership is created. Invalid, wrong-recipient, expired, revoked, ambiguous and removed accepted actor credentials disclose no details. Token only in bounded body; no-store.",
+        "operationId": "inspectInvitation",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.InvitationTokenRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.InvitationInspectionResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Review an invitation after fresh verified recipient checks",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "description": "Requires an explicit bearer, exact issuer and authorized party, and a currently active provider session. First mapping verifies the provider primary email and commits a unique issuer/subject UUID in PostgreSQL; email never merges identities. Returns current Flux memberships and lastWorkspace only when authorized in the same membership snapshot, otherwise null without former workspace identifiers or names. All responses use Cache-Control: no-store. Cookies and provider organization claims grant no access.",

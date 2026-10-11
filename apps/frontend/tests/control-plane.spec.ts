@@ -3,7 +3,87 @@ import { providerAssetCache } from "./provider-assets";
 
 const publicProviderAsset = providerAssetCache();
 
-test("invitation-accept inspects privately and joins only after explicit acceptance without workspace creation", async ({ page, request }) => {
+test("invitation-accept retains memory through native modal sign-in and safely denies wrong recipients", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const seeded = await request.post(`${fixture.api}/__test/invitation-arrival`);
+  expect(seeded.status()).toBe(200);
+  const arrival = await seeded.json();
+  // Model a freshly renewed Client cookie independently of the ten-minute
+  // Session/JWT. A nearly expired Client invokes Clerk's full-page ITP touch;
+  // that separate recovery boundary is covered by the later recovery plan.
+  const renewedClient = { ...fixture.client, cookie_expires_at: Date.now() + 30 * 86400000 };
+  await installProviderTransport(page, undefined, renewedClient);
+  let documentNavigations = 0;
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame())
+      documentNavigations++;
+  });
+  let accepts = 0;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations/accept")) accepts++;
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  const response = await page.goto(`/invitations#${arrival.token}`);
+  expect(response?.headers()["referrer-policy"]).toBe("no-referrer");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean((window as unknown as { Clerk?: { loaded?: boolean } }).Clerk?.loaded),
+      ),
+    )
+    .toBe(true);
+  expect(
+    await page.evaluate(() => ({
+      signedIn: Boolean((window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session),
+      fragmentRemoved: location.hash === "",
+      invalidArrival:
+        document
+          .querySelector("main")
+          ?.textContent?.includes("This invitation is no longer valid.") ?? false,
+    })),
+  ).toEqual({ signedIn: false, fragmentRemoved: true, invalidArrival: false });
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Email address", { exact: true }).fill("local@example.test");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await page.getByLabel("Password", { exact: true }).fill("Local test password9!");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean((window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session),
+      ),
+    )
+    .toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true }),
+  ).toBeVisible();
+  expect(accepts).toBe(0);
+  expect(new URL(page.url()).pathname).toBe("/invitations");
+  expect(documentNavigations).toBe(1);
+  await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${arrival.workspace}/links`));
+  const wrong = await request.post(`${fixture.api}/__test/invitation-arrival?wrong=true`);
+  expect(wrong.status()).toBe(200);
+  const rejected = await wrong.json();
+  await page.goto(`/invitations#${rejected.token}`);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This invitation can't be accepted with this account. Sign in with the invited, verified email address.",
+  );
+  await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+  expect(await page.getByRole("main").innerHTML()).not.toContain(rejected.workspace);
+});
+
+test("invitation-accept inspects privately and joins only after explicit acceptance without workspace creation", async ({
+  page,
+  request,
+}) => {
   const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
   const seeded = await request.post(`${fixture.api}/__test/invitation-arrival`);
   expect(seeded.status()).toBe(200);
@@ -13,7 +93,8 @@ test("invitation-accept inspects privately and joins only after explicit accepta
   let creates = 0;
   const exposed: string[] = [];
   page.on("request", (req) => {
-    if (req.url().includes(arrival.token) || (req.headers().referer ?? "").includes(arrival.token)) exposed.push("request");
+    if (req.url().includes(arrival.token) || (req.headers().referer ?? "").includes(arrival.token))
+      exposed.push("request");
   });
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
@@ -23,13 +104,19 @@ test("invitation-accept inspects privately and joins only after explicit accepta
     await route.fulfill({ response });
   });
   await page.goto(`/invitations#${arrival.token}`);
-  await expect(page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true }),
+  ).toBeVisible();
   expect(new URL(page.url()).hash).toBe("");
   expect(accepts).toBe(0);
   const headers = { Authorization: `Bearer ${fixture.token}` };
   const before = await request.get(`${fixture.api}/api/v1/me`, { headers });
-  expect((await before.json()).workspaces.some((w: { id: string }) => w.id === arrival.workspace)).toBe(false);
-  expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie]))).not.toContain(arrival.token);
+  expect(
+    (await before.json()).workspaces.some((w: { id: string }) => w.id === arrival.workspace),
+  ).toBe(false);
+  expect(
+    await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie])),
+  ).not.toContain(arrival.token);
   expect(await page.locator("html").innerHTML()).not.toContain(arrival.token);
   await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workspaces/${arrival.workspace}/links`));
@@ -1444,6 +1531,7 @@ const providerAssets = new WeakMap<Page, Set<Promise<void>>>();
 export const installProviderTransport = async (
   page: Page,
   sessionClient?: Record<string, unknown>,
+  completedSessionClient?: Record<string, unknown>,
 ) => {
   let pending = providerAssets.get(page);
   if (!pending) {
@@ -1631,6 +1719,23 @@ export const installProviderTransport = async (
         abandon_at: Date.now() + 600000,
       };
       client.sign_in = signIn;
+      const form = new URLSearchParams(route.request().postData() ?? "");
+      if (
+        (url.pathname.includes("attempt_first_factor") || form.has("password")) &&
+        completedSessionClient
+      ) {
+        Object.assign(client, completedSessionClient);
+        signIn.status = "complete";
+        signIn.created_session_id = completedSessionClient.last_active_session_id;
+        signIn.first_factor_verification = {
+          status: "verified",
+          strategy: "password",
+          attempts: 1,
+          expire_at: null,
+          error: null,
+        };
+        client.sign_in = signIn;
+      }
     }
     if (url.pathname.includes("/client/sign_ups") && route.request().method() === "POST") {
       signUp = {
@@ -1678,13 +1783,15 @@ export const installProviderTransport = async (
     const response =
       url.pathname.includes("/tokens") && sessions?.[0]
         ? sessions[0].last_active_token
-        : url.pathname.includes("/client/sign_ups")
-          ? signUp
-          : url.pathname === "/v1/environment"
-            ? environment
-            : url.pathname.includes("/client/sign_ins")
-              ? signIn
-              : client;
+        : /\/client\/sessions\/[^/]+\/touch$/.test(url.pathname) && sessions?.[0]
+          ? sessions[0]
+          : url.pathname.includes("/client/sign_ups")
+            ? signUp
+            : url.pathname === "/v1/environment"
+              ? environment
+              : url.pathname.includes("/client/sign_ins")
+                ? signIn
+                : client;
     await route.fulfill({
       contentType: "application/json",
       headers: {
