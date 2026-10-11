@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-24-PLAN.md
-last_updated: "2026-10-11T05:53:50.296Z"
+stopped_at: Completed 02-25-PLAN.md
+last_updated: "2026-10-11T06:29:10.711Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 46
+  completed_plans: 47
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 25 of 35
+Plan: 26 of 35
 Status: Ready to execute
 Last activity: 2026-10-11
 
-Progress: [████████░░] 81%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Progress: [████████░░] 81%
 | Phase 2 P22 | 20min 31s | 2 tasks | 8 files |
 | Phase 2 P23 | 14min 48s | 2 tasks | 8 files |
 | Phase 2 P24 | 16min 52s | 2 tasks | 19 files |
+| Phase 2 P25 | 28min 46s | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -200,6 +201,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Fresh trusted verified email is checked under workspace, durable actor and invitation locks; wall-clock expiry is sampled after the profile request and again at acceptance.
 - [Phase 2]: Acceptance preserves existing membership roles and atomically records accepted actor, preference, audit and terminal delivery ciphertext erasure.
 - [Phase 2]: Arrival secrets stay in disposable browser memory; local native modal proof models a freshly renewed Client independently of session expiry.
+- [Phase 2]: Invitation versions use exact bounded integer body preconditions; missing returns 428, stale returns 409 and maximum increment is denied.
+- [Phase 2]: Resend creates a new immutable delivery identity and retains historical ACK and first-dispatch evidence; old provider identity never carries new credentials.
+- [Phase 2]: Fresh actor and original protected-role policy precede replay hash disclosure; uncertain invitation mutations require explicit reload and Failed resend warns about prior delivery.
 
 ### Pending Todos
 
@@ -220,6 +224,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-11T05:53:50.285Z
-Stopped at: Completed 02-24-PLAN.md
+Last session: 2026-10-11T06:29:10.700Z
+Stopped at: Completed 02-25-PLAN.md
 Resume file: None
