@@ -3,6 +3,65 @@ import { providerAssetCache } from "./provider-assets";
 
 const publicProviderAsset = providerAssetCache();
 
+test("invitation-privacy native Client touch navigation safely loses memory without joining", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const arrival = await (await request.post(`${fixture.api}/__test/invitation-arrival`)).json();
+  // Unlike the in-place case, this controlled Client requires the SDK's
+  // documented top-level cookie renewal. The session lifetime is unchanged.
+  await installProviderTransport(page, undefined, {
+    ...fixture.client,
+    cookie_expires_at: Date.now() + 600000,
+  });
+  let touches = 0;
+  let inspections = 0;
+  let accepts = 0;
+  await page.route("https://fixture.clerk.accounts.dev/v1/client/touch?*", async (route) => {
+    const url = new URL(route.request().url());
+    const continuation = new URL(url.searchParams.get("redirect_url") ?? "");
+    expect(continuation.origin).toBe("http://127.0.0.1:3100");
+    expect(continuation.pathname).toBe("/invitations");
+    expect(continuation.hash).toBe("");
+    expect(url.href).not.toContain(arrival.token);
+    expect(JSON.stringify(route.request().headers())).not.toContain(arrival.token);
+    touches++;
+    // Fixed local route only; never reflect an arbitrary provider return URL.
+    await route.fulfill({
+      status: 303,
+      headers: { location: "http://127.0.0.1:3100/invitations", "cache-control": "no-store" },
+      body: "",
+    });
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations/inspect")) inspections++;
+    if (url.pathname.endsWith("/invitations/accept")) accepts++;
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/invitations#${arrival.token}`);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Email address", { exact: true }).fill("local@example.test");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await page.getByLabel("Password", { exact: true }).fill("Local test password9!");
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This invitation is no longer valid. Ask an owner or admin for a new invitation.",
+  );
+  expect(touches).toBe(1);
+  expect(inspections).toBe(0);
+  expect(accepts).toBe(0);
+  expect(new URL(page.url()).pathname).toBe("/invitations");
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify([history.state, localStorage, sessionStorage, document.cookie]),
+    ),
+  ).not.toContain(arrival.token);
+  await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+});
+
 test("invitation-privacy provider failure requires explicit reload before review or acceptance", async ({
   page,
   request,
@@ -55,7 +114,7 @@ test("invitation-privacy Switch account disposes pending inspection before provi
   });
   let inspectionStarted = false;
   let signoutStarted = false;
-  await page.route("https://fixture.clerk.accounts.dev/**/sessions/*/remove*", async (route) => {
+  await page.route("https://fixture.clerk.accounts.dev/v1/client/sessions*", async (route) => {
     signoutStarted = true;
     await signoutGate;
     await route.fallback();
@@ -1947,7 +2006,11 @@ export const installProviderTransport = async (
   };
   await page.route("https://fixture.clerk.accounts.dev/**", async (route) => {
     const url = new URL(route.request().url());
-    if (/\/sessions\/[^/]+\/(?:remove|end)$/.test(url.pathname)) {
+    if (
+      /\/sessions\/[^/]+\/(?:remove|end)$/.test(url.pathname) ||
+      (route.request().method() === "DELETE" &&
+        ["/v1/client/sessions", "/v1/client"].includes(url.pathname))
+    ) {
       client.sessions = [];
       client.last_active_session_id = null;
     }
@@ -2068,6 +2131,14 @@ export const installProviderTransport = async (
       client.sign_up = signUp;
     }
     const sessions = client.sessions as Record<string, unknown>[] | undefined;
+    if (url.pathname.includes("/tokens") && sessions?.[0]) {
+      const protocol = sessions[0].id === "sess_browser_roles" ? "/member-client" : "/client";
+      const refreshed = await page.request.get(`${process.env.FLUX_BROWSER_FIXTURE}${protocol}`);
+      expect(refreshed.status()).toBe(200);
+      const issued = await refreshed.json();
+      expect(issued.client.sessions[0].id).toBe(sessions[0].id);
+      sessions[0].last_active_token = issued.client.sessions[0].last_active_token;
+    }
     const response =
       url.pathname.includes("/tokens") && sessions?.[0]
         ? sessions[0].last_active_token

@@ -153,7 +153,11 @@ func RunBrowserProductFixture(t *testing.T, hold bool,
 			once.Do(func() { close(stop) })
 			w.WriteHeader(http.StatusNoContent)
 		case "/client":
-			_ = json.NewEncoder(w).Encode(map[string]any{"api": api.URL, "token": token, "client": BrowserSessionClient(token)})
+			// Each scenario receives a fresh short-lived token, independently of
+			// the held fixture's total lifetime. Production claims/TTL are unchanged.
+			currentToken := p.Token(t, nil)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"api": api.URL, "token": currentToken, "client": BrowserSessionClient(currentToken)})
 		case "/member-client":
 			memberToken := p.Token(t, map[string]any{"sub": "user_browser_roles", "sid": "sess_browser_roles"})
 			_ = json.NewEncoder(w).Encode(map[string]any{

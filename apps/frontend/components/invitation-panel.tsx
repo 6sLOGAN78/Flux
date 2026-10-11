@@ -28,6 +28,7 @@ export function InvitationPanel({
   const pollUntil = useRef(0);
   const trigger = useRef<HTMLButtonElement>(null);
   const reload = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef<(() => boolean) | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [items, setItems] = useState<InvitationsResponse["items"]>([]);
@@ -45,6 +46,15 @@ export function InvitationPanel({
   const [refreshing, setRefreshing] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (busy || loading || refreshing || !restoreFocus.current) return;
+    const current = restoreFocus.current;
+    restoreFocus.current = null;
+    if (!current()) return;
+    const target = trigger.current;
+    if (target?.isConnected && !target.disabled) target.focus();
+    else reload.current?.focus();
+  }, [busy, loading, refreshing]);
   useEffect(() => {
     onDirty(email !== "" || role !== "member");
   }, [email, role, onDirty]);
@@ -146,6 +156,7 @@ export function InvitationPanel({
     const { item, resend } = confirm;
     setConfirm(null);
     submitting.current = true;
+    restoreFocus.current = null;
     reads.current.clear();
     setRefreshing(false);
     setBusy(true);
@@ -189,13 +200,8 @@ export function InvitationPanel({
     } finally {
       submitting.current = false;
       if (request.current()) {
+        restoreFocus.current = request.current;
         setBusy(false);
-        window.requestAnimationFrame(() => {
-          if (!request.current()) return;
-          const target = trigger.current;
-          if (target?.isConnected && !target.disabled) target.focus();
-          else reload.current?.focus();
-        });
       }
     }
   };
