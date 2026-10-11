@@ -8,6 +8,7 @@ import {
   LinkPages,
   invalidCursor,
   normalizeLinkSearch,
+  LifecycleRequests,
 } from "./links";
 
 describe("link presentation uses safe syntax and exact feedback", () => {
@@ -68,4 +69,21 @@ test("search normalization preserves literal and exact interior query text", () 
   );
   expect(normalizeLinkSearch("a  B")).toBe("a  B");
   expect(normalizeLinkSearch("\ufeffa\ufeff")).toBe("\ufeffa\ufeff");
+});
+
+test("uncertain lifecycle retry retains exact key and decimal payload until deliberate replacement", () => {
+  let serial = 0;
+  const requests = new LifecycleRequests(() => `request-${++serial}`);
+  const first = requests.start("delete", "9007199254740993");
+  expect(requests.retry()).toBe(first);
+  expect(requests.retry()?.body).toEqual({ action: "delete", expectedVersion: "9007199254740993" });
+  expect(serial).toBe(1);
+  const changed = requests.start("restore", "9007199254740994");
+  expect(changed.key).not.toBe(first.key);
+  expect(requests.retry()).toBe(changed);
+  expect(Object.isFrozen(first.body)).toBe(true);
+  expect(Object.isFrozen(first)).toBe(true);
+  requests.clear();
+  expect(requests.retry()).toBeUndefined();
+  expect(requests.start("restore", "9007199254740994").key).not.toBe(changed.key);
 });

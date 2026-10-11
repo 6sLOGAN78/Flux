@@ -59,7 +59,7 @@ test("lifecycle commits disable enable archive restore delete and restored disab
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeVisible();
 });
 
-test("lifecycle conflict requires latest review and capability loss removes actions", async ({
+test("lifecycle-conflict automatically loads authoritative version before explicit review and capability loss", async ({
   page,
   request,
 }) => {
@@ -114,7 +114,14 @@ test("lifecycle conflict requires latest review and capability loss removes acti
   await expect(detail.getByRole("alert")).toHaveText(
     "This link changed since you opened it. Review the latest details before trying again.",
   );
-  await expect(detail.getByRole("button", { name: "Disable link", exact: true })).toBeDisabled();
+  await expect(
+    detail
+      .locator("dt")
+      .filter({ hasText: /^Version$/ })
+      .locator("+ dd"),
+  ).toHaveText("2");
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeDisabled();
+  expect(mutations).toBe(1);
   await detail.getByRole("button", { name: "Review latest details", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeEnabled();
   fail = true;
@@ -143,6 +150,98 @@ test("lifecycle conflict requires latest review and capability loss removes acti
       .last(),
   ).toBeVisible();
   expect(mutations).toBe(3);
+});
+
+test("lifecycle-conflict uncertain committed delete retries identical request and restores from Deleted", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-uncertain-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Uncertain lifecycle tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const result = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": "browser-uncertain-link" },
+    data: { destination: "https://example.com/uncertain", title: "Uncertain lifecycle proof" },
+  });
+  expect(result.status()).toBe(201);
+  const { link } = await result.json();
+  const submissions: { key: string | undefined; body: string | null }[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const transition = url.pathname.endsWith("/transitions");
+    if (transition)
+      submissions.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postData(),
+      });
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (transition && submissions.length === 1) {
+      expect(response.status()).toBe(200);
+      await route.abort("failed");
+    } else await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
+  const detail = page.getByRole("region", { name: "Link details", exact: true });
+  for (const action of ["Archive", "Delete"]) {
+    const trigger = detail.getByRole("button", { name: `${action} link`, exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("button", { name: "Keep link", exact: true })).toBeFocused();
+    await expect(dialog).toContainText(
+      action === "Archive"
+        ? "Restoring this link will leave it disabled."
+        : "This link moves to Deleted. Its short key stays reserved. You can restore it as disabled.",
+    );
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  }
+  expect(submissions).toHaveLength(0);
+  await detail.getByRole("button", { name: "Delete link", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete link", exact: true }).click();
+  await expect(
+    detail.getByRole("button", { name: "Retry identical change", exact: true }),
+  ).toBeFocused();
+  expect(submissions).toHaveLength(1);
+  await expect(detail.getByRole("button", { name: "Delete link", exact: true })).toBeDisabled();
+  await detail.getByRole("button", { name: "Retry identical change", exact: true }).click();
+  await expect(detail.getByRole("status")).toHaveText("Link updated.");
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]).toEqual(submissions[0]);
+  await expect(
+    detail
+      .locator("dt")
+      .filter({ hasText: /^Version$/ })
+      .locator("+ dd"),
+  ).toHaveText("2");
+  await page.goto(`/workspaces/${workspace.id}/links`);
+  await expect(
+    page.getByRole("link", { name: "Uncertain lifecycle proof", exact: true }),
+  ).toHaveCount(0);
+  await page.getByLabel("Lifecycle", { exact: true }).selectOption("deleted");
+  await page.getByRole("link", { name: "Uncertain lifecycle proof", exact: true }).click();
+  await detail.getByRole("button", { name: "Restore link", exact: true }).click();
+  await expect(detail.getByRole("status")).toHaveText("Link updated.");
+  expect(submissions).toHaveLength(3);
+  expect(submissions[2]?.key).not.toBe(submissions[0]?.key);
+  await expect(
+    detail
+      .locator("dt")
+      .filter({ hasText: /^Lifecycle$/ })
+      .locator("+ dd"),
+  ).toHaveText("disabled");
+  await expect(detail).toContainText(link.shortUrl);
+  await expect(detail).toContainText(link.creator.email);
 });
 
 test("invitation-privacy native Client touch navigation safely loses memory without joining", async ({

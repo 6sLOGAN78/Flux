@@ -2096,6 +2096,13 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.NoError(t, <-requestErrors)
 		require.NoError(t, <-requestErrors)
 		require.ElementsMatch(t, []int{200, 409}, got)
+		var version, audits, ledgers int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT version FROM links WHERE workspace_id=$1 AND id=$2", w, item["id"]).Scan(&version))
+		require.Equal(t, 2, version)
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", w, item["id"]).Scan(&audits))
+		require.Equal(t, 1, audits)
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND operation='link.transition' AND result->>'id'=$2", w, item["id"]).Scan(&ledgers))
+		require.Equal(t, 1, ledgers)
 	})
 	t.Run("suspension-and-bigint", func(t *testing.T) {
 		item := newLink()
@@ -2168,6 +2175,67 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.Error(t, err, "24 hour replay window cannot be shortened")
 		code, _ = workspaceRequest(t, api, token, "POST", path, uuid.NewString(), `{"destination":"https://example.com/other","customKey":"`+strings.TrimPrefix(item["shortUrl"].(string), "https://go.flux.test/")+`"}`)
 		require.Equal(t, 409, code, "deleted key stays reserved")
+	})
+	t.Run("ledger-and-deferred-commit-rollback-preserve-identical-retry", func(t *testing.T) {
+		item := newLink()
+		id := item["id"].(string)
+		url := path + "/" + id + "/transitions"
+		for _, deferred := range []bool{false, true} {
+			key := uuid.NewString()
+			if deferred {
+				_, err := db.Pool.Exec(ctx, "CREATE FUNCTION lifecycle_reject_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$; CREATE CONSTRAINT TRIGGER lifecycle_reject_commit AFTER UPDATE ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION lifecycle_reject_commit()")
+				require.NoError(t, err)
+			} else {
+				_, err := db.Pool.Exec(ctx, "ALTER TABLE mutation_requests ADD CONSTRAINT lifecycle_reject_ledger CHECK(request_key <> '"+key+"')")
+				require.NoError(t, err)
+			}
+			code, _ := workspaceRequest(t, api, token, "POST", url, key, `{"action":"delete","expectedVersion":"1"}`)
+			require.Equal(t, 503, code)
+			if deferred {
+				_, err := db.Pool.Exec(ctx, "DROP TRIGGER lifecycle_reject_commit ON links; DROP FUNCTION lifecycle_reject_commit()")
+				require.NoError(t, err)
+			} else {
+				_, err := db.Pool.Exec(ctx, "ALTER TABLE mutation_requests DROP CONSTRAINT lifecycle_reject_ledger")
+				require.NoError(t, err)
+			}
+			code, fresh := workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
+			require.Equal(t, 200, code)
+			require.Equal(t, item, fresh["link"])
+			var count int
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", w, id).Scan(&count))
+			require.Zero(t, count)
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key=$2", w, key).Scan(&count))
+			require.Zero(t, count)
+		}
+	})
+	t.Run("deleted-filter-restore-retains-creator-and-reservation", func(t *testing.T) {
+		item := newLink()
+		id := item["id"].(string)
+		url := path + "/" + id + "/transitions"
+		key := uuid.NewString()
+		body := `{"action":"delete","expectedVersion":"1"}`
+		code, deleted := workspaceRequest(t, api, token, "POST", url, key, body)
+		require.Equal(t, 200, code)
+		code, replay := workspaceRequest(t, api, token, "POST", url, key, body)
+		require.Equal(t, 200, code)
+		require.Equal(t, deleted, replay)
+		for _, filter := range []string{"", "?state=deleted"} {
+			code, listed := workspaceRequest(t, api, token, "GET", path+filter, "", "")
+			require.Equal(t, 200, code)
+			found := false
+			for _, row := range listed["items"].([]any) {
+				if row.(map[string]any)["id"] == id {
+					found = true
+				}
+			}
+			require.Equal(t, filter != "", found)
+		}
+		code, restored := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"restore","expectedVersion":"2"}`)
+		require.Equal(t, 200, code)
+		require.Equal(t, "disabled", restored["link"].(map[string]any)["lifecycle"])
+		require.Equal(t, "3", restored["link"].(map[string]any)["version"])
+		require.Equal(t, item["creator"], restored["link"].(map[string]any)["creator"])
+		require.Equal(t, item["shortUrl"], restored["link"].(map[string]any)["shortUrl"])
 	})
 	id := link["id"].(string)
 	url := path + "/" + id + "/transitions"
