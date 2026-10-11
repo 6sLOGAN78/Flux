@@ -229,6 +229,9 @@ func TestProductActualHTTP(t *testing.T) {
 	api := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, p))
 	defer api.Close()
 	token := p.token(t, nil)
+	t.Run("lifecycle", func(t *testing.T) {
+		checkLifecycle(t, api.URL, db, p)
+	})
 	t.Run("session-mutation-boundary", func(t *testing.T) {
 		cfg := *db.Config
 		cfg.Server.CORSAllowedOrigins = []string{fixtureParty}
@@ -1989,6 +1992,164 @@ func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	require.NoError(t, err)
 	code, _ = workspaceRequest(t, api, token, "POST", paths[0], "custom-create-0001", payload)
 	require.Equal(t, 404, code, "revoked actor cannot replay custom-key outcome")
+}
+
+func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_lifecycle", "sid": "sess_user_lifecycle"})
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", uuid.NewString(), `{"name":"Lifecycle tenant"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + w + "/links"
+	newLink := func() map[string]any {
+		code, result := workspaceRequest(t, api, token, "POST", path, uuid.NewString(), `{"destination":"https://example.com/lifecycle","title":"Lifecycle proof"}`)
+		require.Equal(t, 201, code)
+		return result["link"].(map[string]any)
+	}
+	for _, state := range []string{"active", "disabled", "archived", "deleted"} {
+		for _, action := range []string{"enable", "disable", "archive", "restore", "delete"} {
+			t.Run(state+"-"+action, func(t *testing.T) {
+				link := newLink()
+				id := link["id"].(string)
+				_, err := db.Pool.Exec(ctx, "UPDATE links SET lifecycle=$3 WHERE workspace_id=$1 AND id=$2", w, id, state)
+				require.NoError(t, err)
+				code, result := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"`+action+`","expectedVersion":"1"}`)
+				next := ""
+				switch {
+				case state == "active" && action == "disable":
+					next = "disabled"
+				case state == "disabled" && action == "enable":
+					next = "active"
+				case (state == "active" || state == "disabled") && action == "archive":
+					next = "archived"
+				case (state == "archived" || state == "deleted") && action == "restore":
+					next = "disabled"
+				case state != "deleted" && action == "delete":
+					next = "deleted"
+				}
+				if next == "" {
+					require.Equal(t, 409, code)
+					require.Equal(t, "INVALID_TRANSITION", result["code"])
+				} else {
+					require.Equal(t, 200, code)
+					require.Equal(t, next, result["link"].(map[string]any)["lifecycle"])
+					require.Equal(t, "2", result["link"].(map[string]any)["version"])
+				}
+			})
+		}
+	}
+	link := newLink()
+	t.Run("concurrent-one-version-winner", func(t *testing.T) {
+		item := newLink()
+		url := path + "/" + item["id"].(string) + "/transitions"
+		codes := make(chan int, 2)
+		for range 2 {
+			go func() {
+				code, _ := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"disable","expectedVersion":"1"}`)
+				codes <- code
+			}()
+		}
+		got := []int{<-codes, <-codes}
+		require.ElementsMatch(t, []int{200, 409}, got)
+	})
+	t.Run("suspension-and-bigint", func(t *testing.T) {
+		item := newLink()
+		id := item["id"].(string)
+		_, err := db.Pool.Exec(ctx, "UPDATE links SET lifecycle='disabled',version=9007199254740993,suspended_at=now(),suspended_by=creator_user_id,suspension_reason='Protected reason' WHERE workspace_id=$1 AND id=$2", w, id)
+		require.NoError(t, err)
+		url := path + "/" + id + "/transitions"
+		code, denied := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"enable","expectedVersion":"9007199254740993"}`)
+		require.Equal(t, 409, code)
+		require.Equal(t, "SUSPENDED", denied["code"])
+		code, result := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"archive","expectedVersion":"9007199254740993"}`)
+		require.Equal(t, 200, code)
+		require.Equal(t, "9007199254740994", result["link"].(map[string]any)["version"])
+		require.NotNil(t, result["link"].(map[string]any)["suspension"])
+		_, err = db.Pool.Exec(ctx, "UPDATE links SET version=9223372036854775807 WHERE workspace_id=$1 AND id=$2", w, id)
+		require.NoError(t, err)
+		code, result = workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"restore","expectedVersion":"9223372036854775807"}`)
+		require.Equal(t, 409, code)
+		require.Equal(t, "VERSION_CONFLICT", result["code"])
+	})
+	t.Run("roles-and-foreign", func(t *testing.T) {
+		item := newLink()
+		id := item["id"].(string)
+		for _, role := range []string{"owner", "admin", "member", "viewer"} {
+			_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role=$2 WHERE workspace_id=$1", w, role)
+			require.NoError(t, err)
+			_, err = db.Pool.Exec(ctx, "UPDATE links SET lifecycle='active',version=1 WHERE workspace_id=$1 AND id=$2", w, id)
+			require.NoError(t, err)
+			code, _ := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"disable","expectedVersion":"1"}`)
+			if role == "viewer" {
+				require.Equal(t, 403, code)
+			} else {
+				require.Equal(t, 200, code)
+			}
+		}
+		_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='owner' WHERE workspace_id=$1", w)
+		require.NoError(t, err)
+		for _, url := range []string{path + "/" + uuid.NewString() + "/transitions", "/workspaces/" + uuid.NewString() + "/links/" + id + "/transitions"} {
+			code, _ := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"disable","expectedVersion":"1"}`)
+			require.Equal(t, 404, code)
+		}
+	})
+	t.Run("audit-ledger-effect-atomic-reservation", func(t *testing.T) {
+		item := newLink()
+		id := item["id"].(string)
+		url := path + "/" + id + "/transitions"
+		_, err := db.Pool.Exec(ctx, "CREATE FUNCTION lifecycle_reject_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.operation LIKE 'link.%' THEN RAISE EXCEPTION 'fixture'; END IF; RETURN NEW; END $$; CREATE TRIGGER lifecycle_reject_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION lifecycle_reject_audit()")
+		require.NoError(t, err)
+		code, _ := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"delete","expectedVersion":"1"}`)
+		require.Equal(t, 503, code)
+		_, err = db.Pool.Exec(ctx, "DROP TRIGGER lifecycle_reject_audit ON audit_events; DROP FUNCTION lifecycle_reject_audit()")
+		require.NoError(t, err)
+		code, fresh := workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
+		require.Equal(t, 200, code)
+		require.Equal(t, item, fresh["link"])
+		key := uuid.NewString()
+		code, _ = workspaceRequest(t, api, token, "POST", url, key, `{"action":"delete","expectedVersion":"1"}`)
+		require.Equal(t, 200, code)
+		code, _ = workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
+		require.Equal(t, 200, code, "deleted detail remains restorable")
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2 AND operation='link.delete' AND actor_id IS NOT NULL AND created_at IS NOT NULL", w, id).Scan(&count))
+		require.Equal(t, 1, count)
+		_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='tampered' WHERE workspace_id=$1", w)
+		require.Error(t, err)
+		_, err = db.Pool.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND request_key=$2", w, key)
+		require.Error(t, err, "24 hour replay is protected")
+		code, _ = workspaceRequest(t, api, token, "POST", path, uuid.NewString(), `{"destination":"https://example.com/other","customKey":"`+strings.TrimPrefix(item["shortUrl"].(string), "https://go.flux.test/")+`"}`)
+		require.Equal(t, 409, code, "deleted key stays reserved")
+	})
+	id := link["id"].(string)
+	url := path + "/" + id + "/transitions"
+	body := `{"action":"disable","expectedVersion":"1"}`
+	key := uuid.NewString()
+	status, effect := workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 200, status)
+	status, replay := workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 200, status)
+	require.Equal(t, effect, replay)
+	status, result := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), body)
+	require.Equal(t, 409, status)
+	require.Equal(t, "VERSION_CONFLICT", result["code"])
+	status, _ = workspaceRequest(t, api, token, "POST", url, key, `{"action":"enable","expectedVersion":"2"}`)
+	require.Equal(t, 409, status)
+	status, _ = workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"enable"}`)
+	require.Equal(t, 428, status)
+	for _, invalid := range []string{`null`, `{"action":"enable","expectedVersion":null}`, `{"action":"enable","expectedVersion":1}`, `{"action":"enable","expectedVersion":"01"}`, `{"action":"enable","expectedVersion":"9223372036854775808"}`, `{"action":"unknown","expectedVersion":"2"}`, `{"action":"enable","expectedVersion":"2","title":"edited"}`} {
+		status, _ = workspaceRequest(t, api, token, "POST", url, uuid.NewString(), invalid)
+		require.Equal(t, 400, status)
+	}
+	_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='viewer' WHERE workspace_id=$1", w)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 403, status)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", w)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 404, status)
 }
 
 func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
