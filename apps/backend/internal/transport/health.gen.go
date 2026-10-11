@@ -243,6 +243,33 @@ func (e TransportLinkLifecycle) Valid() bool {
 	}
 }
 
+// Defines values for TransportLinkTransitionRequestAction.
+const (
+	LinkArchive TransportLinkTransitionRequestAction = "archive"
+	LinkDelete  TransportLinkTransitionRequestAction = "delete"
+	LinkDisable TransportLinkTransitionRequestAction = "disable"
+	LinkEnable  TransportLinkTransitionRequestAction = "enable"
+	LinkRestore TransportLinkTransitionRequestAction = "restore"
+)
+
+// Valid indicates whether the value is a known member of the TransportLinkTransitionRequestAction enum.
+func (e TransportLinkTransitionRequestAction) Valid() bool {
+	switch e {
+	case LinkArchive:
+		return true
+	case LinkDelete:
+		return true
+	case LinkDisable:
+		return true
+	case LinkEnable:
+		return true
+	case LinkRestore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransportMemberResponseActorRole.
 const (
 	CapabilityAdmin  TransportMemberResponseActorRole = "admin"
@@ -520,6 +547,15 @@ type TransportLinkSuspension struct {
 	Reason  string `json:"reason"`
 }
 
+// TransportLinkTransitionRequest defines model for transport.LinkTransitionRequest.
+type TransportLinkTransitionRequest struct {
+	Action          TransportLinkTransitionRequestAction `json:"action"`
+	ExpectedVersion *string                              `json:"expectedVersion,omitempty"`
+}
+
+// TransportLinkTransitionRequestAction defines model for TransportLinkTransitionRequest.Action.
+type TransportLinkTransitionRequestAction string
+
 // TransportLinksResponse defines model for transport.LinksResponse.
 type TransportLinksResponse struct {
 	Items []TransportLink `json:"items"`
@@ -641,6 +677,11 @@ type CreateLinkParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
 
+// TransitionLinkParams defines parameters for TransitionLink.
+type TransitionLinkParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // ListMembersParams defines parameters for ListMembers.
 type ListMembersParams struct {
 	After *string `form:"after,omitempty" json:"after,omitempty"`
@@ -679,6 +720,9 @@ type ResendInvitationJSONRequestBody = TransportInvitationMutationRequest
 
 // CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
 type CreateLinkJSONRequestBody = TransportCreateLinkRequest
+
+// TransitionLinkJSONRequestBody defines body for TransitionLink for application/json ContentType.
+type TransitionLinkJSONRequestBody = TransportLinkTransitionRequest
 
 // RemoveMemberJSONRequestBody defines body for RemoveMember for application/json ContentType.
 type RemoveMemberJSONRequestBody = TransportRemoveMemberRequest

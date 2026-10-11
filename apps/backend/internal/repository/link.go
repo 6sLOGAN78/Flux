@@ -55,6 +55,95 @@ func NewLinkRepositoryWithRandom(pool *pgxpool.Pool, random io.Reader) *LinkRepo
 // LinkAuthorize runs inside the effect transaction before any replay or link read.
 type LinkAuthorize func(context.Context, pgx.Tx, Scope) error
 
+// Transition holds current actor authority and the scoped link row through the
+// versioned effect, immutable audit and exact committed replay snapshot.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *LinkRepository) Transition(ctx context.Context, scope Scope, id uuid.UUID,
+	version int64, action, key string, hash []byte, authorize LinkAuthorize,
+	apply func(Link) (string, error),
+) (result Link, err error) {
+	if r == nil || r.pool == nil || authorize == nil || apply == nil {
+		return result, errors.New("link store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	if err = authorize(ctx, tx, scope); err != nil {
+		return result, err
+	}
+	var locked uuid.UUID
+	if err = tx.QueryRow(ctx, "SELECT id FROM links WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
+		scope.WorkspaceID, id).Scan(&locked); err != nil {
+		return result, err
+	}
+	operation := "link.transition"
+	if _, err = tx.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND retain_until < now()", scope.WorkspaceID, scope.ActorID, operation); err != nil {
+		return result, err
+	}
+	var storedHash, snapshot []byte
+	err = tx.QueryRow(ctx, "SELECT request_hash,result FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND request_key=$4", scope.WorkspaceID, scope.ActorID, operation, key).Scan(&storedHash, &snapshot)
+	switch {
+	case err == nil:
+		if err = matchRequest(hash, storedHash); err != nil {
+			return result, err
+		}
+		if err = json.Unmarshal(snapshot, &result); err != nil {
+			return Link{}, err
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		result, err = applyLinkTransition(ctx, tx, scope, id, version, action, apply)
+		if err != nil {
+			return Link{}, err
+		}
+		snapshot, err = json.Marshal(result)
+		if err != nil {
+			return Link{}, err
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO mutation_requests "+
+			"(workspace_id,actor_id,operation,request_key,request_hash,result) "+
+			"VALUES($1,$2,$3,$4,$5,$6)", scope.WorkspaceID, scope.ActorID, operation, key, hash, snapshot)
+		if err != nil {
+			return Link{}, err
+		}
+	default:
+		return Link{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Link{}, err
+	}
+	return result, nil
+}
+
+func applyLinkTransition(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID,
+	version int64, action string, apply func(Link) (string, error),
+) (Link, error) {
+	link, err := readLink(ctx, tx, scope, id)
+	if err != nil {
+		return Link{}, err
+	}
+	next, err := apply(link)
+	if err != nil {
+		return Link{}, err
+	}
+	changed, err := tx.Exec(ctx, "UPDATE links SET lifecycle=$4,version=version+1,updated_at=clock_timestamp() "+
+		"WHERE workspace_id=$1 AND id=$2 AND version=$3", scope.WorkspaceID, id, version, next)
+	if err != nil {
+		return Link{}, err
+	}
+	if changed.RowsAffected() != 1 {
+		return Link{}, errors.New("locked link version changed")
+	}
+	if err = recordLinkAudit(ctx, tx, scope, id, action); err != nil {
+		return Link{}, err
+	}
+	return readLink(ctx, tx, scope, id)
+}
+
 // ErrLinkKeyUnavailable hides global key ownership from callers.
 var ErrLinkKeyUnavailable = errors.New("link key unavailable")
 

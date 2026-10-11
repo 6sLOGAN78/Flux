@@ -625,6 +625,37 @@
         "title": "transport.LinkSuspension",
         "type": "object"
       },
+      "transport.LinkTransitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "enable",
+              "disable",
+              "archive",
+              "restore",
+              "delete"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "LinkEnable",
+              "LinkDisable",
+              "LinkArchive",
+              "LinkRestore",
+              "LinkDelete"
+            ]
+          },
+          "expectedVersion": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "transport.LinkTransitionRequest",
+        "type": "object"
+      },
       "transport.LinksResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2501,6 +2532,152 @@
           }
         ],
         "summary": "Inspect a freshly authorized scoped link",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/links/{linkId}/transitions": {
+      "post": {
+        "description": "Fresh SQL write capability under workspace, actor membership and scoped link locks precedes all replay hashes. Closed enable/disable/archive/restore/delete actions; required positive BIGINT expectedVersion decimal string (missing 428 PRECONDITION_REQUIRED, stale or exhausted 409 VERSION_CONFLICT). Invalid edges return 409 INVALID_TRANSITION; suspended enable returns 409 SUSPENDED. Restore archived/deleted to disabled. Other transitions preserve suspension. Soft deletion retains global host/key reservation forever. Canonical target/action/version hash, actor-scoped 24-hour ledger, one version increment and immutable actor/action/time audit commit atomically. Matching authorized retries return the original committed snapshot. Bearer, exact Origin, strict JSON and no-store apply. No destination/title editing or routing claims.",
+        "operationId": "transitionLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "linkId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.LinkTransitionRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.LinkResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "428"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Apply a versioned scoped link lifecycle transition",
         "tags": [
           "Identity"
         ]

@@ -289,6 +289,30 @@ export const ZLinkResponse = extendApi(z.object({ link: ZLink }).strict(), {
 });
 export type LinkResponse = z.infer<typeof ZLinkResponse>;
 
+export const ZLinkTransitionRequest = extendApi(
+  z
+    .object({
+      action: extendApi(z.enum(["enable", "disable", "archive", "restore", "delete"]), {
+        "x-enum-varnames": [
+          "LinkEnable",
+          "LinkDisable",
+          "LinkArchive",
+          "LinkRestore",
+          "LinkDelete",
+        ],
+      }),
+      expectedVersion: z
+        .string()
+        .regex(/^[1-9][0-9]{0,18}$/)
+        .refine(
+          (value) => /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n,
+        )
+        .optional(),
+    })
+    .strict(),
+  { title: "transport.LinkTransitionRequest" },
+);
+
 export const ZLinksResponse = extendApi(
   z
     .object({

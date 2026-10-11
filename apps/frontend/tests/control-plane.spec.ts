@@ -59,6 +59,92 @@ test("lifecycle commits disable enable archive restore delete and restored disab
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeVisible();
 });
 
+test("lifecycle conflict requires latest review and capability loss removes actions", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-lifecycle-conflict-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Lifecycle conflict tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const result = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": "browser-lifecycle-conflict-link" },
+    data: { destination: "https://example.com/lifecycle", title: "Lifecycle conflict proof" },
+  });
+  expect(result.status()).toBe(201);
+  const { link } = await result.json();
+  let mutations = 0;
+  let fail = false;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/transitions")) {
+      mutations++;
+      if (fail) {
+        await route.fulfill({
+          status: 503,
+          json: { status: 503, code: "SERVICE_UNAVAILABLE", message: "PRIVATE-MARKER" },
+        });
+        return;
+      }
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
+  const detail = page.getByRole("region", { name: "Link details", exact: true });
+  await expect(detail.getByRole("button", { name: "Disable link", exact: true })).toBeEnabled();
+  const competing = await request.post(
+    `${fixture.api}/api/v1/workspaces/${workspace.id}/links/${link.id}/transitions`,
+    {
+      headers: { ...headers, "Idempotency-Key": "browser-lifecycle-competing" },
+      data: { action: "disable", expectedVersion: "1" },
+    },
+  );
+  expect(competing.status()).toBe(200);
+  await detail.getByRole("button", { name: "Disable link", exact: true }).click();
+  await expect(detail.getByRole("alert")).toHaveText(
+    "This link changed since you opened it. Review the latest details before trying again.",
+  );
+  await expect(detail.getByRole("button", { name: "Disable link", exact: true })).toBeDisabled();
+  await detail.getByRole("button", { name: "Review latest details", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeEnabled();
+  fail = true;
+  await detail.getByRole("button", { name: "Enable link", exact: true }).click();
+  await expect(detail.getByRole("alert")).toHaveText("We couldn't save this change. Try again.");
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeDisabled();
+  expect(mutations).toBe(2);
+  await expect(detail).not.toContainText("PRIVATE-MARKER");
+  fail = false;
+  await detail.getByRole("button", { name: "Review latest details", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeEnabled();
+  expect(
+    (
+      await request.post(
+        `${process.env.FLUX_BROWSER_FIXTURE}/restore-role?workspace=${workspace.id}&role=viewer`,
+      )
+    ).status(),
+  ).toBe(204);
+  await detail.getByRole("button", { name: "Enable link", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toHaveCount(0);
+  await expect(
+    detail
+      .getByText("You have view-only access. Ask an owner or admin to change your role.", {
+        exact: true,
+      })
+      .last(),
+  ).toBeVisible();
+  expect(mutations).toBe(3);
+});
+
 test("invitation-privacy native Client touch navigation safely loses memory without joining", async ({
   page,
   request,

@@ -142,7 +142,7 @@ func (s *LinkService) List(ctx context.Context, scope repository.Scope, limit in
 		state = "nondeleted"
 	}
 	switch state {
-	case "nondeleted", "active", "disabled", "archived", "deleted":
+	case "nondeleted", linkActive, linkDisabled, linkArchived, linkDeleted:
 	default:
 		return nil, nil, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}

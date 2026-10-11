@@ -229,9 +229,6 @@ func TestProductActualHTTP(t *testing.T) {
 	api := httptest.NewServer(productRouter(db.Config, &database.Database{Pool: db.Pool}, p))
 	defer api.Close()
 	token := p.token(t, nil)
-	t.Run("lifecycle", func(t *testing.T) {
-		checkLifecycle(t, api.URL, db, p)
-	})
 	t.Run("session-mutation-boundary", func(t *testing.T) {
 		cfg := *db.Config
 		cfg.Server.CORSAllowedOrigins = []string{fixtureParty}
@@ -447,6 +444,9 @@ func TestProductActualHTTP(t *testing.T) {
 
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
+	})
+	t.Run("lifecycle", func(t *testing.T) {
+		checkLifecycle(t, api.URL, db, p)
 	})
 }
 
@@ -1994,6 +1994,7 @@ func checkCustomKey(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	require.Equal(t, 404, code, "revoked actor cannot replay custom-key outcome")
 }
 
+//nolint:gocognit // Exhaustive actual-HTTP matrix keeps scoped fixture setup together.
 func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
 	t.Helper()
 	ctx := context.Background()
@@ -2040,17 +2041,60 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		}
 	}
 	link := newLink()
+	t.Run("foreign-existing-resources-deny-without-effects", func(t *testing.T) {
+		other := p.token(t, map[string]any{"sub": "user_lifecycle_foreign", "sid": "sess_user_lifecycle_foreign"})
+		code, foreignCreated := workspaceRequest(t, api, other, "POST", "/workspaces", uuid.NewString(), `{"name":"Foreign lifecycle tenant"}`)
+		require.Equal(t, 201, code)
+		foreignWorkspace := foreignCreated["workspace"].(map[string]any)["id"].(string)
+		foreignPath := "/workspaces/" + foreignWorkspace + "/links"
+		code, foreignCreated = workspaceRequest(t, api, other, "POST", foreignPath, uuid.NewString(), `{"destination":"https://example.com/foreign"}`)
+		require.Equal(t, 201, code)
+		foreign := foreignCreated["link"].(map[string]any)
+		foreignID := foreign["id"].(string)
+		for _, url := range []string{path + "/" + foreignID + "/transitions", foreignPath + "/" + foreignID + "/transitions"} {
+			code, _ = workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"delete","expectedVersion":"1"}`)
+			require.Equal(t, 404, code)
+		}
+		code, unchanged := workspaceRequest(t, api, other, "GET", foreignPath+"/"+foreignID, "", "")
+		require.Equal(t, 200, code)
+		require.Equal(t, foreign, unchanged["link"])
+		var effects int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1", foreignWorkspace).Scan(&effects))
+		require.Zero(t, effects)
+	})
 	t.Run("concurrent-one-version-winner", func(t *testing.T) {
 		item := newLink()
 		url := path + "/" + item["id"].(string) + "/transitions"
 		codes := make(chan int, 2)
+		requestErrors := make(chan error, 2)
 		for range 2 {
 			go func() {
-				code, _ := workspaceRequest(t, api, token, "POST", url, uuid.NewString(), `{"action":"disable","expectedVersion":"1"}`)
-				codes <- code
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, api+"/api/v1"+url,
+					strings.NewReader(`{"action":"disable","expectedVersion":"1"}`))
+				if err != nil {
+					requestErrors <- err
+					codes <- 0
+					return
+				}
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Origin", fixtureParty)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Idempotency-Key", uuid.NewString())
+				response, err := http.DefaultClient.Do(req)
+				if err != nil {
+					requestErrors <- err
+					codes <- 0
+					return
+				}
+				_, copyErr := io.Copy(io.Discard, response.Body)
+				closeErr := response.Body.Close()
+				requestErrors <- errors.Join(copyErr, closeErr)
+				codes <- response.StatusCode
 			}()
 		}
 		got := []int{<-codes, <-codes}
+		require.NoError(t, <-requestErrors)
+		require.NoError(t, <-requestErrors)
 		require.ElementsMatch(t, []int{200, 409}, got)
 	})
 	t.Run("suspension-and-bigint", func(t *testing.T) {
@@ -2117,8 +2161,11 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.Equal(t, 1, count)
 		_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='tampered' WHERE workspace_id=$1", w)
 		require.Error(t, err)
-		_, err = db.Pool.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND request_key=$2", w, key)
-		require.Error(t, err, "24 hour replay is protected")
+		var retained bool
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT retain_until>=created_at+interval '24 hours' FROM mutation_requests WHERE workspace_id=$1 AND operation='link.transition' AND request_key=$2", w, key).Scan(&retained))
+		require.True(t, retained)
+		_, err = db.Pool.Exec(ctx, "UPDATE mutation_requests SET retain_until=created_at WHERE workspace_id=$1 AND request_key=$2", w, key)
+		require.Error(t, err, "24 hour replay window cannot be shortened")
 		code, _ = workspaceRequest(t, api, token, "POST", path, uuid.NewString(), `{"destination":"https://example.com/other","customKey":"`+strings.TrimPrefix(item["shortUrl"].(string), "https://go.flux.test/")+`"}`)
 		require.Equal(t, 409, code, "deleted key stays reserved")
 	})

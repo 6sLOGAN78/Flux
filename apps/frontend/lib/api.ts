@@ -24,7 +24,11 @@ export class ApiError extends Error {
       | "INVALID_CUSTOM_KEY"
       | "CURSOR_INVALID"
       | "OWNER_REQUIRED"
-      | "INVITATION_PENDING",
+      | "INVITATION_PENDING"
+      | "VERSION_CONFLICT"
+      | "PRECONDITION_REQUIRED"
+      | "INVALID_TRANSITION"
+      | "SUSPENDED",
   ) {
     super(messages[code]);
     this.name = "ApiError";
@@ -140,7 +144,11 @@ export const createAPI = (getToken: () => Promise<string | null>, options: APIOp
                       (code === "KEY_UNAVAILABLE" ||
                         code === "REQUEST_REUSE_CONFLICT" ||
                         code === "OWNER_REQUIRED" ||
-                        code === "INVITATION_PENDING")) ||
+                        code === "INVITATION_PENDING" ||
+                        code === "VERSION_CONFLICT" ||
+                        code === "INVALID_TRANSITION" ||
+                        code === "SUSPENDED")) ||
+                    (response.status === 428 && code === "PRECONDITION_REQUIRED") ||
                     (response.status === 400 &&
                       (code === "INVALID_CUSTOM_KEY" || code === "CURSOR_INVALID"))
                   )

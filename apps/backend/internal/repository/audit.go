@@ -7,6 +7,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// recordLinkAudit records the exact lifecycle verb with durable scoped provenance.
+func recordLinkAudit(ctx context.Context, tx pgx.Tx, scope Scope, link uuid.UUID, action string) error {
+	_, err := tx.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation,target_link_id) "+
+		"VALUES($1,$2,$3,$4)", scope.WorkspaceID, scope.ActorID, "link."+action, link)
+	return err
+}
+
 // recordInvitationAudit binds durable actor and scoped invitation atomically.
 func recordInvitationAudit(ctx context.Context, tx pgx.Tx, scope Scope, invitation uuid.UUID) error {
 	_, err := tx.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation,target_invitation_id) "+

@@ -516,6 +516,53 @@ func (h *ProductHandler) LinkDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, transport.TransportLinkResponse{Link: linkTransport(item)})
 }
 
+// TransitionLink accepts only the canonical lifecycle body and exact precondition.
+func (h *ProductHandler) TransitionLink(c echo.Context) error {
+	scope, err := h.linkScope(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("linkId"))
+	if err != nil || id == uuid.Nil || id.String() != c.Param("linkId") {
+		return errs.NewNotFoundError("Link not found", false, nil)
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var fields map[string]json.RawMessage
+	decoder := json.NewDecoder(c.Request().Body)
+	if err = decoder.Decode(&fields); err != nil || fields == nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	for name, value := range fields {
+		if (name != "action" && name != "expectedVersion") || string(value) == "null" {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var body transport.TransportLinkTransitionRequest
+	if err = json.Unmarshal(payload, &body); err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if body.ExpectedVersion == nil {
+		return &errs.HTTPError{Code: "PRECONDITION_REQUIRED", Status: http.StatusPreconditionRequired,
+			Message: "We couldn't verify the latest version. Reload this link before trying again."}
+	}
+	item, err := h.links.Transition(c.Request().Context(), scope, id, string(body.Action),
+		*body.ExpectedVersion, c.Request().Header.Get("Idempotency-Key"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportLinkResponse{Link: linkTransport(item)})
+}
+
 func linkTransport(item repository.Link) transport.TransportLink {
 	result := transport.TransportLink{Id: item.ID.String(), WorkspaceId: item.WorkspaceID.String(),
 		ShortUrl: "https://" + item.Host + "/" + item.Key, Destination: item.Destination, Title: item.Title,

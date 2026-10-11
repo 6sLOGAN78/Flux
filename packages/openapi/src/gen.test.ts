@@ -110,6 +110,25 @@ test("health schemas accept coarse states and reject diagnostic fields", () => {
   );
 });
 
+test("lifecycle canonical request keeps BIGINT exact and rejects malformed or unknown input", () => {
+  const schema = (schemas as unknown as Record<string, ZodType>).ZLinkTransitionRequest;
+  assert.ok(schema);
+  for (const action of ["enable", "disable", "archive", "restore", "delete"]) {
+    assert.equal(
+      schema.safeParse({ action, expectedVersion: "9223372036854775807" }).success,
+      true,
+    );
+  }
+  for (const expectedVersion of [null, 1, "0", "01", "-1", "bad", "", "9223372036854775808"]) {
+    assert.equal(schema.safeParse({ action: "enable", expectedVersion }).success, false);
+  }
+  assert.equal(schema.safeParse({ action: "edit", expectedVersion: "1" }).success, false);
+  assert.equal(
+    schema.safeParse({ action: "enable", expectedVersion: "1", title: "edited" }).success,
+    false,
+  );
+});
+
 test("identity schema requires a strict internal UUID and verified email response", () => {
   const identity = (schemas as unknown as Record<string, ZodType>).ZIdentityResponse;
   assert.ok(identity);
@@ -147,6 +166,7 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     "/api/v1/workspaces/{workspaceId}/invitations/{invitationId}/resend",
     "/api/v1/workspaces/{workspaceId}/links",
     "/api/v1/workspaces/{workspaceId}/links/{linkId}",
+    "/api/v1/workspaces/{workspaceId}/links/{linkId}/transitions",
     "/api/v1/workspaces/{workspaceId}/members",
     "/api/v1/workspaces/{workspaceId}/members/{memberId}",
     "/live",
@@ -185,6 +205,12 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     ),
   );
   const getLink = document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}"].get;
+  const transition =
+    document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}/transitions"].post;
+  assert.deepEqual(transition.security, [{ bearerAuth: [] }]);
+  for (const status of ["200", "400", "401", "403", "404", "409", "428", "429", "503"]) {
+    assert.ok(transition.responses[status]);
+  }
   assert.deepEqual(getLink.security, [{ bearerAuth: [] }]);
   assert.ok(getLink.responses["200"]);
   assert.ok(getLink.responses["404"]);

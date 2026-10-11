@@ -12,6 +12,7 @@ import {
   ZInvitationsResponse,
   ZLinkListQuery,
   ZLinkResponse,
+  ZLinkTransitionRequest,
   ZLinksResponse,
   ZMemberListQuery,
   ZMemberRemovalResponse,
@@ -29,6 +30,28 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  transitionLink: {
+    summary: "Apply a versioned scoped link lifecycle transition",
+    description:
+      "Fresh SQL write capability under workspace, actor membership and scoped link locks precedes all replay hashes. Closed enable/disable/archive/restore/delete actions; required positive BIGINT expectedVersion decimal string (missing 428 PRECONDITION_REQUIRED, stale or exhausted 409 VERSION_CONFLICT). Invalid edges return 409 INVALID_TRANSITION; suspended enable returns 409 SUSPENDED. Restore archived/deleted to disabled. Other transitions preserve suspension. Soft deletion retains global host/key reservation forever. Canonical target/action/version hash, actor-scoped 24-hour ledger, one version increment and immutable actor/action/time audit commit atomically. Matching authorized retries return the original committed snapshot. Bearer, exact Origin, strict JSON and no-store apply. No destination/title editing or routing claims.",
+    path: "/api/v1/workspaces/:workspaceId/links/:linkId/transitions",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), linkId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZLinkTransitionRequest,
+    responses: {
+      200: ZLinkResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      428: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   resendInvitation: {
     summary: "Explicitly replace an unaccepted invitation credential",
     description:
