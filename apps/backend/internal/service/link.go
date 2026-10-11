@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -24,6 +26,61 @@ type LinkService struct {
 	workspace *WorkspaceService
 	policy    config.LinksConfig
 	cursorKey []byte
+}
+
+// Suspension accepts only server-authorized owner/admin restriction intentions.
+func (s *LinkService) Suspension(ctx context.Context, scope repository.Scope, id uuid.UUID,
+	action, reason, expectedVersion, key string,
+) (repository.Link, error) {
+	reason = strings.TrimSpace(reason)
+	version, parseErr := strconv.ParseInt(expectedVersion, 10, 64)
+	versionOK, _ := regexp.MatchString(`^[1-9][0-9]{0,18}$`, expectedVersion)
+	keyOK, _ := regexp.MatchString(`^[A-Za-z0-9_-]{16,128}$`, key)
+	if parseErr != nil || !versionOK || version < 1 || !keyOK || !utf8.ValidString(reason) ||
+		strings.ContainsRune(reason, '\x00') ||
+		utf8.RuneCountInString(reason) < 1 || utf8.RuneCountInString(reason) > 1000 ||
+		(action != "suspend" && action != "clear") {
+		return repository.Link{}, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	payload, err := json.Marshal(struct {
+		Action  string    `json:"action"`
+		Reason  string    `json:"reason"`
+		Version string    `json:"expectedVersion"`
+		ID      uuid.UUID `json:"id"`
+	}{action, reason, expectedVersion, id})
+	if err != nil {
+		return repository.Link{}, linkFailure(err)
+	}
+	hash := sha256.Sum256(payload)
+	authorize := func(ctx context.Context, tx pgx.Tx, scope repository.Scope) error {
+		if _, lockErr := s.workspace.store.LockScope(ctx, tx, scope, false); lockErr != nil {
+			return workspaceFailure(lockErr)
+		}
+		var role string
+		if lockErr := tx.QueryRow(ctx, "SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE",
+			scope.WorkspaceID, scope.ActorID).Scan(&role); lockErr != nil {
+			return workspaceFailure(lockErr)
+		}
+		if !Allows(role, CapabilityTeam) {
+			return errs.NewForbiddenError("You do not have permission for this action.", false)
+		}
+		return nil
+	}
+	validate := func(link repository.Link) error {
+		if link.Version != version || version == math.MaxInt64 {
+			return lifecycleConflict("VERSION_CONFLICT",
+				"This link changed since you opened it. Review the latest details before trying again.")
+		}
+		if link.Lifecycle == linkDeleted || (action == "clear" && link.SuspendedAt == nil) ||
+			(action == "suspend" && link.SuspendedAt != nil) {
+			return lifecycleConflict("INVALID_TRANSITION", "This action is unavailable. Review the latest details.")
+		}
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	result, err := s.store.Suspension(ctx, scope, id, action, reason, key, hash[:], authorize, validate)
+	return result, linkFailure(err)
 }
 
 // NewLinkService injects transactional storage and validated operator policy.

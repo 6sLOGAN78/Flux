@@ -103,6 +103,8 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	group.GET("/workspaces/:workspaceId/links", product.ListLinks)
 	group.GET("/workspaces/:workspaceId/links/:linkId", product.LinkDetail)
 	group.POST("/workspaces/:workspaceId/links/:linkId/transitions", product.TransitionLink)
+	group.POST("/workspaces/:workspaceId/links/:linkId/suspension", product.SuspensionLink)
+	group.DELETE("/workspaces/:workspaceId/links/:linkId/suspension", product.SuspensionLink)
 
 	return router
 }

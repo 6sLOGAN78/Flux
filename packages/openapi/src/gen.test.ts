@@ -149,6 +149,28 @@ test("identity schema requires a strict internal UUID and verified email respons
     assert.equal(identity.safeParse(invalid).success, false);
 });
 
+test("suspension canonical reason is Unicode bounded and version remains exact", () => {
+  const schema = (schemas as unknown as Record<string, ZodType>).ZLinkSuspensionRequest;
+  assert.ok(schema);
+  assert.equal(
+    schema.safeParse({
+      reason: "\u2003" + "界".repeat(1000) + "\u2003",
+      expectedVersion: "9223372036854775807",
+    }).success,
+    true,
+  );
+  for (const reason of ["", "\u2003", "\u0000", "界".repeat(1001), null, 1]) {
+    assert.equal(schema.safeParse({ reason, expectedVersion: "1" }).success, false);
+  }
+  for (const expectedVersion of [null, 1, "01", "0", "9223372036854775808"]) {
+    assert.equal(schema.safeParse({ reason: "Reviewed", expectedVersion }).success, false);
+  }
+  assert.equal(
+    schema.safeParse({ reason: "Reviewed", expectedVersion: "1", actorId: "forged" }).success,
+    false,
+  );
+});
+
 test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diagnostics", async () => {
   const { serializeOpenAPI } = await loadGenerator();
   const document = JSON.parse(serializeOpenAPI());
@@ -166,6 +188,7 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     "/api/v1/workspaces/{workspaceId}/invitations/{invitationId}/resend",
     "/api/v1/workspaces/{workspaceId}/links",
     "/api/v1/workspaces/{workspaceId}/links/{linkId}",
+    "/api/v1/workspaces/{workspaceId}/links/{linkId}/suspension",
     "/api/v1/workspaces/{workspaceId}/links/{linkId}/transitions",
     "/api/v1/workspaces/{workspaceId}/members",
     "/api/v1/workspaces/{workspaceId}/members/{memberId}",
@@ -205,6 +228,24 @@ test("canonical OpenAPI documents live 200 and ready 200/503 without legacy diag
     ),
   );
   const getLink = document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}"].get;
+  const suspension = document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}/suspension"];
+  assert.equal(
+    document.components.schemas["transport.LinkSuspensionRequest"].properties.reason.maxLength,
+    undefined,
+  );
+  assert.deepEqual(Object.keys(suspension).sort(), ["delete", "post"]);
+  for (const method of ["post", "delete"]) {
+    assert.deepEqual(suspension[method].security, [{ bearerAuth: [] }]);
+    assert.ok(suspension[method].requestBody.content["application/json"].schema);
+    for (const status of [200, 400, 401, 403, 404, 409, 428, 429, 503])
+      assert.ok(suspension[method].responses[status]);
+    assert.ok(
+      suspension[method].parameters.some(
+        (parameter: { name: string; required?: boolean }) =>
+          parameter.name === "idempotency-key" && parameter.required,
+      ),
+    );
+  }
   const transition =
     document.paths["/api/v1/workspaces/{workspaceId}/links/{linkId}/transitions"].post;
   assert.deepEqual(transition.security, [{ bearerAuth: [] }]);

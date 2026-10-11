@@ -547,6 +547,14 @@ type TransportLinkSuspension struct {
 	Reason  string `json:"reason"`
 }
 
+// TransportLinkSuspensionRequest Reason trims Unicode whitespace to 1–1000 characters. Required positive BIGINT decimal version; missing returns 428. Actor and time come only from the server.
+type TransportLinkSuspensionRequest struct {
+	ExpectedVersion *string `json:"expectedVersion,omitempty"`
+
+	// Reason Unicode White_Space is trimmed before the 1–1000 Unicode character limit; surrounding whitespace is not counted. NUL characters cannot be stored and are rejected.
+	Reason string `json:"reason"`
+}
+
 // TransportLinkTransitionRequest defines model for transport.LinkTransitionRequest.
 type TransportLinkTransitionRequest struct {
 	Action          TransportLinkTransitionRequestAction `json:"action"`
@@ -677,6 +685,16 @@ type CreateLinkParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
 
+// ClearLinkSuspensionParams defines parameters for ClearLinkSuspension.
+type ClearLinkSuspensionParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
+// SuspendLinkParams defines parameters for SuspendLink.
+type SuspendLinkParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // TransitionLinkParams defines parameters for TransitionLink.
 type TransitionLinkParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
@@ -720,6 +738,12 @@ type ResendInvitationJSONRequestBody = TransportInvitationMutationRequest
 
 // CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
 type CreateLinkJSONRequestBody = TransportCreateLinkRequest
+
+// ClearLinkSuspensionJSONRequestBody defines body for ClearLinkSuspension for application/json ContentType.
+type ClearLinkSuspensionJSONRequestBody = TransportLinkSuspensionRequest
+
+// SuspendLinkJSONRequestBody defines body for SuspendLink for application/json ContentType.
+type SuspendLinkJSONRequestBody = TransportLinkSuspensionRequest
 
 // TransitionLinkJSONRequestBody defines body for TransitionLink for application/json ContentType.
 type TransitionLinkJSONRequestBody = TransportLinkTransitionRequest

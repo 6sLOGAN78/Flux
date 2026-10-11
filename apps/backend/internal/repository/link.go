@@ -55,6 +55,103 @@ func NewLinkRepositoryWithRandom(pool *pgxpool.Pool, random io.Reader) *LinkRepo
 // LinkAuthorize runs inside the effect transaction before any replay or link read.
 type LinkAuthorize func(context.Context, pgx.Tx, Scope) error
 
+// Suspension serializes fresh authority, scoped restriction, protected evidence
+// and actor-scoped replay within one workspace-first transaction.
+//
+//nolint:nonamedreturns // Deferred bounded cleanup preserves rollback failures.
+func (r *LinkRepository) Suspension(ctx context.Context, scope Scope, id uuid.UUID, action, reason, key string,
+	hash []byte, authorize LinkAuthorize, validate func(Link) error,
+) (result Link, err error) {
+	if r == nil || r.pool == nil || authorize == nil || validate == nil {
+		return result, errors.New("link store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	if err = authorize(ctx, tx, scope); err != nil {
+		return result, err
+	}
+	var locked uuid.UUID
+	if err = tx.QueryRow(ctx, "SELECT id FROM links WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
+		scope.WorkspaceID, id).Scan(&locked); err != nil {
+		return result, err
+	}
+	operation := "link." + action
+	if _, err = tx.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND retain_until < now()", scope.WorkspaceID, scope.ActorID, operation); err != nil {
+		return result, err
+	}
+	var storedHash, snapshot []byte
+	err = tx.QueryRow(ctx, "SELECT request_hash,result FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND request_key=$4", scope.WorkspaceID, scope.ActorID, operation, key).Scan(&storedHash, &snapshot)
+	switch {
+	case err == nil:
+		if err = matchRequest(hash, storedHash); err != nil {
+			return result, err
+		}
+		if err = json.Unmarshal(snapshot, &result); err != nil {
+			return Link{}, err
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		result, err = recordSuspension(ctx, tx, scope, id, action, reason, key, hash, validate)
+		if err != nil {
+			return Link{}, err
+		}
+	default:
+		return Link{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Link{}, err
+	}
+	return result, nil
+}
+
+func recordSuspension(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, action, reason, key string,
+	hash []byte, validate func(Link) error,
+) (Link, error) {
+	link, err := readLink(ctx, tx, scope, id)
+	if err != nil {
+		return Link{}, err
+	}
+	if err = validate(link); err != nil {
+		return Link{}, err
+	}
+	if err = applySuspension(ctx, tx, scope, id, action, reason); err != nil {
+		return Link{}, err
+	}
+	link, err = readLink(ctx, tx, scope, id)
+	if err != nil {
+		return Link{}, err
+	}
+	snapshot, err := json.Marshal(link)
+	if err != nil {
+		return Link{}, err
+	}
+	_, err = tx.Exec(ctx, "INSERT INTO mutation_requests "+
+		"(workspace_id,actor_id,operation,request_key,request_hash,result) VALUES($1,$2,$3,$4,$5,$6)",
+		scope.WorkspaceID, scope.ActorID, "link."+action, key, hash, snapshot)
+	return link, err
+}
+
+func applySuspension(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, action, reason string) error {
+	var err error
+	if action == "suspend" {
+		_, err = tx.Exec(ctx, "UPDATE links SET suspended_at=clock_timestamp(),suspended_by=$3,suspension_reason=$4,"+
+			"version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2",
+			scope.WorkspaceID, id, scope.ActorID, reason)
+	} else {
+		_, err = tx.Exec(ctx, "UPDATE links SET suspended_at=NULL,suspended_by=NULL,suspension_reason=NULL,"+
+			"lifecycle='disabled',version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2",
+			scope.WorkspaceID, id)
+	}
+	if err != nil {
+		return err
+	}
+	return recordSuspensionAudit(ctx, tx, scope, id, action, reason)
+}
+
 // Transition holds current actor authority and the scoped link row through the
 // versioned effect, immutable audit and exact committed replay snapshot.
 //

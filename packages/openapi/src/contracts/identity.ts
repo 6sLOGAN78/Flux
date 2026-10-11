@@ -12,6 +12,7 @@ import {
   ZInvitationsResponse,
   ZLinkListQuery,
   ZLinkResponse,
+  ZLinkSuspensionRequest,
   ZLinkTransitionRequest,
   ZLinksResponse,
   ZMemberListQuery,
@@ -30,6 +31,50 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  suspendLink: {
+    summary: "Suspend a scoped link with protected provenance",
+    description:
+      "Fresh PostgreSQL owner/admin authorization under shared workspace, locked actor membership and scoped link locks precedes replay. Unicode-trimmed 1–1000 character reason and positive BIGINT decimal version; missing 428, stale/exhausted 409. Deleted or already suspended rejects new intentions. Verified durable actor and database clock; independent restriction, immutable reason audit and 24-hour canonical target/action/reason/version ledger commit atomically. Ordinary lifecycle never clears restriction. Authorized readers see safe provenance; reasons and identity never enter operational telemetry. Matching authorized retries return the committed snapshot. No routing or destination fetch.",
+    path: "/api/v1/workspaces/:workspaceId/links/:linkId/suspension",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), linkId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZLinkSuspensionRequest,
+    responses: {
+      200: ZLinkResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      428: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
+  clearLinkSuspension: {
+    summary: "Clear a scoped restriction and leave the link Disabled",
+    description:
+      "Same fresh locked owner/admin authorization, canonical reason/version/key and atomic protected audit/ledger protocol as suspension. Nondeleted currently suspended link required. Clearing removes current restriction and sets lifecycle Disabled; it never reactivates. Clearing reason remains in immutable audit after restriction removal. Explicit later Enable is required. Matching authorized replay returns the original committed snapshot. Bearer, exact Origin, JSON and no-store apply.",
+    path: "/api/v1/workspaces/:workspaceId/links/:linkId/suspension",
+    method: "DELETE",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), linkId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZLinkSuspensionRequest,
+    responses: {
+      200: ZLinkResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      428: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   transitionLink: {
     summary: "Apply a versioned scoped link lifecycle transition",
     description:

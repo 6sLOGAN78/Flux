@@ -487,16 +487,13 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	require.Equal(t, effect, replay)
 	status, _ = workspaceRequest(t, api, token, "POST", url, key, `{"reason":"changed","expectedVersion":"1"}`)
 	require.Equal(t, 409, status)
-	for _, method := range []string{"POST", "DELETE"} {
-		for _, invalid := range []string{`null`, `{"reason":" ","expectedVersion":"2"}`, `{"reason":"x","expectedVersion":1}`, `{"reason":"x","expectedVersion":null}`, `{"reason":"x","expectedVersion":"01"}`, `{"reason":"x","expectedVersion":"9223372036854775808"}`, `{"reason":"x","expectedVersion":"2","actorId":"forged"}`, `{"reason":"x","expectedVersion":"2","at":"forged"}`, `{"reason":"","expectedVersion":"2"}`, `{"reason":"` + strings.Repeat("界", 1001) + `","expectedVersion":"2"}`} {
-			status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), invalid)
-			require.Equal(t, 400, status)
-		}
-		status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), `{"reason":"x"}`)
-		require.Equal(t, 428, status)
-		status, _ = workspaceRequest(t, api, token, method, url, "", `{"reason":"x","expectedVersion":"2"}`)
-		require.Equal(t, 400, status)
-	}
+	checkSuspensionInputs(t, api, token, url)
+	t.Run("unrepresentable-reason-rejected-before-storage", func(t *testing.T) {
+		fresh := newLink()
+		code, _ := workspaceRequest(t, api, token, "POST", path+"/"+fresh["id"].(string)+"/suspension",
+			uuid.NewString(), `{"reason":"\u0000","expectedVersion":"1"}`)
+		require.Equal(t, 400, code)
+	})
 	for _, role := range []string{"member", "viewer"} {
 		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=$2 WHERE workspace_id=$1", w, role)
 		require.NoError(t, err)
@@ -504,15 +501,15 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 			status, _ = workspaceRequest(t, api, token, method, url, key, body)
 			require.Equal(t, 403, status, "fresh authorization before replay")
 		}
-		status, detail := workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
-		require.Equal(t, 200, status)
+		detailCode, detail := workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
+		require.Equal(t, 200, detailCode)
 		require.Equal(t, provenance, detail["link"].(map[string]any)["suspension"])
 	}
 	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1", w)
 	require.NoError(t, err)
 	for _, action := range []string{"disable", "archive", "restore", "delete", "restore"} {
-		status, result := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"`+action+`","expectedVersion":"`+link["version"].(string)+`"}`)
-		require.Equal(t, 200, status)
+		transitionCode, result := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"`+action+`","expectedVersion":"`+link["version"].(string)+`"}`)
+		require.Equal(t, 200, transitionCode)
 		link = result["link"].(map[string]any)
 		require.Equal(t, provenance, link["suspension"])
 		if action == "delete" {
@@ -546,13 +543,17 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 		fresh := newLink()
 		freshID := fresh["id"].(string)
 		statuses := make(chan int, 2)
+		requestErrors := make(chan error, 2)
 		for range 2 {
 			go func() {
-				code, _ := workspaceRequest(t, api, token, "POST", path+"/"+freshID+"/suspension", uuid.NewString(), `{"reason":"Concurrent proof","expectedVersion":"1"}`)
+				code, requestErr := concurrentSuspensionRequest(api, token, path+"/"+freshID+"/suspension")
+				requestErrors <- requestErr
 				statuses <- code
 			}()
 		}
 		codes := []int{<-statuses, <-statuses}
+		require.NoError(t, <-requestErrors)
+		require.NoError(t, <-requestErrors)
 		sort.Ints(codes)
 		require.Equal(t, []int{200, 409}, codes)
 		var count int
@@ -574,6 +575,61 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 			}
 		}
 	})
+	checkSuspensionRollback(t, api, token, path, db, newLink)
+	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", w)
+	require.NoError(t, err)
+	for _, method := range []string{"POST", "DELETE"} {
+		status, _ = workspaceRequest(t, api, token, method, url, key, body)
+		require.Equal(t, 404, status)
+	}
+	require.Zero(t, strings.Count(p.logs.String(), "private reason"))
+}
+
+func checkSuspensionInputs(t *testing.T, api, token, url string) {
+	t.Helper()
+	var status int
+	for _, method := range []string{"POST", "DELETE"} {
+		for _, ambiguous := range []string{`{"reason":"x","reason":"y","expectedVersion":"2"}`, `{"reason":"x","expectedVersion":"2","expectedVersion":"3"}`, "{\"reason\":\"\xff\",\"expectedVersion\":\"2\"}"} {
+			status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), ambiguous)
+			require.Equal(t, 400, status)
+		}
+		for _, invalid := range []string{`null`, `{"reason":" ","expectedVersion":"2"}`, `{"reason":"x","expectedVersion":1}`, `{"reason":"x","expectedVersion":null}`, `{"reason":"x","expectedVersion":"01"}`, `{"reason":"x","expectedVersion":"9223372036854775808"}`, `{"reason":"x","expectedVersion":"2","actorId":"forged"}`, `{"reason":"x","expectedVersion":"2","at":"forged"}`, `{"reason":"","expectedVersion":"2"}`, `{"reason":"` + strings.Repeat("界", 1001) + `","expectedVersion":"2"}`} {
+			status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), invalid)
+			require.Equal(t, 400, status)
+		}
+		status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), `{"reason":"x"}`)
+		require.Equal(t, 428, status)
+		status, _ = workspaceRequest(t, api, token, method, url, "", `{"reason":"x","expectedVersion":"2"}`)
+		require.Equal(t, 400, status)
+	}
+}
+
+func concurrentSuspensionRequest(api, bearer, path string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api+"/api/v1"+path,
+		strings.NewReader(`{"reason":"Concurrent proof","expectedVersion":"1"}`))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Origin", fixtureParty)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", uuid.NewString())
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	_, copyErr := io.Copy(io.Discard, response.Body)
+	closeErr := response.Body.Close()
+	return response.StatusCode, errors.Join(copyErr, closeErr)
+}
+
+func checkSuspensionRollback(t *testing.T, api, token, path string, db *fluxTesting.TestDB, newLink func() map[string]any) {
+	t.Helper()
+	ctx := context.Background()
+	var err error
+	var status int
 	for _, failure := range []string{"audit", "ledger", "commit"} {
 		t.Run("rollback-"+failure, func(t *testing.T) {
 			fresh := newLink()
@@ -594,10 +650,15 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 				_, err = db.Pool.Exec(ctx, "ALTER TABLE "+table+" DROP CONSTRAINT suspension_fail")
 			}
 			require.NoError(t, err)
-			status, detail := workspaceRequest(t, api, token, "GET", path+"/"+freshID, "", "")
-			require.Equal(t, 200, status)
+			detailCode, detail := workspaceRequest(t, api, token, "GET", path+"/"+freshID, "", "")
+			require.Equal(t, 200, detailCode)
 			require.Equal(t, "1", detail["link"].(map[string]any)["version"])
 			require.Nil(t, detail["link"].(map[string]any)["suspension"])
+			var audits, ledgers int
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", fresh["workspaceId"], freshID).Scan(&audits))
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND operation='link.suspend' AND result->>'id'=$2", fresh["workspaceId"], freshID).Scan(&ledgers))
+			require.Zero(t, audits)
+			require.Zero(t, ledgers)
 		})
 	}
 }

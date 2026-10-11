@@ -14,6 +14,12 @@ func recordLinkAudit(ctx context.Context, tx pgx.Tx, scope Scope, link uuid.UUID
 	return err
 }
 
+func recordSuspensionAudit(ctx context.Context, tx pgx.Tx, scope Scope, link uuid.UUID, action, reason string) error {
+	_, err := tx.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation,target_link_id,reason,created_at) "+
+		"VALUES($1,$2,$3,$4,$5,clock_timestamp())", scope.WorkspaceID, scope.ActorID, "link."+action, link, reason)
+	return err
+}
+
 // recordInvitationAudit binds durable actor and scoped invitation atomically.
 func recordInvitationAudit(ctx context.Context, tx pgx.Tx, scope Scope, invitation uuid.UUID) error {
 	_, err := tx.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation,target_invitation_id) "+

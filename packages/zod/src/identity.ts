@@ -289,6 +289,39 @@ export const ZLinkResponse = extendApi(z.object({ link: ZLink }).strict(), {
 });
 export type LinkResponse = z.infer<typeof ZLinkResponse>;
 
+export const ZLinkSuspensionRequest = extendApi(
+  z
+    .object({
+      reason: extendApi(
+        z.string().refine((value) => {
+          const normalized = value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+          return (
+            !normalized.includes("\u0000") &&
+            [...normalized].length >= 1 &&
+            [...normalized].length <= 1000
+          );
+        }),
+        {
+          description:
+            "Unicode White_Space is trimmed before the 1–1000 Unicode character limit; surrounding whitespace is not counted. NUL characters cannot be stored and are rejected.",
+        },
+      ),
+      expectedVersion: z
+        .string()
+        .regex(/^[1-9][0-9]{0,18}$/)
+        .refine(
+          (value) => /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n,
+        )
+        .optional(),
+    })
+    .strict(),
+  {
+    title: "transport.LinkSuspensionRequest",
+    description:
+      "Reason trims Unicode whitespace to 1–1000 characters. Required positive BIGINT decimal version; missing returns 428. Actor and time come only from the server.",
+  },
+);
+
 export const ZLinkTransitionRequest = extendApi(
   z
     .object({

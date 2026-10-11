@@ -26,11 +26,32 @@ test("suspension records escaped reason and clear leaves disabled with native sa
   });
   expect(createdLink.status()).toBe(201);
   const { link } = await createdLink.json();
+  const attempts: {
+    method: string;
+    key: string | undefined;
+    body: { reason: string; expectedVersion: string };
+  }[] = [];
+  const telemetry: string[] = [];
+  page.on("console", (message) => telemetry.push(message.text()));
+  page.on("pageerror", (error) => telemetry.push(error.message));
+  let loseClear = true;
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
-    await route.fulfill({
-      response: await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` }),
-    });
+    const req = route.request();
+    if (url.pathname.endsWith("/suspension"))
+      attempts.push({
+        method: req.method(),
+        key: req.headers()["idempotency-key"],
+        body: req.postDataJSON(),
+      });
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (req.method() === "DELETE" && url.pathname.endsWith("/suspension") && loseClear) {
+      expect(response.status()).toBe(200);
+      loseClear = false;
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ response });
   });
   await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
   const detail = page.getByRole("region", { name: "Link details", exact: true });
@@ -46,11 +67,47 @@ test("suspension records escaped reason and clear leaves disabled with native sa
   await dialog
     .getByLabel("Reason", { exact: true })
     .fill("<script>private suspension reason</script>");
+  await dialog.getByLabel("Reason", { exact: true }).fill("\u0085");
+  await expect(dialog.getByRole("button", { name: "Suspend link", exact: true })).toBeDisabled();
+  await dialog.getByLabel("Reason", { exact: true }).fill("\uFEFF");
+  await expect(dialog.getByRole("button", { name: "Suspend link", exact: true })).toBeEnabled();
+  await dialog.getByLabel("Reason", { exact: true }).fill("\u0000");
+  await expect(dialog.getByRole("button", { name: "Suspend link", exact: true })).toBeDisabled();
+  await dialog
+    .getByLabel("Reason", { exact: true })
+    .fill("<script>private suspension reason</script>");
+  const competing = await request.post(
+    `${fixture.api}/api/v1/workspaces/${workspace.id}/links/${link.id}/transitions`,
+    {
+      headers: { ...headers, "Idempotency-Key": "browser-suspension-competing" },
+      data: { action: "disable", expectedVersion: "1" },
+    },
+  );
+  expect(competing.status()).toBe(200);
+  await dialog.getByRole("button", { name: "Suspend link", exact: true }).click();
+  await expect(detail.getByRole("alert")).toHaveText(
+    "This link changed since you opened it. Review the latest details before trying again.",
+  );
+  await expect(
+    detail
+      .locator("dt")
+      .filter({ hasText: /^Version$/ })
+      .locator("+ dd"),
+  ).toHaveText("2");
+  expect(attempts.length).toBe(1);
+  await detail.getByRole("button", { name: "Review latest details", exact: true }).click();
+  await suspend.click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Reason", { exact: true })).toHaveValue(
+    "<script>private suspension reason</script>",
+  );
   await dialog.getByRole("button", { name: "Suspend link", exact: true }).click();
   await expect(detail.getByRole("status")).toHaveText("Link updated.");
+  expect(attempts[0]?.body.expectedVersion).toBe("1");
+  expect(attempts[1]?.body.expectedVersion).toBe("2");
+  expect(attempts[0]?.key === attempts[1]?.key).toBe(false);
   await expect(detail.getByText(/<script>private suspension reason<\/script>/)).toBeVisible();
   expect(await detail.locator("script").count()).toBe(0);
-  await detail.getByRole("button", { name: "Disable link", exact: true }).click();
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeDisabled();
   await expect(
     detail.getByText("An owner or admin must clear suspension first.", { exact: true }),
@@ -65,6 +122,15 @@ test("suspension records escaped reason and clear leaves disabled with native sa
   ).toBeVisible();
   await dialog.getByLabel("Reason", { exact: true }).fill("Reviewed restriction");
   await dialog.getByRole("button", { name: "Clear suspension", exact: true }).click();
+  const retry = detail.getByRole("button", { name: "Retry identical change", exact: true });
+  await expect(retry).toBeFocused();
+  expect(attempts.length).toBe(3);
+  await retry.click();
+  await expect(detail.getByRole("status")).toHaveText("Link updated.");
+  expect(attempts.length).toBe(4);
+  expect(attempts[2]?.key === attempts[3]?.key).toBe(true);
+  expect(attempts[2]?.body.expectedVersion === attempts[3]?.body.expectedVersion).toBe(true);
+  expect(attempts[2]?.body.reason === attempts[3]?.body.reason).toBe(true);
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeEnabled();
   await expect(
     detail
@@ -73,6 +139,62 @@ test("suspension records escaped reason and clear leaves disabled with native sa
       .locator("+ dd"),
   ).toHaveText("disabled");
   await expect(detail.getByText(/Suspended by/)).toHaveCount(0);
+  expect(
+    telemetry.some(
+      (value) => value.includes("private suspension reason") || value.includes(link.creator.id),
+    ),
+  ).toBe(false);
+});
+
+test("suspension refreshes SQL management capability after committed mutation", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "suspension-capability-workspace",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Suspension capability tenant" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  const result = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": "suspension-capability-link" },
+    data: { destination: "https://example.com/capability" },
+  });
+  expect(result.status()).toBe(201);
+  const { link } = await result.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (url.pathname.endsWith("/suspension")) {
+      expect(response.status()).toBe(200);
+      expect(
+        (
+          await request.post(
+            `${process.env.FLUX_BROWSER_FIXTURE}/restore-role?workspace=${workspace.id}&role=member`,
+          )
+        ).status(),
+      ).toBe(204);
+    }
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
+  const detail = page.getByRole("region", { name: "Link details", exact: true });
+  await detail.getByRole("button", { name: "Suspend link", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Reason", { exact: true }).fill("Management capability proof");
+  await dialog.getByRole("button", { name: "Suspend link", exact: true }).click();
+  await expect(detail.getByRole("status")).toHaveText("Link updated.");
+  await expect(detail.getByRole("button", { name: "Clear suspension", exact: true })).toHaveCount(
+    0,
+  );
+  await expect(detail.getByRole("button", { name: "Disable link", exact: true })).toBeEnabled();
 });
 
 test("lifecycle commits disable enable archive restore delete and restored disabled detail", async ({

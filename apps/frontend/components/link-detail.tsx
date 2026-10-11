@@ -42,8 +42,18 @@ export function LinkDetail({
   const [reviewReady, setReviewReady] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const mutations = useRef(new LifecycleRequests());
+  const restrictionAttempt = useRef<
+    | Readonly<{
+        action: "suspend" | "clear";
+        key: string;
+        body: Readonly<{ reason: string; expectedVersion: string }>;
+      }>
+    | undefined
+  >(undefined);
+  const [reason, setReason] = useState("");
+  const [canManage, setCanManage] = useState(false);
   const retry = useRef<HTMLButtonElement>(null);
-  const [confirm, setConfirm] = useState<"archive" | "delete">();
+  const [confirm, setConfirm] = useState<"archive" | "delete" | "suspend" | "clear">();
   const reload = useRef<HTMLButtonElement>(null);
   const focusAfterCommit = useRef(false);
   useEffect(() => {
@@ -56,6 +66,7 @@ export function LinkDetail({
     setCreated(new URLSearchParams(window.location.search).get("created") === "1");
     const request = requests.current.begin();
     mutations.current.clear();
+    restrictionAttempt.current = undefined;
     setUncertain(false);
     setReviewReady(false);
     const api = createAPI(getToken, { origin: window.location.origin });
@@ -70,6 +81,7 @@ export function LinkDetail({
           throw new Error("Unexpected resource");
         setLink(response.link);
         setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+        setCanManage(workspaceCapabilities(membership.workspace.role).team);
         setError("");
         setRequiresReload(false);
         setBusy(false);
@@ -94,14 +106,32 @@ export function LinkDetail({
     return () => {
       requests.current.clear();
       mutations.current.clear();
+      restrictionAttempt.current = undefined;
     };
   }, [workspaceId, linkId, getToken, attempt, router]);
-  const transition = async (action: LifecycleAction, identicalRetry = false) => {
+  const transition = async (
+    action: LifecycleAction | "suspend" | "clear",
+    identicalRetry = false,
+  ) => {
     if (!link || !canWrite || submitting.current || (requiresReload && !identicalRetry)) return;
-    const mutation = identicalRetry
-      ? mutations.current.retry()
-      : mutations.current.start(action, link.version);
+    const restriction = action === "suspend" || action === "clear";
+    if (restriction && !canManage) return;
+    const mutation = restriction
+      ? identicalRetry
+        ? restrictionAttempt.current
+        : Object.freeze({
+            action,
+            key: crypto.randomUUID(),
+            body: Object.freeze({ reason, expectedVersion: link.version }),
+          })
+      : identicalRetry
+        ? mutations.current.retry()
+        : mutations.current.start(action, link.version);
     if (!mutation) return;
+    if (restriction && "action" in mutation) {
+      mutations.current.clear();
+      restrictionAttempt.current = mutation;
+    } else restrictionAttempt.current = undefined;
     submitting.current = true;
     setBusy(true);
     setConfirm(undefined);
@@ -110,21 +140,50 @@ export function LinkDetail({
     const request = requests.current.begin();
     const api = createAPI(getToken, { origin: window.location.origin });
     try {
-      const value = await api.request(`/workspaces/${workspaceId}/links/${linkId}/transitions`, {
-        method: "POST",
-        body: mutation.body,
-        idempotencyKey: mutation.key,
-        signal: request.signal,
-      });
+      const value = await api.request(
+        `/workspaces/${workspaceId}/links/${linkId}/${restriction ? "suspension" : "transitions"}`,
+        {
+          method: action === "clear" ? "DELETE" : "POST",
+          body: mutation.body,
+          idempotencyKey: mutation.key,
+          signal: request.signal,
+        },
+      );
       const result = ZLinkResponse.parse(value);
       if (!request.current()) return;
       if (result.link.workspaceId !== workspaceId || result.link.id !== linkId)
         throw new Error("Unexpected resource");
       setLink(result.link);
       mutations.current.clear();
+      restrictionAttempt.current = undefined;
+      if (restriction) setReason("");
       setUncertain(false);
       setRequiresReload(false);
       setNotice("Link updated.");
+      // The committed result stays known if the subsequent permission refresh fails.
+      setCanWrite(false);
+      setCanManage(false);
+      try {
+        const membership = await resolveWorkspace(api, workspaceId, request.signal);
+        if (!request.current()) return;
+        setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+        setCanManage(workspaceCapabilities(membership.workspace.role).team);
+      } catch (permissionFailure) {
+        if (!request.current()) return;
+        if (
+          permissionFailure instanceof ApiError &&
+          [401, 403, 404].includes(permissionFailure.status)
+        ) {
+          setLink(undefined);
+          denied.current(permissionFailure.status);
+        } else {
+          setRequiresReload(true);
+          setReviewReady(false);
+          setError(
+            "We couldn't refresh your permissions. Reload this link before making another change.",
+          );
+        }
+      }
     } catch (failure) {
       if (!request.current()) return;
       if (failure instanceof ApiError && failure.status === 401) {
@@ -134,13 +193,18 @@ export function LinkDetail({
         mutations.current.clear();
         setUncertain(false);
         setCanWrite(false);
+        setCanManage(false);
+        restrictionAttempt.current = undefined;
         try {
           const current = await resolveWorkspace(api, workspaceId, request.signal);
           if (!request.current()) return;
           setCanWrite(workspaceCapabilities(current.workspace.role).create);
+          setCanManage(workspaceCapabilities(current.workspace.role).team);
           setError(
             failure.status === 403
-              ? "You have view-only access. Ask an owner or admin to change your role."
+              ? workspaceCapabilities(current.workspace.role).create
+                ? "An owner or admin must manage suspension."
+                : "You have view-only access. Ask an owner or admin to change your role."
               : "Link not found",
           );
           if (failure.status === 404) setLink(undefined);
@@ -157,7 +221,10 @@ export function LinkDetail({
         const networkUncertain =
           failure instanceof ApiError && failure.status === 0 && failure.code === "unavailable";
         setUncertain(networkUncertain);
-        if (!networkUncertain) mutations.current.clear();
+        if (!networkUncertain) {
+          mutations.current.clear();
+          restrictionAttempt.current = undefined;
+        }
         setError(
           versionConflict
             ? "This link changed since you opened it. Review the latest details before trying again."
@@ -178,6 +245,7 @@ export function LinkDetail({
               throw new Error("Unexpected resource");
             setLink(latest.link);
             setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+            setCanManage(workspaceCapabilities(membership.workspace.role).team);
             setReviewReady(true);
           } catch (refreshFailure) {
             if (!request.current()) return;
@@ -193,6 +261,7 @@ export function LinkDetail({
                 const membership = await resolveWorkspace(api, workspaceId, request.signal);
                 if (!request.current()) return;
                 setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+                setCanManage(workspaceCapabilities(membership.workspace.role).team);
                 setError("Link not found");
               } catch {
                 if (request.current()) denied.current(404);
@@ -235,7 +304,9 @@ export function LinkDetail({
             disabled={busy}
             onClick={() => {
               const pending = mutations.current.retry();
-              if (pending) void transition(pending.body.action, true);
+              const restrictionPending = restrictionAttempt.current;
+              if (restrictionPending) void transition(restrictionPending.action, true);
+              else if (pending) void transition(pending.body.action, true);
             }}
           >
             Retry identical change
@@ -250,6 +321,7 @@ export function LinkDetail({
           onClick={() => {
             setNotice("");
             mutations.current.clear();
+            restrictionAttempt.current = undefined;
             setUncertain(false);
             if (reviewReady) {
               focusAfterCommit.current = true;
@@ -363,12 +435,38 @@ export function LinkDetail({
             Copy short URL
           </button>
           {copied && <p role="status">{copied}</p>}
+          {canManage && link.lifecycle !== "deleted" && (
+            <button
+              type="button"
+              disabled={busy || requiresReload}
+              onClick={() => {
+                setNotice("");
+                setConfirm(link.suspension ? "clear" : "suspend");
+              }}
+            >
+              {link.suspension ? "Clear suspension" : "Suspend link"}
+            </button>
+          )}
         </>
       )}
       <a href={`/workspaces/${workspaceId}/links`}>Back to links</a>
       {confirm && link && (
         <ConfirmDialog
-          link={{ name: link.title || link.shortUrl, action: confirm }}
+          link={
+            confirm === "archive" || confirm === "delete"
+              ? { name: link.title || link.shortUrl, action: confirm }
+              : undefined
+          }
+          restriction={
+            confirm === "suspend" || confirm === "clear"
+              ? {
+                  name: link.title || link.shortUrl,
+                  clear: confirm === "clear",
+                  reason,
+                  onReason: setReason,
+                }
+              : undefined
+          }
           onStay={() => setConfirm(undefined)}
           onDiscard={() => void transition(confirm)}
         />

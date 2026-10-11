@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/6sLOGAN78/flux/internal/errs"
 	"github.com/6sLOGAN78/flux/internal/repository"
@@ -17,6 +18,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
+
+const preconditionRequiredCode = "PRECONDITION_REQUIRED"
+const jsonNull = "null"
 
 // ProductHandler adapts verified control-plane identity to canonical transports.
 type ProductHandler struct {
@@ -167,7 +171,7 @@ func (h *ProductHandler) mutateInvitation(c echo.Context, resend bool) error {
 		if _, present := presence["version"]; present {
 			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 		}
-		return &errs.HTTPError{Code: "PRECONDITION_REQUIRED", Message: "Reload invitations before trying again.",
+		return &errs.HTTPError{Code: preconditionRequiredCode, Message: "Reload invitations before trying again.",
 			Status: http.StatusPreconditionRequired}
 	}
 	item, err := h.invitations.Mutate(c.Request().Context(), scope, id, *body.Version,
@@ -465,7 +469,7 @@ func (h *ProductHandler) CreateLink(c echo.Context) error {
 		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
 	for name, value := range fields {
-		if (name != "destination" && name != "title" && name != "customKey") || string(value) == "null" {
+		if (name != "destination" && name != "title" && name != "customKey") || string(value) == jsonNull {
 			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 		}
 	}
@@ -535,7 +539,7 @@ func (h *ProductHandler) TransitionLink(c echo.Context) error {
 		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
 	for name, value := range fields {
-		if (name != "action" && name != "expectedVersion") || string(value) == "null" {
+		if (name != "action" && name != "expectedVersion") || string(value) == jsonNull {
 			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 		}
 	}
@@ -552,7 +556,7 @@ func (h *ProductHandler) TransitionLink(c echo.Context) error {
 		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
 	}
 	if body.ExpectedVersion == nil {
-		return &errs.HTTPError{Code: "PRECONDITION_REQUIRED", Status: http.StatusPreconditionRequired,
+		return &errs.HTTPError{Code: preconditionRequiredCode, Status: http.StatusPreconditionRequired,
 			Message: "We couldn't verify the latest version. Reload this link before trying again."}
 	}
 	item, err := h.links.Transition(c.Request().Context(), scope, id, string(body.Action),
@@ -561,6 +565,87 @@ func (h *ProductHandler) TransitionLink(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, transport.TransportLinkResponse{Link: linkTransport(item)})
+}
+
+// SuspensionLink adapts the canonical strict reason/version body for both methods.
+func (h *ProductHandler) SuspensionLink(c echo.Context) error {
+	scope, err := h.linkScope(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("linkId"))
+	if err != nil || id == uuid.Nil || id.String() != c.Param("linkId") {
+		return errs.NewNotFoundError("Link not found", false, nil)
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	body, err := decodeSuspensionRequest(c.Request().Body)
+	if err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if body.ExpectedVersion == nil {
+		return &errs.HTTPError{Code: preconditionRequiredCode, Status: http.StatusPreconditionRequired,
+			Message: "We couldn't verify the latest version. Reload this link before trying again."}
+	}
+	action := "suspend"
+	if c.Request().Method == http.MethodDelete {
+		action = "clear"
+	}
+	item, err := h.links.Suspension(c.Request().Context(), scope, id, action, body.Reason,
+		*body.ExpectedVersion, c.Request().Header.Get("Idempotency-Key"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportLinkResponse{Link: linkTransport(item)})
+}
+
+func decodeSuspensionRequest(reader io.Reader) (transport.TransportLinkSuspensionRequest, error) {
+	var body transport.TransportLinkSuspensionRequest
+	raw, err := io.ReadAll(reader)
+	if err != nil || !utf8.Valid(raw) {
+		return body, errors.New("invalid suspension body")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return body, errors.New("invalid suspension object")
+	}
+	fields := make(map[string]json.RawMessage)
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			return body, err
+		}
+		name, ok := token.(string)
+		if !ok || (name != "reason" && name != "expectedVersion") {
+			return body, errors.New("invalid suspension field")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			return body, errors.New("duplicate suspension field")
+		}
+		var value json.RawMessage
+		if err = decoder.Decode(&value); err != nil {
+			return body, err
+		}
+		if string(value) == jsonNull {
+			return body, errors.New("null suspension field")
+		}
+		fields[name] = value
+	}
+	if _, err = decoder.Token(); err != nil {
+		return body, err
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return body, errors.New("trailing suspension body")
+	}
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return body, err
+	}
+	err = json.Unmarshal(payload, &body)
+	return body, err
 }
 
 func linkTransport(item repository.Link) transport.TransportLink {
