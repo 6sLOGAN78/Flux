@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-26-PLAN.md
-last_updated: "2026-10-11T13:30:52.081Z"
+stopped_at: Completed 02-27-PLAN.md
+last_updated: "2026-10-11T16:05:53.391Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 48
+  completed_plans: 49
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 27 of 35
+Plan: 28 of 35
 Status: Ready to execute
 Last activity: 2026-10-11
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Progress: [████████░░] 84%
 | Phase 2 P24 | 16min 52s | 2 tasks | 19 files |
 | Phase 2 P25 | 28min 46s | 2 tasks | 18 files |
 | Phase 2 P26 | 28min 36s | 2 tasks | 7 files |
+| Phase 2 P27 | 23min 02s | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Invitation credentials cross only authorized inspect and explicit accept POST bodies; full navigation discards memory and requires a new invitation.
 - [Phase 2]: Switch account synchronously cancels pending work and clears authorized review before provider signout completes; late responses must match the current session.
 - [Phase 2]: Browser protocol issues fresh signed three-minute JWTs per scenario and SDK token refresh without changing session lifetime or production verification.
+- [Phase 2]: Link versions cross the API as exact positive BIGINT decimal strings; missing returns 428 and stale or exhausted returns 409.
+- [Phase 2]: Fresh locked SQL write capability precedes scoped link lookup and replay; effect, increment, audit and hash ledger commit together.
+- [Phase 2]: Restore returns disabled and ordinary transitions preserve suspension and permanent global host/key reservation.
 
 ### Pending Todos
 
@@ -228,6 +232,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-11T13:30:52.067Z
-Stopped at: Completed 02-26-PLAN.md
+Last session: 2026-10-11T16:05:53.380Z
+Stopped at: Completed 02-27-PLAN.md
 Resume file: None
