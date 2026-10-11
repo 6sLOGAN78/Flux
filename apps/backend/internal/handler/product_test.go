@@ -448,6 +448,120 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) {
 		checkLifecycle(t, api.URL, db, p)
 	})
+	t.Run("suspension", func(t *testing.T) {
+		checkSuspension(t, api.URL, db, p)
+	})
+}
+
+func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	token := p.token(t, map[string]any{"sub": "user_suspension", "sid": "sess_user_suspension"})
+	status, created := workspaceRequest(t, api, token, "POST", "/workspaces", uuid.NewString(), `{"name":"Suspension tenant"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + w + "/links"
+	newLink := func() map[string]any {
+		code, response := workspaceRequest(t, api, token, "POST", path, uuid.NewString(), `{"destination":"https://example.com/suspension"}`)
+		require.Equal(t, 201, code)
+		return response["link"].(map[string]any)
+	}
+	item := newLink()
+	id := item["id"].(string)
+	url := path + "/" + id + "/suspension"
+	body := `{"reason":"\u2003<script>private reason</script>\u2003","expectedVersion":"1"}`
+	key := uuid.NewString()
+	status, effect := workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 200, status, "authorized suspension commits")
+	link := effect["link"].(map[string]any)
+	require.Equal(t, "active", link["lifecycle"])
+	require.Equal(t, "2", link["version"])
+	provenance := link["suspension"].(map[string]any)
+	require.Equal(t, item["creator"].(map[string]any)["id"], provenance["actorId"])
+	require.Equal(t, "<script>private reason</script>", provenance["reason"])
+	_, err := time.Parse(time.RFC3339Nano, provenance["at"].(string))
+	require.NoError(t, err)
+	status, replay := workspaceRequest(t, api, token, "POST", url, key, body)
+	require.Equal(t, 200, status)
+	require.Equal(t, effect, replay)
+	status, _ = workspaceRequest(t, api, token, "POST", url, key, `{"reason":"changed","expectedVersion":"1"}`)
+	require.Equal(t, 409, status)
+	for _, method := range []string{"POST", "DELETE"} {
+		for _, invalid := range []string{`null`, `{"reason":" ","expectedVersion":"2"}`, `{"reason":"x","expectedVersion":1}`, `{"reason":"x","expectedVersion":null}`, `{"reason":"x","expectedVersion":"01"}`, `{"reason":"x","expectedVersion":"9223372036854775808"}`, `{"reason":"x","expectedVersion":"2","actorId":"forged"}`, `{"reason":"x","expectedVersion":"2","at":"forged"}`, `{"reason":"","expectedVersion":"2"}`, `{"reason":"` + strings.Repeat("界", 1001) + `","expectedVersion":"2"}`} {
+			status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), invalid)
+			require.Equal(t, 400, status)
+		}
+		status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), `{"reason":"x"}`)
+		require.Equal(t, 428, status)
+		status, _ = workspaceRequest(t, api, token, method, url, "", `{"reason":"x","expectedVersion":"2"}`)
+		require.Equal(t, 400, status)
+	}
+	for _, role := range []string{"member", "viewer"} {
+		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role=$2 WHERE workspace_id=$1", w, role)
+		require.NoError(t, err)
+		for _, method := range []string{"POST", "DELETE"} {
+			status, _ = workspaceRequest(t, api, token, method, url, key, body)
+			require.Equal(t, 403, status, "fresh authorization before replay")
+		}
+		status, detail := workspaceRequest(t, api, token, "GET", path+"/"+id, "", "")
+		require.Equal(t, 200, status)
+		require.Equal(t, provenance, detail["link"].(map[string]any)["suspension"])
+	}
+	_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1", w)
+	require.NoError(t, err)
+	for _, action := range []string{"disable", "archive", "restore", "delete", "restore"} {
+		status, result := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"`+action+`","expectedVersion":"`+link["version"].(string)+`"}`)
+		require.Equal(t, 200, status)
+		link = result["link"].(map[string]any)
+		require.Equal(t, provenance, link["suspension"])
+		if action == "delete" {
+			for _, method := range []string{"POST", "DELETE"} {
+				status, _ = workspaceRequest(t, api, token, method, url, uuid.NewString(), `{"reason":"x","expectedVersion":"`+link["version"].(string)+`"}`)
+				require.Equal(t, 409, status)
+			}
+		}
+	}
+	status, result := workspaceRequest(t, api, token, "POST", path+"/"+id+"/transitions", uuid.NewString(), `{"action":"enable","expectedVersion":"`+link["version"].(string)+`"}`)
+	require.Equal(t, 409, status)
+	require.Equal(t, "SUSPENDED", result["code"])
+	clearKey := uuid.NewString()
+	clearBody := `{"reason":"Reviewed restriction","expectedVersion":"` + link["version"].(string) + `"}`
+	status, cleared := workspaceRequest(t, api, token, "DELETE", url, clearKey, clearBody)
+	require.Equal(t, 200, status)
+	require.Nil(t, cleared["link"].(map[string]any)["suspension"])
+	require.Equal(t, "disabled", cleared["link"].(map[string]any)["lifecycle"])
+	status, replay = workspaceRequest(t, api, token, "DELETE", url, clearKey, clearBody)
+	require.Equal(t, 200, status)
+	require.Equal(t, cleared, replay)
+	var audits int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2 AND operation IN ('link.suspend','link.clear')", w, id).Scan(&audits))
+	require.Equal(t, 2, audits)
+	for _, failure := range []string{"audit", "ledger", "commit"} {
+		t.Run("rollback-"+failure, func(t *testing.T) {
+			fresh := newLink()
+			freshID := fresh["id"].(string)
+			if failure == "commit" {
+				_, err = db.Pool.Exec(ctx, "CREATE FUNCTION suspension_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$; CREATE CONSTRAINT TRIGGER suspension_fail AFTER UPDATE ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION suspension_fail()")
+			} else {
+				table := map[string]string{"audit": "audit_events", "ledger": "mutation_requests"}[failure]
+				_, err = db.Pool.Exec(ctx, "ALTER TABLE "+table+" ADD CONSTRAINT suspension_fail CHECK(operation <> 'link.suspend') NOT VALID")
+			}
+			require.NoError(t, err)
+			status, _ = workspaceRequest(t, api, token, "POST", path+"/"+freshID+"/suspension", uuid.NewString(), `{"reason":"Rollback proof","expectedVersion":"1"}`)
+			require.Equal(t, 503, status)
+			if failure == "commit" {
+				_, err = db.Pool.Exec(ctx, "DROP TRIGGER suspension_fail ON links; DROP FUNCTION suspension_fail()")
+			} else {
+				table := map[string]string{"audit": "audit_events", "ledger": "mutation_requests"}[failure]
+				_, err = db.Pool.Exec(ctx, "ALTER TABLE "+table+" DROP CONSTRAINT suspension_fail")
+			}
+			require.NoError(t, err)
+			status, detail := workspaceRequest(t, api, token, "GET", path+"/"+freshID, "", "")
+			require.Equal(t, 200, status)
+			require.Equal(t, "1", detail["link"].(map[string]any)["version"])
+			require.Nil(t, detail["link"].(map[string]any)["suspension"])
+		})
+	}
 }
 
 func checkInvitationManagement(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
