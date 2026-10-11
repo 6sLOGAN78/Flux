@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-28-PLAN.md
-last_updated: "2026-10-11T20:17:42.839Z"
+stopped_at: Completed 02-29-PLAN.md
+last_updated: "2026-10-11T21:00:57.362Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 50
+  completed_plans: 51
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 29 of 35
+Plan: 30 of 35
 Status: Ready to execute
 Last activity: 2026-10-11
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -102,6 +102,7 @@ Progress: [█████████░] 88%
 | Phase 2 P26 | 28min 36s | 2 tasks | 7 files |
 | Phase 2 P27 | 23min 02s | 2 tasks | 19 files |
 | Phase 2 P28 | 15min 33s | 2 tasks | 5 files |
+| Phase 2 P29 | 37min 01s | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Restore returns disabled and ordinary transitions preserve suspension and permanent global host/key reservation.
 - [Phase 2]: Keep uncertain lifecycle attempts immutable until explicit identical retry or deliberate replacement; conflict refresh never resubmits its action.
 - [Phase 2]: Reuse existing scoped lifecycle transactions, Deleted filter and native dialogs; prove recovery invariants through real PostgreSQL and browser paths.
+- [Phase 2]: Historical suspension and clear reasons are retained in immutable audit_events through forward migration 013. — Current-link provenance is cleared on explicit clear and cannot preserve historical audit reasons.
+- [Phase 2]: Suspension reasons use shared Unicode White_Space normalization, codepoint limits and explicit NUL rejection; known commits remain known while fresh SQL capabilities control subsequent actions. — Keep storage validation consistent and remove revoked management controls without inventing mutation uncertainty.
 
 ### Pending Todos
 
@@ -235,6 +238,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-11T20:17:42.828Z
-Stopped at: Completed 02-28-PLAN.md
+Last session: 2026-10-11T21:00:57.351Z
+Stopped at: Completed 02-29-PLAN.md
 Resume file: None
