@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-27-PLAN.md
-last_updated: "2026-10-11T16:05:53.391Z"
+stopped_at: Completed 02-28-PLAN.md
+last_updated: "2026-10-11T20:17:42.839Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 49
+  completed_plans: 50
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 28 of 35
+Plan: 29 of 35
 Status: Ready to execute
 Last activity: 2026-10-11
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -101,6 +101,7 @@ Progress: [█████████░] 86%
 | Phase 2 P25 | 28min 46s | 2 tasks | 18 files |
 | Phase 2 P26 | 28min 36s | 2 tasks | 7 files |
 | Phase 2 P27 | 23min 02s | 2 tasks | 19 files |
+| Phase 2 P28 | 15min 33s | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -212,6 +213,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Link versions cross the API as exact positive BIGINT decimal strings; missing returns 428 and stale or exhausted returns 409.
 - [Phase 2]: Fresh locked SQL write capability precedes scoped link lookup and replay; effect, increment, audit and hash ledger commit together.
 - [Phase 2]: Restore returns disabled and ordinary transitions preserve suspension and permanent global host/key reservation.
+- [Phase 2]: Keep uncertain lifecycle attempts immutable until explicit identical retry or deliberate replacement; conflict refresh never resubmits its action.
+- [Phase 2]: Reuse existing scoped lifecycle transactions, Deleted filter and native dialogs; prove recovery invariants through real PostgreSQL and browser paths.
 
 ### Pending Todos
 
@@ -232,6 +235,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-11T16:05:53.380Z
-Stopped at: Completed 02-27-PLAN.md
+Last session: 2026-10-11T20:17:42.828Z
+Stopped at: Completed 02-28-PLAN.md
 Resume file: None
