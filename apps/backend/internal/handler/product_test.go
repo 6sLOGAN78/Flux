@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -536,6 +537,43 @@ func checkSuspension(t *testing.T, api string, db *fluxTesting.TestDB, p *signed
 	var audits int
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2 AND operation IN ('link.suspend','link.clear')", w, id).Scan(&audits))
 	require.Equal(t, 2, audits)
+	var reason string
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT reason FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2 AND operation='link.clear'", w, id).Scan(&reason))
+	require.Equal(t, "Reviewed restriction", reason)
+	_, err = db.Pool.Exec(ctx, "UPDATE audit_events SET operation='edited' WHERE workspace_id=$1 AND target_link_id=$2", w, id)
+	require.Error(t, err, "historical provenance is immutable")
+	t.Run("same-version-concurrency", func(t *testing.T) {
+		fresh := newLink()
+		freshID := fresh["id"].(string)
+		statuses := make(chan int, 2)
+		for range 2 {
+			go func() {
+				code, _ := workspaceRequest(t, api, token, "POST", path+"/"+freshID+"/suspension", uuid.NewString(), `{"reason":"Concurrent proof","expectedVersion":"1"}`)
+				statuses <- code
+			}()
+		}
+		codes := []int{<-statuses, <-statuses}
+		sort.Ints(codes)
+		require.Equal(t, []int{200, 409}, codes)
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", w, freshID).Scan(&count))
+		require.Equal(t, 1, count)
+	})
+	t.Run("foreign-existing-and-removed-replay", func(t *testing.T) {
+		foreign := p.token(t, map[string]any{"sub": "user_suspension_foreign", "sid": "sess_user_suspension_foreign"})
+		code, tenant := workspaceRequest(t, api, foreign, "POST", "/workspaces", uuid.NewString(), `{"name":"Foreign suspension tenant"}`)
+		require.Equal(t, 201, code)
+		foreignW := tenant["workspace"].(map[string]any)["id"].(string)
+		code, foreignLink := workspaceRequest(t, api, foreign, "POST", "/workspaces/"+foreignW+"/links", uuid.NewString(), `{"destination":"https://example.com/foreign"}`)
+		require.Equal(t, 201, code)
+		foreignID := foreignLink["link"].(map[string]any)["id"].(string)
+		for _, method := range []string{"POST", "DELETE"} {
+			for _, route := range []string{path + "/" + foreignID + "/suspension", "/workspaces/" + foreignW + "/links/" + foreignID + "/suspension"} {
+				code, _ = workspaceRequest(t, api, token, method, route, uuid.NewString(), `{"reason":"x","expectedVersion":"1"}`)
+				require.Equal(t, 404, code)
+			}
+		}
+	})
 	for _, failure := range []string{"audit", "ledger", "commit"} {
 		t.Run("rollback-"+failure, func(t *testing.T) {
 			fresh := newLink()
