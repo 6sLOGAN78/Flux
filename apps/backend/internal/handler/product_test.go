@@ -2177,10 +2177,10 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.Equal(t, 409, code, "deleted key stays reserved")
 	})
 	t.Run("ledger-and-deferred-commit-rollback-preserve-identical-retry", func(t *testing.T) {
-		item := newLink()
-		id := item["id"].(string)
-		url := path + "/" + id + "/transitions"
 		for _, deferred := range []bool{false, true} {
+			item := newLink()
+			id := item["id"].(string)
+			url := path + "/" + id + "/transitions"
 			key := uuid.NewString()
 			if deferred {
 				_, err := db.Pool.Exec(ctx, "CREATE FUNCTION lifecycle_reject_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$; CREATE CONSTRAINT TRIGGER lifecycle_reject_commit AFTER UPDATE ON links DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION lifecycle_reject_commit()")
@@ -2206,6 +2206,14 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 			require.Zero(t, count)
 			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM mutation_requests WHERE workspace_id=$1 AND request_key=$2", w, key).Scan(&count))
 			require.Zero(t, count)
+			code, effect := workspaceRequest(t, api, token, "POST", url, key, `{"action":"delete","expectedVersion":"1"}`)
+			require.Equal(t, 200, code)
+			code, replay := workspaceRequest(t, api, token, "POST", url, key, `{"action":"delete","expectedVersion":"1"}`)
+			require.Equal(t, 200, code)
+			require.Equal(t, effect, replay)
+			require.Equal(t, "2", replay["link"].(map[string]any)["version"])
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", w, id).Scan(&count))
+			require.Equal(t, 1, count)
 		}
 	})
 	t.Run("deleted-filter-restore-retains-creator-and-reservation", func(t *testing.T) {
@@ -2220,8 +2228,8 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 		require.Equal(t, 200, code)
 		require.Equal(t, deleted, replay)
 		for _, filter := range []string{"", "?state=deleted"} {
-			code, listed := workspaceRequest(t, api, token, "GET", path+filter, "", "")
-			require.Equal(t, 200, code)
+			listCode, listed := workspaceRequest(t, api, token, "GET", path+filter, "", "")
+			require.Equal(t, 200, listCode)
 			found := false
 			for _, row := range listed["items"].([]any) {
 				if row.(map[string]any)["id"] == id {
@@ -2261,10 +2269,15 @@ func checkLifecycle(t *testing.T, api string, db *fluxTesting.TestDB, p *signedP
 	require.NoError(t, err)
 	status, _ = workspaceRequest(t, api, token, "POST", url, key, body)
 	require.Equal(t, 403, status)
+	status, _ = workspaceRequest(t, api, token, "POST", url, key, `{"action":"delete","expectedVersion":"2"}`)
+	require.Equal(t, 403, status, "revoked write authority precedes stored hash disclosure")
 	_, err = db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1", w)
 	require.NoError(t, err)
 	status, _ = workspaceRequest(t, api, token, "POST", url, key, body)
 	require.Equal(t, 404, status)
+	var effects int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_link_id=$2", w, id).Scan(&effects))
+	require.Equal(t, 1, effects, "replay and revoked attempts never repeat an effect")
 }
 
 func checkLinkCreate(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {

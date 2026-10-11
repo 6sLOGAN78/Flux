@@ -26,9 +26,22 @@ test("lifecycle commits disable enable archive restore delete and restored disab
   });
   expect(result.status()).toBe(201);
   const { link } = await result.json();
+  let showSuspension = false;
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (showSuspension && url.pathname.endsWith(`/links/${link.id}`)) {
+      // Presentation of a canonical restricted row; real-PG suspension bypass
+      // denial with the exact displayed version is proved in product_test.go.
+      const body = await response.json();
+      body.link.suspension = {
+        actorId: link.creator.id,
+        at: new Date().toISOString(),
+        reason: "Protected lifecycle proof",
+      };
+      await route.fulfill({ response, json: body });
+      return;
+    }
     await route.fulfill({ response });
   });
   await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
@@ -57,6 +70,12 @@ test("lifecycle commits disable enable archive restore delete and restored disab
   }
   await page.reload();
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeVisible();
+  showSuspension = true;
+  await page.reload();
+  await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeDisabled();
+  await expect(
+    detail.getByText("An owner or admin must clear suspension first.", { exact: true }),
+  ).toBeVisible();
 });
 
 test("lifecycle-conflict automatically loads authoritative version before explicit review and capability loss", async ({
@@ -84,10 +103,15 @@ test("lifecycle-conflict automatically loads authoritative version before explic
   const { link } = await result.json();
   let mutations = 0;
   let fail = false;
+  const submissions: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/transitions")) {
       mutations++;
+      submissions.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postData(),
+      });
       if (fail) {
         await route.fulfill({
           status: 503,
@@ -110,7 +134,8 @@ test("lifecycle-conflict automatically loads authoritative version before explic
     },
   );
   expect(competing.status()).toBe(200);
-  await detail.getByRole("button", { name: "Disable link", exact: true }).click();
+  await detail.getByRole("button", { name: "Archive link", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Archive link", exact: true }).click();
   await expect(detail.getByRole("alert")).toHaveText(
     "This link changed since you opened it. Review the latest details before trying again.",
   );
@@ -129,6 +154,15 @@ test("lifecycle-conflict automatically loads authoritative version before explic
   await expect(detail.getByRole("alert")).toHaveText("We couldn't save this change. Try again.");
   await expect(detail.getByRole("button", { name: "Enable link", exact: true })).toBeDisabled();
   expect(mutations).toBe(2);
+  expect(JSON.parse(submissions[0]?.body ?? "{}")).toEqual({
+    action: "archive",
+    expectedVersion: "1",
+  });
+  expect(JSON.parse(submissions[1]?.body ?? "{}")).toEqual({
+    action: "enable",
+    expectedVersion: "2",
+  });
+  expect(submissions[1]?.key).not.toBe(submissions[0]?.key);
   await expect(detail).not.toContainText("PRIVATE-MARKER");
   fail = false;
   await detail.getByRole("button", { name: "Review latest details", exact: true }).click();

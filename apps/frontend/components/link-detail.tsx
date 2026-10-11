@@ -5,7 +5,12 @@ import { ZLinkResponse, type LinkResponse } from "@flux/zod";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, createAPI } from "../lib/api";
-import { destinationSyntaxOK, localLinkTime } from "../lib/links";
+import {
+  destinationSyntaxOK,
+  localLinkTime,
+  LifecycleRequests,
+  type LifecycleAction,
+} from "../lib/links";
 import { WorkspaceRequests, resolveWorkspace } from "../lib/workspace";
 import { workspaceCapabilities } from "../lib/workspace";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -34,18 +39,25 @@ export function LinkDetail({
   const submitting = useRef(false);
   const [notice, setNotice] = useState("");
   const [requiresReload, setRequiresReload] = useState(false);
+  const [reviewReady, setReviewReady] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const mutations = useRef(new LifecycleRequests());
+  const retry = useRef<HTMLButtonElement>(null);
   const [confirm, setConfirm] = useState<"archive" | "delete">();
   const reload = useRef<HTMLButtonElement>(null);
   const focusAfterCommit = useRef(false);
   useEffect(() => {
     if (focusAfterCommit.current && !busy && !confirm) {
       focusAfterCommit.current = false;
-      reload.current?.focus();
+      (uncertain ? retry.current : reload.current)?.focus();
     }
-  }, [busy, confirm]);
+  }, [busy, confirm, uncertain, requiresReload]);
   useEffect(() => {
     setCreated(new URLSearchParams(window.location.search).get("created") === "1");
     const request = requests.current.begin();
+    mutations.current.clear();
+    setUncertain(false);
+    setReviewReady(false);
     const api = createAPI(getToken, { origin: window.location.origin });
     setBusy(true);
     void api
@@ -79,10 +91,17 @@ export function LinkDetail({
           if (request.current()) setError("Link not found");
         } else if (request.current()) setError("We couldn't load this link. Try again.");
       });
-    return () => requests.current.clear();
+    return () => {
+      requests.current.clear();
+      mutations.current.clear();
+    };
   }, [workspaceId, linkId, getToken, attempt, router]);
-  const transition = async (action: "enable" | "disable" | "archive" | "restore" | "delete") => {
-    if (!link || !canWrite || submitting.current || requiresReload) return;
+  const transition = async (action: LifecycleAction, identicalRetry = false) => {
+    if (!link || !canWrite || submitting.current || (requiresReload && !identicalRetry)) return;
+    const mutation = identicalRetry
+      ? mutations.current.retry()
+      : mutations.current.start(action, link.version);
+    if (!mutation) return;
     submitting.current = true;
     setBusy(true);
     setConfirm(undefined);
@@ -93,8 +112,8 @@ export function LinkDetail({
     try {
       const value = await api.request(`/workspaces/${workspaceId}/links/${linkId}/transitions`, {
         method: "POST",
-        body: { action, expectedVersion: link.version },
-        idempotencyKey: crypto.randomUUID(),
+        body: mutation.body,
+        idempotencyKey: mutation.key,
         signal: request.signal,
       });
       const result = ZLinkResponse.parse(value);
@@ -102,6 +121,9 @@ export function LinkDetail({
       if (result.link.workspaceId !== workspaceId || result.link.id !== linkId)
         throw new Error("Unexpected resource");
       setLink(result.link);
+      mutations.current.clear();
+      setUncertain(false);
+      setRequiresReload(false);
       setNotice("Link updated.");
     } catch (failure) {
       if (!request.current()) return;
@@ -109,6 +131,8 @@ export function LinkDetail({
         setLink(undefined);
         denied.current(401);
       } else if (failure instanceof ApiError && [403, 404].includes(failure.status)) {
+        mutations.current.clear();
+        setUncertain(false);
         setCanWrite(false);
         try {
           const current = await resolveWorkspace(api, workspaceId, request.signal);
@@ -128,13 +152,54 @@ export function LinkDetail({
         }
       } else {
         setRequiresReload(true);
+        const versionConflict =
+          failure instanceof ApiError && failure.constraint === "VERSION_CONFLICT";
+        const networkUncertain =
+          failure instanceof ApiError && failure.status === 0 && failure.code === "unavailable";
+        setUncertain(networkUncertain);
+        if (!networkUncertain) mutations.current.clear();
         setError(
-          failure instanceof ApiError && failure.constraint === "VERSION_CONFLICT"
+          versionConflict
             ? "This link changed since you opened it. Review the latest details before trying again."
             : failure instanceof ApiError && failure.constraint === "PRECONDITION_REQUIRED"
               ? "We couldn't verify the latest version. Reload this link before trying again."
               : "We couldn't save this change. Try again.",
         );
+        if (versionConflict) {
+          try {
+            const latest = ZLinkResponse.parse(
+              await api.request(`/workspaces/${workspaceId}/links/${linkId}`, {
+                signal: request.signal,
+              }),
+            );
+            const membership = await resolveWorkspace(api, workspaceId, request.signal);
+            if (!request.current()) return;
+            if (latest.link.workspaceId !== workspaceId || latest.link.id !== linkId)
+              throw new Error("Unexpected resource");
+            setLink(latest.link);
+            setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+            setReviewReady(true);
+          } catch (refreshFailure) {
+            if (!request.current()) return;
+            if (refreshFailure instanceof ApiError && refreshFailure.status === 401) {
+              setLink(undefined);
+              denied.current(401);
+            } else if (
+              refreshFailure instanceof ApiError &&
+              [403, 404].includes(refreshFailure.status)
+            ) {
+              setLink(undefined);
+              try {
+                const membership = await resolveWorkspace(api, workspaceId, request.signal);
+                if (!request.current()) return;
+                setCanWrite(workspaceCapabilities(membership.workspace.role).create);
+                setError("Link not found");
+              } catch {
+                if (request.current()) denied.current(404);
+              }
+            }
+          }
+        }
       }
     } finally {
       if (request.current()) {
@@ -161,13 +226,37 @@ export function LinkDetail({
       <p>Link management is available. Redirects and analytics are not available yet.</p>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+      {uncertain && (
+        <>
+          <p>The result is uncertain. Retry the identical change to check its committed result.</p>
+          <button
+            ref={retry}
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const pending = mutations.current.retry();
+              if (pending) void transition(pending.body.action, true);
+            }}
+          >
+            Retry identical change
+          </button>
+        </>
+      )}
       {requiresReload && (
         <button
           ref={reload}
           type="button"
+          disabled={busy}
           onClick={() => {
             setNotice("");
-            setAttempt((value) => value + 1);
+            mutations.current.clear();
+            setUncertain(false);
+            if (reviewReady) {
+              focusAfterCommit.current = true;
+              setRequiresReload(false);
+              setReviewReady(false);
+              setError("");
+            } else setAttempt((value) => value + 1);
           }}
         >
           Review latest details

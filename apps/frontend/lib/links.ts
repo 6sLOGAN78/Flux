@@ -63,3 +63,29 @@ export class LinkPages {
 // Match Go strings.TrimSpace: Unicode White_Space, preserving exact inner text.
 export const normalizeLinkSearch = (value: string): string =>
   value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+
+export type LifecycleAction = "enable" | "disable" | "archive" | "restore" | "delete";
+type LifecycleRequest = Readonly<{
+  key: string;
+  body: Readonly<{ action: LifecycleAction; expectedVersion: string }>;
+}>;
+
+// One scoped attempt survives uncertainty unchanged. Only an explicit new
+// intention replaces it; no retry can silently adopt a newer displayed version.
+export class LifecycleRequests {
+  private pending?: LifecycleRequest;
+  constructor(private key: () => string = () => crypto.randomUUID()) {}
+  start(action: LifecycleAction, expectedVersion: string) {
+    this.pending = Object.freeze({
+      key: this.key(),
+      body: Object.freeze({ action, expectedVersion }),
+    });
+    return this.pending;
+  }
+  retry() {
+    return this.pending;
+  }
+  clear() {
+    this.pending = undefined;
+  }
+}
