@@ -3,6 +3,56 @@ import { providerAssetCache } from "./provider-assets";
 
 const publicProviderAsset = providerAssetCache();
 
+test("invitation-management rotates on explicit confirmation and revokes with safe focus", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  await installProviderTransport(page, fixture.client);
+  const headers = {
+    Authorization: `Bearer ${fixture.token}`,
+    Origin: "http://127.0.0.1:3100",
+    "Idempotency-Key": "browser-management-workspace-01",
+  };
+  const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
+    headers,
+    data: { name: "Management Team" },
+  });
+  expect(created.status()).toBe(201);
+  const { workspace } = await created.json();
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/workspaces/${workspace.id}/team`);
+  const form = page.getByRole("form", { name: "Invite member" });
+  await form.getByLabel("Email address", { exact: true }).fill("manage@example.test");
+  await form.getByRole("button", { name: "Invite member", exact: true }).click();
+  const list = page.getByRole("list", { name: "Workspace invitations" });
+  await expect(list).toContainText("Delivery status: Queued");
+  await list.getByRole("button", { name: "Resend", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Resend invitation?" });
+  await expect(dialog).toContainText("A new invitation will replace the previous one.");
+  await expect(dialog.getByRole("button", { name: "Keep invitation", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(list.getByRole("button", { name: "Resend", exact: true })).toBeFocused();
+  await list.getByRole("button", { name: "Resend", exact: true }).click();
+  await dialog.getByRole("button", { name: "Resend invitation", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Invitations", exact: true }).getByRole("status"),
+  ).toHaveText("Invitation queued");
+  await list.getByRole("button", { name: "Revoke", exact: true }).click();
+  const revoke = page.getByRole("dialog", { name: "Revoke invitation?" });
+  await expect(revoke).toContainText(
+    "The recipient will no longer be able to accept this invitation.",
+  );
+  await expect(revoke.getByRole("button", { name: "Keep invitation", exact: true })).toBeFocused();
+  await revoke.getByRole("button", { name: "Revoke invitation", exact: true }).click();
+  await expect(list).toContainText("Delivery status: Revoked");
+  await expect(list.getByRole("button", { name: "Resend", exact: true })).toHaveCount(0);
+});
+
 test("invitation-accept retains memory through native modal sign-in and safely denies wrong recipients", async ({
   page,
   request,

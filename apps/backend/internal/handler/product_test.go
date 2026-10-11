@@ -429,6 +429,9 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("invitation-accept", func(t *testing.T) {
 		checkInvitationAcceptance(t, api.URL, db, p)
 	})
+	t.Run("invitation-management", func(t *testing.T) {
+		checkInvitationManagement(t, api.URL, db, p)
+	})
 	t.Run("roles", func(t *testing.T) {
 		checkTeamRoles(t, api.URL, db, p)
 	})
@@ -442,6 +445,179 @@ func TestProductActualHTTP(t *testing.T) {
 	t.Run("link-create", func(t *testing.T) {
 		checkLinkCreate(t, api.URL, db, p)
 	})
+}
+
+func checkInvitationManagement(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
+	t.Helper()
+	ctx := context.Background()
+	bearer := p.token(t, map[string]any{"sub": "user_invite_management", "sid": "sess_user_invite_management"})
+	status, created := workspaceRequest(t, api, bearer, "POST", "/workspaces", "management-workspace-01", `{"name":"Invitation management"}`)
+	require.Equal(t, 201, status)
+	w := created["workspace"].(map[string]any)["id"].(string)
+	path := "/workspaces/" + w + "/invitations"
+	status, queued := workspaceRequest(t, api, bearer, "POST", path, "management-invite-01", `{"email":"same@example.test","role":"member"}`)
+	require.Equal(t, 201, status)
+	id := queued["invitation"].(map[string]any)["id"].(string)
+	itemPath := path + "/" + id
+	oldDelivery, oldSecret := managementSecret(t, db, w, id)
+	store := repository.NewDeliveryRepository(db.Pool)
+	claims, claimErr := store.Claim(ctx)
+	require.NoError(t, claimErr)
+	require.NotEmpty(t, claims)
+	status, replaced := workspaceRequest(t, api, bearer, "POST", itemPath+"/resend", "management-resend-01", `{"version":1}`)
+	require.Equal(t, 200, status, "authorized resend route must exist")
+	require.Equal(t, "Queued", replaced["invitation"].(map[string]any)["status"])
+	require.Equal(t, float64(2), replaced["invitation"].(map[string]any)["version"])
+	newDelivery, newSecret := managementSecret(t, db, w, id)
+	claims, claimErr = store.Claim(ctx)
+	require.NoError(t, claimErr)
+	require.NotEmpty(t, claims)
+	require.NotEqual(t, oldDelivery, newDelivery, "rotated content requires new immutable provider identity")
+	require.NotEqual(t, oldSecret, newSecret)
+	status, _ = workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", `{"token":"`+oldSecret+`"}`)
+	require.Equal(t, 404, status)
+	status, replay := workspaceRequest(t, api, bearer, "POST", itemPath+"/resend", "management-resend-01", `{"version":1}`)
+	require.Equal(t, 200, status)
+	require.Equal(t, replaced, replay)
+	status, _ = workspaceRequest(t, api, bearer, "POST", itemPath+"/resend", "management-resend-01", `{"version":2}`)
+	require.Equal(t, 409, status, "changed request conflicts with retained ledger")
+	status, _ = workspaceRequest(t, api, bearer, "DELETE", itemPath, "management-revoke-01", `{"version":2}`)
+	require.Equal(t, 200, status)
+	status, _ = workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", `{"token":"`+newSecret+`"}`)
+	require.Equal(t, 404, status)
+	status, _ = workspaceRequest(t, api, bearer, "POST", itemPath+"/resend", "management-revoked-01", `{"version":3}`)
+	require.Equal(t, 409, status, "revoked invitation cannot be resurrected")
+	var count int
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM invitation_delivery_intents WHERE workspace_id=$1 AND invitation_id=$2 AND (ciphertext IS NOT NULL OR reconciliation_required OR state='leased')", w, id).Scan(&count))
+	require.Zero(t, count)
+	sends := 0
+	for _, delivery := range []uuid.UUID{oldDelivery, newDelivery} {
+		err := store.Deliver(ctx, repository.DeliveryClaim{WorkspaceID: uuid.MustParse(w), InvitationID: uuid.MustParse(id), DeliveryID: delivery, Generation: 1}, func(context.Context, repository.DeliveryIntent, string, string) error { sends++; return nil })
+		require.NoError(t, err)
+	}
+	require.Zero(t, sends, "winning revoke prevents old queued worker sends")
+	var actor uuid.UUID
+	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT created_by FROM workspaces WHERE id=$1", w).Scan(&actor))
+	checkManagementBoundaries(t, api, db, p, bearer, w, actor)
+	_, err := db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
+	require.NoError(t, err)
+	status, _ = workspaceRequest(t, api, bearer, "POST", itemPath+"/resend", "management-resend-01", `{"version":99}`)
+	require.Equal(t, 404, status, "fresh membership precedes replay hash")
+	require.NotContains(t, p.logs.String(), oldSecret)
+	require.NotContains(t, p.logs.String(), newSecret)
+}
+
+func checkManagementBoundaries(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider, bearer, w string, actor uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	seed := func(role string) (string, string) {
+		t.Helper()
+		key := uuid.NewString()
+		code, value := workspaceRequest(t, api, bearer, "POST", "/workspaces/"+w+"/invitations", key, `{"email":"`+key+`@example.test","role":"`+role+`"}`)
+		require.Equal(t, 201, code)
+		id := value["invitation"].(map[string]any)["id"].(string)
+		return id, "/workspaces/" + w + "/invitations/" + id
+	}
+	t.Run("protected-role-replay-before-hash", func(t *testing.T) {
+		_, path := seed("admin")
+		code, _ := workspaceRequest(t, api, bearer, "POST", path+"/resend", "protected-resend-01", `{"version":1}`)
+		require.Equal(t, 200, code)
+		_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+		require.NoError(t, err)
+		for _, request := range []struct{ method, path, key string }{{"POST", path + "/resend", "protected-resend-01"}, {"DELETE", path, "protected-revoke-01"}} {
+			code, _ = workspaceRequest(t, api, bearer, request.method, request.path, request.key, `{"version":99}`)
+			require.Equal(t, 403, code)
+		}
+		_, err = db.Pool.Exec(ctx, "UPDATE memberships SET role='owner' WHERE workspace_id=$1 AND user_id=$2", w, actor)
+		require.NoError(t, err)
+	})
+	t.Run("strict-input-foreign-and-retention", func(t *testing.T) {
+		id, path := seed("member")
+		for _, body := range []string{`null`, `{}`, `{"version":0}`, `{"version":1,"role":"admin"}`, `{"version":1} {}`, `{"version":1.5}`} {
+			code, _ := workspaceRequest(t, api, bearer, "POST", path+"/resend", "strict-resend-01", body)
+			require.Equal(t, 400, code)
+		}
+		code, _ := workspaceRequest(t, api, bearer, "POST", path+"/resend?extra=x", "strict-resend-01", `{"version":1}`)
+		require.Equal(t, 400, code)
+		code, _ = workspaceRequest(t, api, bearer, "POST", "/workspaces/"+w+"/invitations/"+uuid.NewString()+"/resend", "strict-resend-01", `{"version":1}`)
+		require.Equal(t, 404, code)
+		code, _ = workspaceRequest(t, api, bearer, "POST", path+"/resend", "strict-resend-01", `{"version":1}`)
+		require.Equal(t, 200, code)
+		var valid bool
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT retain_until>=created_at+interval '24 hours' FROM mutation_requests WHERE workspace_id=$1 AND operation='invitation.resend' AND request_key='strict-resend-01'", w).Scan(&valid))
+		require.True(t, valid)
+		_, err := db.Pool.Exec(ctx, "UPDATE invitations SET state='accepted',accepted_user_id=$3 WHERE workspace_id=$1 AND id=$2", w, id, actor)
+		require.NoError(t, err)
+		for _, op := range []string{"resend", "revoke"} {
+			method, url := "POST", path+"/resend"
+			if op == "revoke" {
+				method, url = "DELETE", path
+			}
+			code, _ = workspaceRequest(t, api, bearer, method, url, uuid.NewString(), `{"version":2}`)
+			require.Equal(t, 409, code)
+		}
+	})
+	t.Run("rollback-token-intent-audit-ledger", func(t *testing.T) {
+		id, path := seed("viewer")
+		old, secret := managementSecret(t, db, w, id)
+		_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_management() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.operation='invitation.resend' THEN RAISE EXCEPTION 'rejected' USING ERRCODE='23514'; END IF; RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER reject_management AFTER INSERT ON mutation_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_management()`)
+		require.NoError(t, err)
+		code, _ := workspaceRequest(t, api, bearer, "POST", path+"/resend", "rollback-resend-01", `{"version":1}`)
+		require.Equal(t, 503, code)
+		_, err = db.Pool.Exec(ctx, "DROP TRIGGER reject_management ON mutation_requests; DROP FUNCTION reject_management()")
+		require.NoError(t, err)
+		current, token := managementSecret(t, db, w, id)
+		require.Equal(t, old, current)
+		require.Equal(t, secret, token)
+		var count int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND target_invitation_id=$2 AND operation='invitation.resend'", w, id).Scan(&count))
+		require.Zero(t, count)
+	})
+	t.Run("concurrent-generation-one-effect", func(t *testing.T) {
+		_, path := seed("member")
+		var wg sync.WaitGroup
+		codes := make(chan int, 2)
+		for range 2 {
+			wg.Go(func() {
+				code, _ := workspaceRequest(t, api, bearer, "POST", path+"/resend", uuid.NewString(), `{"version":1}`)
+				codes <- code
+			})
+		}
+		wg.Wait()
+		close(codes)
+		ok, conflicts := 0, 0
+		for code := range codes {
+			switch code {
+			case 200:
+				ok++
+			case 409:
+				conflicts++
+			default:
+				t.Fatalf("unexpected mutation status %d", code)
+			}
+		}
+		require.Equal(t, 1, ok)
+		require.Equal(t, 1, conflicts)
+	})
+}
+
+func managementSecret(t *testing.T, db *fluxTesting.TestDB, w, id string) (uuid.UUID, string) {
+	t.Helper()
+	var delivery uuid.UUID
+	var ciphertext []byte
+	var key string
+	// New intent is the latest durable row; no production credential endpoint exists.
+	require.NoError(t, db.Pool.QueryRow(context.Background(), "SELECT id,ciphertext,key_id FROM invitation_delivery_intents WHERE workspace_id=$1 AND invitation_id=$2 AND ciphertext IS NOT NULL ORDER BY created_at DESC LIMIT 1", w, id).Scan(&delivery, &ciphertext, &key))
+	block, err := aes.NewCipher(make([]byte, 32))
+	require.NoError(t, err)
+	aead, err := cipher.NewGCMWithRandomNonce(block)
+	require.NoError(t, err)
+	plain, err := aead.Open(nil, nil, ciphertext, []byte("flux.invitation.v1\n"+w+"\n"+id+"\n"+delivery.String()+"\n"+key))
+	require.NoError(t, err)
+	defer clear(plain)
+	var envelope map[string]string
+	require.NoError(t, json.Unmarshal(plain, &envelope))
+	return delivery, envelope["token"]
 }
 
 func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB, p *signedProvider) {
