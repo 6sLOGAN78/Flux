@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/mail"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/6sLOGAN78/flux/internal/config"
@@ -104,6 +105,45 @@ func (s *InvitationService) List(ctx context.Context, scope repository.Scope,
 		next = &position
 	}
 	return items, next, nil
+}
+
+// Mutate requires a fresh scoped generation; retry hashes never grant authority.
+func (s *InvitationService) Mutate(ctx context.Context, scope repository.Scope, invite uuid.UUID,
+	version int, key string, resend bool,
+) (repository.Invitation, error) {
+	validKey, keyErr := regexp.MatchString(`^[A-Za-z0-9_-]{16,128}$`, key)
+	if keyErr != nil || !validKey || invite == uuid.Nil || version < 1 || version >= 2147483647 {
+		return repository.Invitation{}, errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if s == nil || s.team == nil {
+		return repository.Invitation{}, workspaceFailure(errors.New("invitation unavailable"))
+	}
+	if resend {
+		if err := s.cfg.Validate(); err != nil {
+			return repository.Invitation{}, workspaceFailure(err)
+		}
+	}
+	operation := "invitation.revoke"
+	if resend {
+		operation = "invitation.resend"
+	}
+	hash := sha256.Sum256([]byte(invite.String() + "\n" + strconv.Itoa(version)))
+	ctx, cancel := context.WithTimeout(ctx, workspaceTimeout)
+	defer cancel()
+	prepare := func(invite, delivery uuid.UUID, email string) (repository.DeliveryIntent, []byte, error) {
+		return sealInvitation(s.cfg, scope, invite, delivery, email)
+	}
+	result, err := s.store.Mutate(ctx, scope, invite, version, key, operation, hash[:],
+		s.team.authorizeMutation, AllowsInvitation, prepare)
+	if errors.Is(err, repository.ErrInvitationConflict) {
+		return repository.Invitation{}, &errs.HTTPError{Code: "INVITATION_CONFLICT",
+			Message: "Reload invitations before trying again.", Status: http.StatusConflict}
+	}
+	if errors.Is(err, repository.ErrInvitationPending) {
+		return repository.Invitation{}, &errs.HTTPError{Code: "INVITATION_PENDING",
+			Message: "An invitation is already pending for this email. Resend or revoke it.", Status: http.StatusConflict}
+	}
+	return result, teamMutationFailure(err)
 }
 
 // Redeem checks only the configured trusted provider; cached SQL email is not authority.

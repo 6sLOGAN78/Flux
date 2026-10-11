@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -122,7 +123,59 @@ func (h *ProductHandler) ListInvitations(c echo.Context) error {
 func invitationTransport(item repository.Invitation) transport.TransportInvitation {
 	return transport.TransportInvitation{Id: item.ID.String(), WorkspaceId: item.WorkspaceID.String(), Email: item.Email,
 		Role: transport.TransportInvitationRole(item.Role), Status: transport.TransportInvitationStatus(item.Status),
-		ExpiresAt: item.ExpiresAt.Format(time.RFC3339Nano)}
+		ExpiresAt: item.ExpiresAt.Format(time.RFC3339Nano), Version: item.Version}
+}
+
+// ResendInvitation creates a new immutable delivery identity after authorization.
+func (h *ProductHandler) ResendInvitation(c echo.Context) error { return h.mutateInvitation(c, true) }
+
+// RevokeInvitation atomically invalidates acceptance and old delivery leases.
+func (h *ProductHandler) RevokeInvitation(c echo.Context) error { return h.mutateInvitation(c, false) }
+
+func (h *ProductHandler) mutateInvitation(c echo.Context, resend bool) error {
+	scope, err := h.invitationScope(c)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(c.Param("invitationId"))
+	if err != nil || id == uuid.Nil || id.String() != c.Param("invitationId") {
+		return errs.NewNotFoundError("Invitation not found", false, nil)
+	}
+	if c.Request().URL.RawQuery != "" {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var body *transport.TransportInvitationMutationRequest
+	var raw json.RawMessage
+	decoder := json.NewDecoder(c.Request().Body)
+	if err = decoder.Decode(&raw); err != nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	fields := json.NewDecoder(bytes.NewReader(raw))
+	fields.DisallowUnknownFields()
+	if err = fields.Decode(&body); err != nil || body == nil {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+	}
+	if body.Version == nil {
+		var presence map[string]json.RawMessage
+		if err = json.Unmarshal(raw, &presence); err != nil {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+		if _, present := presence["version"]; present {
+			return errs.NewBadRequestError("Invalid request", false, nil, nil, nil)
+		}
+		return &errs.HTTPError{Code: "PRECONDITION_REQUIRED", Message: "Reload invitations before trying again.",
+			Status: http.StatusPreconditionRequired}
+	}
+	item, err := h.invitations.Mutate(c.Request().Context(), scope, id, *body.Version,
+		c.Request().Header.Get("Idempotency-Key"), resend)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, transport.TransportInvitationResponse{Invitation: invitationTransport(item)})
 }
 
 // InspectInvitation never performs a membership effect.

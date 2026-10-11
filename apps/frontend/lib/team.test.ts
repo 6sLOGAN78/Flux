@@ -16,6 +16,7 @@ const invitation = {
   role: "member",
   status: "Queued",
   expiresAt: "2026-10-17T11:00:00Z",
+  version: 1,
 };
 
 test("invitation projections reject foreign scope, private credentials and guessed statuses", () => {

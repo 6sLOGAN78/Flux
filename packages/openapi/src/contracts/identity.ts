@@ -6,6 +6,7 @@ import {
   ZIdentityError,
   ZIdentityResponse,
   ZInvitationResponse,
+  ZInvitationMutationRequest,
   ZInvitationTokenRequest,
   ZInvitationInspectionResponse,
   ZInvitationsResponse,
@@ -28,6 +29,54 @@ import { getSecurityMetadata } from "../utils.js";
 const c = initContract();
 
 export const identityContract = c.router({
+  resendInvitation: {
+    summary: "Explicitly replace an unaccepted invitation credential",
+    description:
+      "Workspace then current actor, invitation and intent locks. Fresh owner/admin target-role policy and original replay snapshot policy precede hash reads. Pending/expired invitations only; accepted/revoked cannot be resurrected. Current bounded integer version required (missing 428, stale 409; maximum generation cannot increment);  scoped 24-hour idempotency replay. New 256-bit token digest, encrypted immutable delivery identity and seven-day issued expiry commit atomically with old intent cancellation/erasure, generation fence and protected audit. Failed uncertain deliveries require this explicit action; an earlier message may have arrived but its credential becomes invalid. Queued until acknowledgement. No email in API process and no private delivery material in responses.",
+    path: "/api/v1/workspaces/:workspaceId/invitations/:invitationId/resend",
+    method: "POST",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), invitationId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZInvitationMutationRequest,
+    responses: {
+      200: ZInvitationResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      428: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
+  revokeInvitation: {
+    summary: "Invalidate an unaccepted invitation and cancel delivery atomically",
+    description:
+      "Fresh locked workspace/actor and target-role policy before scoped operation/version hash replay. Pending/expired invitations only; accepted/revoked fresh mutations conflict. A matching committed retry may return its original snapshot after current authorization. Increment invitation and lease generations, clear ciphertext and reconciliation flags, invalidate acceptance state and write protected audit and 24-hour ledger in one transaction. Winning revoke prevents stale queued worker sends; a bounded provider call already holding locks completes first. Strict JSON, exact Origin, bearer, no-store and bounded input apply.",
+    path: "/api/v1/workspaces/:workspaceId/invitations/:invitationId",
+    method: "DELETE",
+    metadata: getSecurityMetadata(),
+    pathParams: z.object({ workspaceId: z.string().uuid(), invitationId: z.string().uuid() }),
+    headers: z.object({ "idempotency-key": z.string().regex(/^[A-Za-z0-9_-]{16,128}$/) }),
+    body: ZInvitationMutationRequest,
+    responses: {
+      200: ZInvitationResponse,
+      400: ZIdentityError,
+      401: ZIdentityError,
+      403: ZIdentityError,
+      404: ZIdentityError,
+      409: ZIdentityError,
+      413: ZIdentityError,
+      415: ZIdentityError,
+      428: ZIdentityError,
+      429: ZIdentityError,
+      503: ZIdentityError,
+    },
+  },
   inspectInvitation: {
     summary: "Review an invitation after fresh verified recipient checks",
     description:

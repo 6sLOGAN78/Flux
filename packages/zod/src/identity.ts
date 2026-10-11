@@ -39,6 +39,7 @@ export const ZInvitation = extendApi(
         },
       ),
       expiresAt: extendApi(z.string().datetime({ offset: true }), { "x-go-type": "string" }),
+      version: z.number().int().min(1).max(2147483647),
     })
     .strict(),
   { title: "transport.Invitation" },
@@ -56,6 +57,15 @@ export const ZInvitationsResponse = extendApi(
   { title: "transport.InvitationsResponse" },
 );
 export type InvitationsResponse = z.infer<typeof ZInvitationsResponse>;
+
+export const ZInvitationMutationRequest = extendApi(
+  z.object({ version: z.number().int().min(1).max(2147483647).optional() }).strict(),
+  {
+    title: "transport.InvitationMutationRequest",
+    description:
+      "Exact current invitation generation; stale mutations conflict. Replay requires fresh authorization.",
+  },
+);
 
 export const ZIdentityError = extendApi(
   z

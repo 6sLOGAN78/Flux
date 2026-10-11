@@ -6,10 +6,12 @@ export function ConfirmDialog({
   onStay,
   onDiscard,
   roleChange,
+  invitation,
 }: {
   onStay: () => void;
   onDiscard: () => void;
   roleChange?: { email: string; removesManagement: boolean };
+  invitation?: { email: string; resend: boolean; uncertain: boolean };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const stay = useRef<HTMLButtonElement>(null);
@@ -33,20 +35,45 @@ export function ConfirmDialog({
         onStay();
       }}
     >
-      <h2 id="discard-title">{roleChange ? "Change role?" : "Discard unsaved changes?"}</h2>
+      <h2 id="discard-title">
+        {invitation
+          ? invitation.resend
+            ? "Resend invitation?"
+            : "Revoke invitation?"
+          : roleChange
+            ? "Change role?"
+            : "Discard unsaved changes?"}
+      </h2>
+      {invitation && <p>{invitation.email}</p>}
       {roleChange && <p>{roleChange.email}</p>}
       <p id="discard-description">
-        {roleChange
-          ? roleChange.removesManagement
-            ? "This change removes the member's current management permissions."
-            : "This change updates the member's role in this workspace."
-          : "Your unsaved changes will be lost when you switch workspaces."}
+        {invitation
+          ? invitation.resend
+            ? "A new invitation will replace the previous one."
+            : "The recipient will no longer be able to accept this invitation."
+          : roleChange
+            ? roleChange.removesManagement
+              ? "This change removes the member's current management permissions."
+              : "This change updates the member's role in this workspace."
+            : "Your unsaved changes will be lost when you switch workspaces."}
       </p>
+      {invitation?.resend && invitation.uncertain && (
+        <p>
+          The previous message may have arrived. Resending invalidates its invitation and queues a
+          new message.
+        </p>
+      )}
       <button ref={stay} type="button" onClick={onStay}>
-        {roleChange ? "Keep current role" : "Stay"}
+        {invitation ? "Keep invitation" : roleChange ? "Keep current role" : "Stay"}
       </button>
       <button type="button" onClick={onDiscard}>
-        {roleChange ? "Change role" : "Discard"}
+        {invitation
+          ? invitation.resend
+            ? "Resend invitation"
+            : "Revoke invitation"
+          : roleChange
+            ? "Change role"
+            : "Discard"}
       </button>
     </dialog>
   );

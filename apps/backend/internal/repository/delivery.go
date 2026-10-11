@@ -62,7 +62,7 @@ func (r *DeliveryRepository) Prepare(ctx context.Context, claim DeliveryClaim,
 	err = tx.QueryRow(ctx, `SELECT d.key_id,d.ciphertext,w.name,i.role FROM invitation_delivery_intents d
  JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id JOIN workspaces w ON w.id=d.workspace_id
  WHERE d.workspace_id=$1 AND d.id=$2 AND d.invitation_id=$3 AND d.lease_generation=$4
- AND d.state='leased' AND d.lease_until>clock_timestamp() AND i.state='pending' AND i.expires_at>clock_timestamp()
+ AND d.current AND d.state='leased' AND d.lease_until>clock_timestamp() AND i.state='pending' AND i.expires_at>clock_timestamp()
  FOR UPDATE OF d`, claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &name, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -115,7 +115,7 @@ func (r *DeliveryRepository) Claim(ctx context.Context) ([]DeliveryClaim, error)
 	rows, err := tx.Query(ctx, `WITH pending AS (
  SELECT d.workspace_id,d.id FROM invitation_delivery_intents d JOIN invitations i
  ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id
- WHERE ((d.state='queued' AND d.available_at<=clock_timestamp()) OR
+ WHERE d.current AND ((d.state='queued' AND d.available_at<=clock_timestamp()) OR
  (d.state='leased' AND d.lease_until<=clock_timestamp())) AND d.attempts<8
  AND i.state='pending' AND i.expires_at>clock_timestamp()
  ORDER BY d.available_at,d.id LIMIT 25 FOR UPDATE OF d SKIP LOCKED)
@@ -179,7 +179,7 @@ func (r *DeliveryRepository) Deliver(ctx context.Context, claim DeliveryClaim,
  JOIN invitations i ON i.workspace_id=d.workspace_id AND i.id=d.invitation_id
  JOIN workspaces w ON w.id=d.workspace_id
  WHERE d.workspace_id=$1 AND d.id=$2 AND d.invitation_id=$3 AND d.lease_generation=$4
- AND d.state='leased' AND d.lease_until>clock_timestamp() AND d.attempts<8
+ AND d.current AND d.state='leased' AND d.lease_until>clock_timestamp() AND d.attempts<8
  AND i.state='pending' AND i.expires_at>clock_timestamp() FOR UPDATE OF d`,
 		claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation).Scan(&intent.KeyID, &intent.Ciphertext, &workspace, &role, &attempts, &withinWindow)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -211,7 +211,7 @@ func (r *DeliveryRepository) Deliver(ctx context.Context, claim DeliveryClaim,
 	if sendErr == nil {
 		_, err = tx.Exec(finishCtx, `UPDATE invitation_delivery_intents d SET state='delivered',delivered_at=clock_timestamp(),
  ciphertext=NULL,lease_until=NULL,attempts=$5 WHERE d.workspace_id=$1 AND d.id=$2 AND d.invitation_id=$3
- AND d.lease_generation=$4 AND d.state='leased' AND d.lease_until>clock_timestamp()
+ AND d.lease_generation=$4 AND d.current AND d.state='leased' AND d.lease_until>clock_timestamp()
  AND EXISTS(SELECT 1 FROM invitations i WHERE i.workspace_id=d.workspace_id AND i.id=d.invitation_id
  AND i.state='pending' AND i.expires_at>clock_timestamp())`, claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation, attempts)
 	} else {
@@ -244,7 +244,7 @@ func (r *DeliveryRepository) reserveDispatch(ctx context.Context, claim Delivery
 	_, err := r.pool.Exec(ctx, `UPDATE invitation_delivery_intents d SET dispatch_started_at=coalesce(dispatch_started_at,
  CASE WHEN attempts>0 THEN created_at ELSE clock_timestamp() END)
  WHERE workspace_id=$1 AND id=$2 AND invitation_id=$3 AND lease_generation=$4
- AND state='leased' AND lease_until>clock_timestamp() AND dispatch_started_at IS NULL
+ AND current AND state='leased' AND lease_until>clock_timestamp() AND dispatch_started_at IS NULL
  AND EXISTS(SELECT 1 FROM invitations i WHERE i.workspace_id=d.workspace_id AND i.id=d.invitation_id
  AND i.state='pending' AND i.expires_at>clock_timestamp())`,
 		claim.WorkspaceID, claim.DeliveryID, claim.InvitationID, claim.Generation)
@@ -261,7 +261,17 @@ func recordInvitationDelivery(ctx context.Context, tx pgx.Tx, scope Scope, inten
 // cancelInvitationDelivery erases terminal bearer evidence in the acceptance transaction.
 func cancelInvitationDelivery(ctx context.Context, tx pgx.Tx, workspace, invite uuid.UUID) error {
 	_, err := tx.Exec(ctx, "UPDATE invitation_delivery_intents SET state='cancelled',ciphertext=NULL,"+
-		"lease_until=NULL,reconciliation_required=false WHERE workspace_id=$1 AND invitation_id=$2 "+
+		"lease_until=NULL,reconciliation_required=false,lease_generation=lease_generation+1 "+
+		"WHERE workspace_id=$1 AND invitation_id=$2 "+
 		"AND state IN ('queued','leased','failed','cancelled')", workspace, invite)
+	return err
+}
+
+// Supersede preserves immutable provider history while fencing every old job.
+// Delivered ACK metadata remains intact; active/failed envelopes are erased.
+func supersedeInvitationDelivery(ctx context.Context, tx pgx.Tx, workspace, invite uuid.UUID) error {
+	_, err := tx.Exec(ctx, "UPDATE invitation_delivery_intents SET current=false,lease_generation=lease_generation+1,"+
+		"state=CASE WHEN state='delivered' THEN state ELSE 'cancelled' END,ciphertext=NULL,lease_until=NULL,"+
+		"reconciliation_required=false WHERE workspace_id=$1 AND invitation_id=$2 AND current", workspace, invite)
 	return err
 }

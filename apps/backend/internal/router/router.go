@@ -95,6 +95,8 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 	group.GET("/workspaces/:workspaceId/members", product.ListMembers)
 	group.POST("/workspaces/:workspaceId/invitations", product.CreateInvitation)
 	group.GET("/workspaces/:workspaceId/invitations", product.ListInvitations)
+	group.POST("/workspaces/:workspaceId/invitations/:invitationId/resend", product.ResendInvitation)
+	group.DELETE("/workspaces/:workspaceId/invitations/:invitationId", product.RevokeInvitation)
 	group.PATCH("/workspaces/:workspaceId/members/:memberId", product.ChangeMemberRole)
 	group.DELETE("/workspaces/:workspaceId/members/:memberId", product.RemoveMember)
 	group.POST("/workspaces/:workspaceId/links", product.CreateLink)

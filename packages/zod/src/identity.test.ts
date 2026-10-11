@@ -9,6 +9,7 @@ describe("safe invitation state contract", () => {
     email: "a.b+tag@example.test",
     role: "member",
     expiresAt: "2026-10-17T11:00:00Z",
+    version: 1,
   };
   test("accepts all durable public invitation states", () => {
     for (const status of ["Queued", "Delivered", "Failed", "Accepted", "Expired", "Revoked"])

@@ -20,8 +20,21 @@ test("invitation-management rotates on explicit confirmation and revokes with sa
   });
   expect(created.status()).toBe(201);
   const { workspace } = await created.json();
+  let failResend = true;
+  let resendRequests = 0;
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/resend") && route.request().method() === "POST") {
+      resendRequests++;
+      if (failResend) {
+        failResend = false;
+        await route.fulfill({
+          status: 503,
+          json: { code: "UNAVAILABLE", message: "Unavailable", status: 503 },
+        });
+        return;
+      }
+    }
     const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
     await route.fulfill({ response });
   });
@@ -39,6 +52,17 @@ test("invitation-management rotates on explicit confirmation and revokes with sa
   await expect(list.getByRole("button", { name: "Resend", exact: true })).toBeFocused();
   await list.getByRole("button", { name: "Resend", exact: true }).click();
   await dialog.getByRole("button", { name: "Resend invitation", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Invitations", exact: true });
+  await expect(panel.getByRole("alert")).toHaveText(
+    "We couldn't update the invitation. Reload invitations before trying again.",
+  );
+  await expect(list.getByRole("button", { name: "Resend", exact: true })).toBeDisabled();
+  expect(resendRequests).toBe(1);
+  await panel.getByRole("button", { name: "Reload invitations", exact: true }).click();
+  await expect(list.getByRole("button", { name: "Resend", exact: true })).toBeEnabled();
+  expect(resendRequests).toBe(1);
+  await list.getByRole("button", { name: "Resend", exact: true }).click();
+  await dialog.getByRole("button", { name: "Resend invitation", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Invitations", exact: true }).getByRole("status"),
   ).toHaveText("Invitation queued");
@@ -51,6 +75,7 @@ test("invitation-management rotates on explicit confirmation and revokes with sa
   await revoke.getByRole("button", { name: "Revoke invitation", exact: true }).click();
   await expect(list).toContainText("Delivery status: Revoked");
   await expect(list.getByRole("button", { name: "Resend", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reload invitations", exact: true })).toBeFocused();
 });
 
 test("invitation-accept retains memory through native modal sign-in and safely denies wrong recipients", async ({
@@ -1250,11 +1275,16 @@ test("delivery-recovery: expired uncertain HTTP delivery becomes Failed without 
   await expect(list).toContainText(
     "Invitation delivery failed. Resend the invitation to try again.",
   );
-  await expect(list.getByRole("button", { name: "Resend", exact: true })).toHaveCount(0);
   const before = await (
     await request.get(`${fixture.api}/__test/delivery-recovery?workspace=${workspace.id}`)
   ).json();
   expect(before.reconciliationBlocked).toBe(1);
+  await list.getByRole("button", { name: "Resend", exact: true }).click();
+  const resendDialog = page.getByRole("dialog", { name: "Resend invitation?" });
+  await expect(resendDialog).toContainText(
+    "The previous message may have arrived. Resending invalidates its invitation and queues a new message.",
+  );
+  await resendDialog.getByRole("button", { name: "Keep invitation", exact: true }).click();
   await page.getByRole("button", { name: "Reload invitations" }).click();
   await expect(list).toContainText("Delivery status: Delivery failed");
   expect(

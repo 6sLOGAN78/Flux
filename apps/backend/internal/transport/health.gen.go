@@ -439,6 +439,7 @@ type TransportInvitation struct {
 	Id          string                    `json:"id"`
 	Role        TransportInvitationRole   `json:"role"`
 	Status      TransportInvitationStatus `json:"status"`
+	Version     int                       `json:"version"`
 	WorkspaceId string                    `json:"workspaceId"`
 }
 
@@ -464,6 +465,11 @@ type TransportInvitationInspectionRole string
 
 // TransportInvitationInspectionStatus defines model for transport.InvitationInspectionStatus.
 type TransportInvitationInspectionStatus string
+
+// TransportInvitationMutationRequest Exact current invitation generation; stale mutations conflict. Replay requires fresh authorization.
+type TransportInvitationMutationRequest struct {
+	Version *int `json:"version,omitempty"`
+}
 
 // TransportInvitationResponse defines model for transport.InvitationResponse.
 type TransportInvitationResponse struct {
@@ -607,6 +613,16 @@ type CreateInvitationParams struct {
 	IdempotencyKey string `json:"idempotency-key"`
 }
 
+// RevokeInvitationParams defines parameters for RevokeInvitation.
+type RevokeInvitationParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
+// ResendInvitationParams defines parameters for ResendInvitation.
+type ResendInvitationParams struct {
+	IdempotencyKey string `json:"idempotency-key"`
+}
+
 // ListLinksParams defines parameters for ListLinks.
 type ListLinksParams struct {
 	Limit  *string `form:"limit,omitempty" json:"limit,omitempty"`
@@ -654,6 +670,12 @@ type CreateWorkspaceJSONRequestBody = TransportCreateWorkspaceRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = TransportCreateInvitationRequest
+
+// RevokeInvitationJSONRequestBody defines body for RevokeInvitation for application/json ContentType.
+type RevokeInvitationJSONRequestBody = TransportInvitationMutationRequest
+
+// ResendInvitationJSONRequestBody defines body for ResendInvitation for application/json ContentType.
+type ResendInvitationJSONRequestBody = TransportInvitationMutationRequest
 
 // CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
 type CreateLinkJSONRequestBody = TransportCreateLinkRequest

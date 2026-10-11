@@ -345,6 +345,11 @@
               "InviteRevoked"
             ]
           },
+          "version": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "workspaceId": {
             "format": "uuid",
             "type": "string",
@@ -357,7 +362,8 @@
           "email",
           "role",
           "status",
-          "expiresAt"
+          "expiresAt",
+          "version"
         ],
         "title": "transport.Invitation",
         "type": "object"
@@ -422,6 +428,19 @@
         ],
         "title": "transport.InvitationInspectionStatus",
         "type": "string"
+      },
+      "transport.InvitationMutationRequest": {
+        "additionalProperties": false,
+        "description": "Exact current invitation generation; stale mutations conflict. Replay requires fresh authorization.",
+        "properties": {
+          "version": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "title": "transport.InvitationMutationRequest",
+        "type": "object"
       },
       "transport.InvitationResponse": {
         "additionalProperties": false,
@@ -1790,6 +1809,338 @@
           }
         ],
         "summary": "Queue a tenant invitation with encrypted durable delivery intent",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/invitations/{invitationId}": {
+      "delete": {
+        "description": "Fresh locked workspace/actor and target-role policy before scoped operation/version hash replay. Pending/expired invitations only; accepted/revoked fresh mutations conflict. A matching committed retry may return its original snapshot after current authorization. Increment invitation and lease generations, clear ciphertext and reconciliation flags, invalidate acceptance state and write protected audit and 24-hour ledger in one transaction. Winning revoke prevents stale queued worker sends; a bounded provider call already holding locks completes first. Strict JSON, exact Origin, bearer, no-store and bounded input apply.",
+        "operationId": "revokeInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invitationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.InvitationMutationRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.InvitationResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "428"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Invalidate an unaccepted invitation and cancel delivery atomically",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/invitations/{invitationId}/resend": {
+      "post": {
+        "description": "Workspace then current actor, invitation and intent locks. Fresh owner/admin target-role policy and original replay snapshot policy precede hash reads. Pending/expired invitations only; accepted/revoked cannot be resurrected. Current bounded integer version required (missing 428, stale 409; maximum generation cannot increment);  scoped 24-hour idempotency replay. New 256-bit token digest, encrypted immutable delivery identity and seven-day issued expiry commit atomically with old intent cancellation/erasure, generation fence and protected audit. Failed uncertain deliveries require this explicit action; an earlier message may have arrived but its credential becomes invalid. Queued until acknowledgement. No email in API process and no private delivery material in responses.",
+        "operationId": "resendInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invitationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/transport.InvitationMutationRequest"
+              }
+            }
+          },
+          "description": "Body"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.InvitationResponse"
+                }
+              }
+            },
+            "description": "200"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "404"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "409"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "413"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "415"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "428"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "429"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/transport.IdentityError"
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Explicitly replace an unaccepted invitation credential",
         "tags": [
           "Identity"
         ]

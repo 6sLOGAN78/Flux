@@ -21,6 +21,147 @@ var ErrInvitationInvalid = errors.New("invitation invalid")
 // ErrInvitationRecipient contains no invitation details.
 var ErrInvitationRecipient = errors.New("invitation recipient mismatch")
 
+// ErrInvitationConflict requires explicit reload before a new mutation attempt.
+var ErrInvitationConflict = errors.New("invitation generation conflict")
+
+// Mutate reauthorizes current actor and target before reading any replay hash.
+// Workspace -> actor membership -> invitation -> intents is the shared order.
+//
+//nolint:nonamedreturns // Deferred bounded rollback preserves cleanup failures.
+func (r *InvitationRepository) Mutate(ctx context.Context, scope Scope, invite uuid.UUID,
+	version int, key, operation string, hash []byte, authorize TeamAuthorize,
+	allow func(string, string) bool, prepare func(uuid.UUID, uuid.UUID, string) (DeliveryIntent, []byte, error),
+) (result Invitation, err error) {
+	if r == nil || r.pool == nil || authorize == nil || allow == nil || prepare == nil {
+		return result, errors.New("invitation store unavailable")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer finishWorkspaceTx(ctx, tx, &err)
+	actorRole, err := authorize(ctx, tx, scope)
+	if err != nil {
+		return result, err
+	}
+	var state string
+	err = tx.QueryRow(ctx, "SELECT id,workspace_id,email,role,expires_at,version,state FROM invitations "+
+		"WHERE workspace_id=$1 AND id=$2 FOR UPDATE", scope.WorkspaceID, invite).
+		Scan(&result.ID, &result.WorkspaceID, &result.Email, &result.Role, &result.ExpiresAt, &result.Version, &state)
+	if err != nil {
+		return Invitation{}, err
+	}
+	if !allow(actorRole, result.Role) {
+		return Invitation{}, ErrTeamForbidden
+	}
+	if _, err = tx.Exec(ctx, "DELETE FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND retain_until<clock_timestamp()", scope.WorkspaceID, scope.ActorID, operation); err != nil {
+		return Invitation{}, err
+	}
+	var snapshot []byte
+	err = tx.QueryRow(ctx, "SELECT result FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND request_key=$4", scope.WorkspaceID, scope.ActorID, operation, key).Scan(&snapshot)
+	switch {
+	case err == nil:
+		result, err = replayInvitationMutation(ctx, tx, scope, actorRole, operation, key, hash, snapshot, allow)
+	case errors.Is(err, pgx.ErrNoRows):
+		if result.Version != version || !allowsInvitationMutation(state) {
+			return Invitation{}, ErrInvitationConflict
+		}
+		result, err = applyInvitationMutation(ctx, tx, scope, result, operation, prepare)
+		if err == nil {
+			err = recordInvitationMutation(ctx, tx, scope, result, operation, key, hash)
+		}
+	default:
+		return Invitation{}, err
+	}
+	if err != nil {
+		return Invitation{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Invitation{}, err
+	}
+	return result, nil
+}
+
+func allowsInvitationMutation(state string) bool { return state == "pending" || state == "expired" }
+
+func replayInvitationMutation(ctx context.Context, tx pgx.Tx, scope Scope, actorRole, operation, key string,
+	hash, snapshot []byte, allow func(string, string) bool,
+) (Invitation, error) {
+	var result Invitation
+	if err := json.Unmarshal(snapshot, &result); err != nil {
+		return result, err
+	}
+	if result.WorkspaceID != scope.WorkspaceID || result.ID == uuid.Nil || !allow(actorRole, result.Role) {
+		return Invitation{}, ErrTeamForbidden
+	}
+	var storedHash []byte
+	err := tx.QueryRow(ctx, "SELECT request_hash FROM mutation_requests WHERE workspace_id=$1 AND actor_id=$2 "+
+		"AND operation=$3 AND request_key=$4", scope.WorkspaceID, scope.ActorID, operation, key).Scan(&storedHash)
+	if err != nil {
+		return Invitation{}, err
+	}
+	return result, matchRequest(hash, storedHash)
+}
+
+func applyInvitationMutation(ctx context.Context, tx pgx.Tx, scope Scope, item Invitation, operation string,
+	prepare func(uuid.UUID, uuid.UUID, string) (DeliveryIntent, []byte, error),
+) (Invitation, error) {
+	if err := supersedeInvitationDelivery(ctx, tx, scope.WorkspaceID, item.ID); err != nil {
+		return Invitation{}, err
+	}
+	item.Version++
+	if operation == "invitation.revoke" {
+		item.Status = "Revoked"
+		_, err := tx.Exec(ctx, "UPDATE invitations SET state='revoked',version=$3 WHERE workspace_id=$1 AND id=$2",
+			scope.WorkspaceID, item.ID, item.Version)
+		return item, err
+	}
+	intent, digest, err := prepare(item.ID, uuid.New(), item.Email)
+	if err != nil {
+		return Invitation{}, err
+	}
+	defer clear(intent.Ciphertext)
+	// Another invitation may occupy the email since this one expired. The
+	// original partial unique policy remains authoritative and transactional.
+	_, err = tx.Exec(ctx, "UPDATE invitations SET state='expired' WHERE workspace_id=$1 AND email=$2 "+
+		"AND state='pending' AND expires_at<=clock_timestamp()", scope.WorkspaceID, item.Email)
+	if err != nil {
+		return Invitation{}, err
+	}
+	err = tx.QueryRow(ctx, "UPDATE invitations SET state='pending',version=$3,token_digest=$4,issued_at=now(),"+
+		"expires_at=now()+interval '7 days' WHERE workspace_id=$1 AND id=$2 RETURNING expires_at",
+		scope.WorkspaceID, item.ID, item.Version, digest).Scan(&item.ExpiresAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "invitations_pending_email" {
+			return Invitation{}, ErrInvitationPending
+		}
+		return Invitation{}, err
+	}
+	item.Status = "Queued"
+	return item, recordInvitationDelivery(ctx, tx, scope, intent)
+}
+
+func recordInvitationMutation(ctx context.Context, tx pgx.Tx, scope Scope, item Invitation,
+	operation, key string, hash []byte,
+) error {
+	_, err := tx.Exec(ctx, "INSERT INTO audit_events(workspace_id,actor_id,operation,target_invitation_id) "+
+		"VALUES($1,$2,$3,$4)", scope.WorkspaceID, scope.ActorID, operation, item.ID)
+	if err != nil {
+		return err
+	}
+	snapshot, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, "INSERT INTO mutation_requests "+
+		"(workspace_id,actor_id,operation,request_key,request_hash,result) VALUES($1,$2,$3,$4,$5,$6)",
+		scope.WorkspaceID, scope.ActorID, operation, key, hash, snapshot)
+	return err
+}
+
 // InvitationInspection is disclosed only after fresh verified recipient matching.
 type InvitationInspection struct {
 	ExpiresAt     time.Time
@@ -126,7 +267,7 @@ func readRedemption(ctx context.Context, tx pgx.Tx, scope Scope, invite uuid.UUI
 	var valid bool
 	// Wall-clock expiry is checked AFTER the bounded fresh profile lookup.
 	err = tx.QueryRow(ctx, "SELECT role IN ('admin','member','viewer') AND (state='accepted' OR "+
-		"(state='pending' AND expires_at>clock_timestamp() AND expires_at<=created_at+interval '7 days')) "+
+		"(state='pending' AND expires_at>clock_timestamp() AND expires_at<=issued_at+interval '7 days')) "+
 		"FROM invitations WHERE workspace_id=$1 AND id=$2", scope.WorkspaceID, invite).Scan(&valid)
 	if err != nil {
 		return item, err
@@ -158,7 +299,7 @@ func applyRedemption(ctx context.Context, tx pgx.Tx, scope Scope, invite uuid.UU
 			return err
 		}
 	}
-	tag, err := tx.Exec(ctx, "UPDATE invitations SET state='accepted',accepted_user_id=$3 "+
+	tag, err := tx.Exec(ctx, "UPDATE invitations SET state='accepted',accepted_user_id=$3,version=version+1 "+
 		"WHERE workspace_id=$1 AND id=$2 AND state='pending' AND expires_at>clock_timestamp()",
 		scope.WorkspaceID, invite, scope.ActorID)
 	if err != nil {
@@ -184,6 +325,7 @@ type Invitation struct {
 	Email       string    `json:"email"`
 	Role        string    `json:"role"`
 	Status      string    `json:"status"`
+	Version     int       `json:"version"`
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspaceId"`
 }
@@ -230,6 +372,10 @@ func (r *InvitationRepository) Create(ctx context.Context, scope Scope, email, r
 		if err = json.Unmarshal(snapshot, &result); err != nil {
 			return result, err
 		}
+		// Creation snapshots committed before migration 011 represent generation 1.
+		if result.Version == 0 {
+			result.Version = 1
+		}
 		if result.WorkspaceID != scope.WorkspaceID || !allow(actorRole, result.Role) {
 			return Invitation{}, ErrTeamForbidden
 		}
@@ -268,7 +414,8 @@ func applyInvitation(ctx context.Context, tx pgx.Tx, scope Scope, email, role, k
 		"AND state='pending' AND expires_at<=now()", scope.WorkspaceID, email); err != nil {
 		return Invitation{}, err
 	}
-	result := Invitation{ID: uuid.New(), WorkspaceID: scope.WorkspaceID, Email: email, Role: role, Status: "Queued"}
+	result := Invitation{ID: uuid.New(), WorkspaceID: scope.WorkspaceID,
+		Email: email, Role: role, Status: "Queued", Version: 1}
 	intent, digest, err := prepare(result.ID, uuid.New())
 	if err != nil {
 		return Invitation{}, err
@@ -320,9 +467,9 @@ func (r *InvitationRepository) List(ctx context.Context, scope Scope, after uuid
 		"WHEN i.state='pending' AND i.expires_at<=now() THEN 'Expired' "+
 		"WHEN i.state='expired' THEN 'Expired' WHEN i.state='accepted' THEN 'Accepted' "+
 		"WHEN i.state='revoked' THEN 'Revoked' WHEN d.state='delivered' THEN 'Delivered' "+
-		"WHEN d.state='failed' THEN 'Failed' ELSE 'Queued' END,i.expires_at "+
+		"WHEN d.state='failed' THEN 'Failed' ELSE 'Queued' END,i.expires_at,i.version "+
 		"FROM invitations i LEFT JOIN invitation_delivery_intents d "+
-		"ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id "+
+		"ON d.workspace_id=i.workspace_id AND d.invitation_id=i.id AND d.current "+
 		"WHERE i.workspace_id=$1 AND i.id>$2 ORDER BY i.id LIMIT 26", scope.WorkspaceID, after)
 	if err != nil {
 		return nil, err
@@ -331,7 +478,8 @@ func (r *InvitationRepository) List(ctx context.Context, scope Scope, after uuid
 	items = make([]Invitation, 0, lookahead)
 	for rows.Next() {
 		var item Invitation
-		if err = rows.Scan(&item.ID, &item.WorkspaceID, &item.Email, &item.Role, &item.Status, &item.ExpiresAt); err != nil {
+		if err = rows.Scan(&item.ID, &item.WorkspaceID, &item.Email, &item.Role,
+			&item.Status, &item.ExpiresAt, &item.Version); err != nil {
 			rows.Close()
 			return nil, err
 		}
