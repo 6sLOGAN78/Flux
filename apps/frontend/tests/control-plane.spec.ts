@@ -3,6 +3,162 @@ import { providerAssetCache } from "./provider-assets";
 
 const publicProviderAsset = providerAssetCache();
 
+test("invitation-privacy provider failure requires explicit reload before review or acceptance", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const arrival = await (await request.post(`${fixture.api}/__test/invitation-arrival`)).json();
+  await installProviderTransport(page, fixture.client);
+  let inspections = 0;
+  let accepts = 0;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations/accept")) accepts++;
+    if (url.pathname.endsWith("/invitations/inspect") && ++inspections === 1) {
+      await route.fulfill({ status: 503, json: { code: "UNAVAILABLE", status: 503 } });
+      return;
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/invitations#${arrival.token}`);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "The invitation could not be loaded. Try again.",
+  );
+  await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("main")).not.toContainText("Invited arrival tenant");
+  expect(inspections).toBe(1);
+  expect(accepts).toBe(0);
+  await page.getByRole("button", { name: "Reload invitation", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true }),
+  ).toBeVisible();
+  expect(inspections).toBe(2);
+  expect(accepts).toBe(0);
+});
+
+test("invitation-privacy Switch account disposes pending inspection before provider signout completes", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const arrival = await (await request.post(`${fixture.api}/__test/invitation-arrival`)).json();
+  await installProviderTransport(page, fixture.client);
+  let releaseInspection = () => {};
+  const inspectionGate = new Promise<void>((resolve) => {
+    releaseInspection = resolve;
+  });
+  let releaseSignout = () => {};
+  const signoutGate = new Promise<void>((resolve) => {
+    releaseSignout = resolve;
+  });
+  let inspectionStarted = false;
+  let signoutStarted = false;
+  await page.route("https://fixture.clerk.accounts.dev/**/sessions/*/remove*", async (route) => {
+    signoutStarted = true;
+    await signoutGate;
+    await route.fallback();
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (url.pathname.endsWith("/invitations/inspect")) {
+      inspectionStarted = true;
+      await inspectionGate;
+    }
+    await route.fulfill({ response });
+  });
+  try {
+    await page.goto(`/invitations#${arrival.token}`);
+    await expect.poll(() => inspectionStarted).toBe(true);
+    await page.getByRole("button", { name: "Switch account", exact: true }).click();
+    await expect.poll(() => signoutStarted).toBe(true);
+    releaseInspection();
+    await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("main")).not.toContainText("Invited arrival tenant");
+    await expect(page.getByRole("main").getByRole("status")).toHaveText("Switching account…");
+    releaseSignout();
+    await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("Invited arrival tenant");
+  } finally {
+    releaseInspection();
+    releaseSignout();
+  }
+});
+
+test("invitation-privacy refresh and full navigation lose disposable arrival without joining", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const arrival = await (await request.post(`${fixture.api}/__test/invitation-arrival`)).json();
+  await installProviderTransport(page, fixture.client);
+  let inspections = 0;
+  let accepts = 0;
+  const leaks: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes(arrival.token)) leaks.push("console");
+  });
+  page.on("pageerror", (error) => {
+    if (error.message.includes(arrival.token)) leaks.push("error");
+  });
+  page.on("request", (req) => {
+    const allowed =
+      req.method() === "POST" &&
+      /\/api\/v1\/invitations\/(inspect|accept)$/.test(new URL(req.url()).pathname);
+    if (
+      req.url().includes(arrival.token) ||
+      JSON.stringify(req.headers()).includes(arrival.token) ||
+      (!allowed && (req.postData() ?? "").includes(arrival.token))
+    )
+      leaks.push("request");
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/invitations/inspect")) inspections++;
+    if (url.pathname.endsWith("/invitations/accept")) accepts++;
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    if (url.pathname.startsWith("/api/v1/invitations/"))
+      expect(response.headers()["cache-control"]).toContain("no-store");
+    await route.fulfill({ response });
+  });
+  const response = await page.goto(`/invitations#${arrival.token}`);
+  expect(response?.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(response?.headers()["cache-control"]).toContain("no-store");
+  await expect(
+    page.getByRole("heading", { name: "Join Invited arrival tenant", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify([history.state, localStorage, sessionStorage, document.cookie]),
+    ),
+  ).not.toContain(arrival.token);
+  expect(await page.locator("html").innerHTML()).not.toContain(arrival.token);
+  await page.reload();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This invitation is no longer valid. Ask an owner or admin for a new invitation.",
+  );
+  await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+  await page.goto("/invitations");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This invitation is no longer valid. Ask an owner or admin for a new invitation.",
+  );
+  expect(inspections).toBe(1);
+  expect(accepts).toBe(0);
+  expect(leaks).toEqual([]);
+  const me = await request.get(`${fixture.api}/api/v1/me`, {
+    headers: { Authorization: `Bearer ${fixture.token}` },
+  });
+  expect(
+    (await me.json()).workspaces.some(
+      (workspace: { id: string }) => workspace.id === arrival.workspace,
+    ),
+  ).toBe(false);
+});
+
 test("invitation-management rotates on explicit confirmation and revokes with safe focus", async ({
   page,
   request,
@@ -78,7 +234,7 @@ test("invitation-management rotates on explicit confirmation and revokes with sa
   await expect(page.getByRole("button", { name: "Reload invitations", exact: true })).toBeFocused();
 });
 
-test("invitation-accept retains memory through native modal sign-in and safely denies wrong recipients", async ({
+test("invitation-privacy invitation-accept retains memory through native modal sign-in and safely denies wrong recipients", async ({
   page,
   request,
 }) => {
@@ -155,7 +311,7 @@ test("invitation-accept retains memory through native modal sign-in and safely d
   expect(await page.getByRole("main").innerHTML()).not.toContain(rejected.workspace);
 });
 
-test("invitation-accept inspects privately and joins only after explicit acceptance without workspace creation", async ({
+test("invitation-privacy invitation-accept inspects privately and joins only after explicit acceptance without workspace creation", async ({
   page,
   request,
 }) => {
@@ -167,8 +323,21 @@ test("invitation-accept inspects privately and joins only after explicit accepta
   let accepts = 0;
   let creates = 0;
   const exposed: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes(arrival.token)) exposed.push("console");
+  });
+  page.on("pageerror", (error) => {
+    if (error.message.includes(arrival.token)) exposed.push("error");
+  });
   page.on("request", (req) => {
-    if (req.url().includes(arrival.token) || (req.headers().referer ?? "").includes(arrival.token))
+    const allowed =
+      req.method() === "POST" &&
+      /\/api\/v1\/invitations\/(inspect|accept)$/.test(new URL(req.url()).pathname);
+    if (
+      req.url().includes(arrival.token) ||
+      JSON.stringify(req.headers()).includes(arrival.token) ||
+      (!allowed && (req.postData() ?? "").includes(arrival.token))
+    )
       exposed.push("request");
   });
   await page.route("**/api/v1/**", async (route) => {
@@ -201,6 +370,45 @@ test("invitation-accept inspects privately and joins only after explicit accepta
   expect(exposed).toEqual([]);
   const after = await request.get(`${fixture.api}/api/v1/me`, { headers });
   expect((await after.json()).lastWorkspace.id).toBe(arrival.workspace);
+});
+
+test("invitation-privacy already accepted opens only authorized Links and terminal denials stay account-safe", async ({
+  page,
+  request,
+}) => {
+  const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
+  const arrival = await (await request.post(`${fixture.api}/__test/invitation-arrival`)).json();
+  const headers = { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100" };
+  const accepted = await request.post(`${fixture.api}/api/v1/invitations/accept`, {
+    headers,
+    data: { token: arrival.token },
+  });
+  expect(accepted.status()).toBe(200);
+  await installProviderTransport(page, fixture.client);
+  let terminal = false;
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (terminal && url.pathname.endsWith("/invitations/inspect")) {
+      await route.fulfill({ status: 404, json: { code: "NOT_FOUND", status: 404 } });
+      return;
+    }
+    const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/invitations#${arrival.token}`);
+  await expect(page.getByRole("main").getByRole("status")).toHaveText(
+    "Invitation already accepted.",
+  );
+  await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${arrival.workspace}/links`));
+  terminal = true;
+  await page.goto(`/invitations#${arrival.token}`);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "This invitation is no longer valid. Ask an owner or admin for a new invitation.",
+  );
+  await expect(page.getByRole("main")).not.toContainText("Invited arrival tenant");
+  await expect(page.getByRole("button", { name: "Open workspace", exact: true })).toHaveCount(0);
 });
 
 test("removal of another member retains creator links and invalidates their tab from fresh SQL authority", async ({

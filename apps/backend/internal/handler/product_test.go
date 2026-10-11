@@ -808,17 +808,22 @@ func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB,
 	var count int
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
 	require.Zero(t, count, "inspection never joins a workspace")
-	for _, mode := range []string{"unverified", "failure"} {
+	for _, mode := range []string{"unverified", "failure", "mismatch", "missingprimary", "banned"} {
 		p.mu.Lock()
 		p.profileMode = mode
 		p.mu.Unlock()
-		denialStatus, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
-		if mode == "failure" {
-			require.Equal(t, 503, denialStatus)
-		} else {
-			require.Equal(t, 401, denialStatus)
+		for _, operation := range []string{"inspect", "accept"} {
+			denialStatus, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/"+operation, "", body)
+			if mode == "failure" {
+				require.Equal(t, 503, denialStatus)
+			} else {
+				require.Equal(t, 401, denialStatus)
+			}
+			require.NotContains(t, fmt.Sprint(denied), w)
+			require.NotContains(t, fmt.Sprint(denied), "Explicit invitation tenant")
+			require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
+			require.Zero(t, count)
 		}
-		require.NotContains(t, fmt.Sprint(denied), w)
 	}
 	p.mu.Lock()
 	p.profileMode = ""
@@ -835,12 +840,18 @@ func checkInvitationAcceptance(t *testing.T, api string, db *fluxTesting.TestDB,
 	require.Equal(t, "viewer", accepted["workspace"].(map[string]any)["role"])
 	status, _ = workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
 	require.Equal(t, 200, status, "same actor retry requires fresh membership")
+	status, inspection = workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", body)
+	require.Equal(t, 200, status)
+	require.Equal(t, "Accepted", inspection["invitation"].(map[string]any)["status"])
 	status, _ = workspaceRequest(t, api, owner, "POST", "/invitations/accept", "", body)
 	require.Equal(t, 404, status, "different actor with matching email cannot replay")
 	_, err := db.Pool.Exec(ctx, "DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor)
 	require.NoError(t, err)
 	status, _ = workspaceRequest(t, api, invitee, "POST", "/invitations/accept", "", body)
 	require.Equal(t, 404, status, "removed actor cannot rejoin from accepted credential")
+	status, denied := workspaceRequest(t, api, invitee, "POST", "/invitations/inspect", "", body)
+	require.Equal(t, 404, status, "removed actor cannot inspect the accepted workspace")
+	require.NotContains(t, fmt.Sprint(denied), w)
 	require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE workspace_id=$1 AND user_id=$2", w, actor).Scan(&count))
 	require.Zero(t, count)
 	require.NotContains(t, p.logs.String(), secret)
@@ -974,10 +985,16 @@ func checkInvitationAcceptanceTransactions(t *testing.T, api string, db *fluxTes
 	t.Run("existing-member-role-preserved", func(t *testing.T) {
 		_, err := db.Pool.Exec(ctx, "UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2", w, actor)
 		require.NoError(t, err)
-		_, body := seed()
+		invite, body := seed()
 		status, result := workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", body)
 		require.Equal(t, 200, status)
 		require.Equal(t, "admin", result["workspace"].(map[string]any)["role"])
+		status, result = workspaceRequest(t, api, bearer, "POST", "/invitations/accept", "", body)
+		require.Equal(t, 200, status)
+		require.Equal(t, "admin", result["workspace"].(map[string]any)["role"], "repeat acceptance never restores invitation role")
+		var audits int
+		require.NoError(t, db.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND operation='invitation.accept' AND target_invitation_id=$2", w, invite).Scan(&audits))
+		require.Equal(t, 1, audits, "each accepted invitation records one effect despite retries")
 	})
 	t.Run("strict-body-and-query-and-foreign-credential", func(t *testing.T) {
 		for _, body := range []string{`null`, `{}`, `{"token":null}`, `{"token":"bad","workspaceId":"` + w + `"}`, `{"token":"bad"} {}`} {
