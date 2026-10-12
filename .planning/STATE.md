@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-29-PLAN.md
-last_updated: "2026-10-11T21:00:57.362Z"
-last_activity: 2026-10-11
+stopped_at: Completed 02-30-PLAN.md
+last_updated: "2026-10-12T14:18:04.612Z"
+last_activity: 2026-10-12
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 51
+  completed_plans: 52
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 30 of 35
+Plan: 31 of 35
 Status: Ready to execute
-Last activity: 2026-10-11
+Last activity: 2026-10-12
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -103,6 +103,7 @@ Progress: [█████████░] 89%
 | Phase 2 P27 | 23min 02s | 2 tasks | 19 files |
 | Phase 2 P28 | 15min 33s | 2 tasks | 5 files |
 | Phase 2 P29 | 37min 01s | 2 tasks | 16 files |
+| Phase 2 P30 | 74min 13s | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -218,6 +219,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Reuse existing scoped lifecycle transactions, Deleted filter and native dialogs; prove recovery invariants through real PostgreSQL and browser paths.
 - [Phase 2]: Historical suspension and clear reasons are retained in immutable audit_events through forward migration 013. — Current-link provenance is cleared on explicit clear and cannot preserve historical audit reasons.
 - [Phase 2]: Suspension reasons use shared Unicode White_Space normalization, codepoint limits and explicit NUL rejection; known commits remain known while fresh SQL capabilities control subsequent actions. — Keep storage validation consistent and remove revoked management controls without inventing mutation uncertainty.
+- [Phase 2]: Verification-only tenant coverage can pass immediately when delivered behavior is secure; fixture and infrastructure failures are not business RED.
+- [Phase 2]: Two-tab privacy proofs verify unchanged initial request-route metadata and fresh authorized selector choices separately from protected returned DTO fields.
 
 ### Pending Todos
 
@@ -238,6 +241,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-11T21:00:57.351Z
-Stopped at: Completed 02-29-PLAN.md
+Last session: 2026-10-12T14:18:04.600Z
+Stopped at: Completed 02-30-PLAN.md
 Resume file: None
