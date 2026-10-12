@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import type { LinkResponse, WorkspaceResponse } from "@flux/zod";
 import { providerAssetCache } from "./provider-assets";
 const publicProviderAsset = providerAssetCache();
 
@@ -316,8 +317,8 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
   }) => {
     const fixture = await (await request.get(`${process.env.FLUX_BROWSER_FIXTURE}/client`)).json();
     const headers = { Authorization: `Bearer ${fixture.token}`, Origin: "http://127.0.0.1:3100" };
-    const workspaces = [];
-    const links = [];
+    const workspaces: WorkspaceResponse["workspace"][] = [];
+    const links: LinkResponse["link"][] = [];
     for (const index of [0, 1]) {
       const created = await request.post(`${fixture.api}/api/v1/workspaces`, {
         headers: { ...headers, "Idempotency-Key": `tenant-denial-${boundary}-workspace-${index}` },
@@ -336,6 +337,10 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
       expect(result.status()).toBe(201);
       links.push((await result.json()).link);
     }
+    const [oldWorkspace, nextWorkspace] = workspaces;
+    const [oldLink, nextLink] = links;
+    if (!oldWorkspace || !nextWorkspace || !oldLink || !nextLink)
+      throw new Error("Missing seeded tenant records");
     const second = await context.newPage();
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -368,9 +373,9 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
           }
           await route.fulfill({ response });
         });
-        await tab.goto(`/workspaces/${workspaces[0].id}/links`);
+        await tab.goto(`/workspaces/${oldWorkspace.id}/links`);
         await expect(tab.getByRole("table", { name: "Links library" })).toContainText(
-          links[0].title,
+          oldLink.title,
         );
         // Next embeds the initial client-request route parameter in immutable
         // hydration scripts. Record those exact bytes before any held DTO.
@@ -381,7 +386,7 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
             .evaluateAll(
               (nodes, id) =>
                 nodes.map((node) => node.textContent ?? "").filter((text) => text.includes(id)),
-              workspaces[0].id,
+              oldWorkspace.id,
             ),
         );
         initialBootstrapCounts.set(tab, bootstrap.get(tab)?.count ?? 0);
@@ -395,15 +400,21 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
             finished = resolve;
           }),
         );
-        await tab.route(`**/api/v1/workspaces/${workspaces[0].id}/links?*`, async (route) => {
+        await tab.route(`**/api/v1/workspaces/${oldWorkspace.id}/links?*`, async (route) => {
           const url = new URL(route.request().url());
           const response = await route.fetch({ url: `${fixture.api}${url.pathname}${url.search}` });
           // Hold a real, already authorized DTO containing the private record.
           const dto = await response.json();
-          expect(dto.items.some((item: { id: string }) => item.id === links[0].id)).toBe(true);
+          expect(dto.items.some((item: { id: string }) => item.id === oldLink.id)).toBe(true);
           observed();
           await held;
-          await route.fulfill({ response }).catch(() => {});
+          try {
+            await route.fulfill({ response });
+          } catch {
+            // The boundary may have aborted this exact in-flight transport.
+            // Any other route error fails the proof rather than being hidden.
+            expect(route.request().failure()?.errorText === "net::ERR_ABORTED").toBe(true);
+          }
           finished();
         });
         await tab.getByLabel("Search links", { exact: true }).fill("Private");
@@ -411,31 +422,31 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
         await started;
       }
       if (boundary === "switch") {
-        await page.getByLabel("Switch workspace", { exact: true }).selectOption(workspaces[1].id);
+        await page.getByLabel("Switch workspace", { exact: true }).selectOption(nextWorkspace.id);
         await page.getByRole("button", { name: "Open workspace", exact: true }).click();
         await expect(
-          page.getByRole("heading", { name: workspaces[1].name, exact: true }),
+          page.getByRole("heading", { name: nextWorkspace.name, exact: true }),
         ).toBeVisible();
         await expect(
           second.getByRole("heading", { name: "Choose a workspace", exact: true }),
         ).toBeVisible();
         await expect(second).toHaveURL(/\/workspaces\?access=changed$/);
-        await second.getByLabel("Workspace", { exact: true }).selectOption(workspaces[1].id);
+        await second.getByLabel("Workspace", { exact: true }).selectOption(nextWorkspace.id);
         await second.getByRole("button", { name: "Open workspace", exact: true }).click();
         await expect(
-          second.getByRole("heading", { name: workspaces[1].name, exact: true }),
+          second.getByRole("heading", { name: nextWorkspace.name, exact: true }),
         ).toBeVisible();
-        await page.goto(`/workspaces/${workspaces[1].id}/links`);
+        await page.goto(`/workspaces/${nextWorkspace.id}/links`);
         for (const tab of [page, second]) {
           await expect(tab.getByRole("table", { name: "Links library" })).toContainText(
-            links[1].title,
+            nextLink.title,
           );
         }
       } else if (boundary === "removal") {
         expect(
           (
             await request.post(
-              `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${workspaces[0].id}`,
+              `${process.env.FLUX_BROWSER_FIXTURE}/restore-remove?workspace=${oldWorkspace.id}`,
             )
           ).status(),
         ).toBe(204);
@@ -468,7 +479,7 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
       }
       // Each tab must dispose the old records before releasing the old DTO.
       for (const tab of [page, second]) {
-        await expect(tab.getByText(links[0].title, { exact: true })).toHaveCount(0);
+        await expect(tab.getByText(oldLink.title, { exact: true })).toHaveCount(0);
       }
       release();
       await Promise.all(completions);
@@ -480,16 +491,14 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
         }
         const surface = await tab.locator("body").innerHTML();
         expect(
-          [links[0].id, links[0].title, links[0].destination].some((value) =>
-            surface.includes(value),
-          ),
+          [oldLink.id, oldLink.title, oldLink.destination].some((value) => surface.includes(value)),
         ).toBe(false);
         const retainedScripts = await tab
           .locator("script")
           .evaluateAll(
             (nodes, id) =>
               nodes.map((node) => node.textContent ?? "").filter((text) => text.includes(id)),
-            workspaces[0].id,
+            oldWorkspace.id,
           );
         const initial = initialRouteScripts.get(tab) ?? [];
         expect(
@@ -500,11 +509,11 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
         if (boundary === "switch") {
           const fresh = bootstrap.get(tab);
           expect((fresh?.count ?? 0) > (initialBootstrapCounts.get(tab) ?? 0)).toBe(true);
-          expect(fresh?.ids.includes(workspaces[0].id)).toBe(true);
+          expect(fresh?.ids.includes(oldWorkspace.id)).toBe(true);
           await expect(
             tab
               .getByLabel("Switch workspace", { exact: true })
-              .locator(`option[value="${workspaces[0].id}"]`),
+              .locator(`option[value="${oldWorkspace.id}"]`),
           ).toHaveCount(1);
         }
         const forbiddenLocation = await tab.evaluate(
@@ -512,7 +521,7 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
             const body = document.body.cloneNode(true) as HTMLElement;
             body.querySelectorAll("script").forEach((node) => node.remove());
             if (switching) {
-              const options = body.querySelectorAll<HTMLSelectElement>(
+              const options = body.querySelectorAll<HTMLOptionElement>(
                 "select#switch-workspace option",
               );
               options.forEach((option) => {
@@ -521,19 +530,19 @@ for (const boundary of ["switch", "removal", "signout"] as const) {
             }
             return body.innerHTML.includes(id);
           },
-          { id: workspaces[0].id, switching: boundary === "switch" },
+          { id: oldWorkspace.id, switching: boundary === "switch" },
         );
         expect(forbiddenLocation).toBe(false);
-        expect((await tab.getByRole("main").innerHTML()).includes(workspaces[0].id)).toBe(false);
+        expect((await tab.getByRole("main").innerHTML()).includes(oldWorkspace.id)).toBe(false);
       }
       expect(
         [
           fixture.token,
-          links[0].id,
-          links[0].title,
-          links[0].destination,
-          workspaces[0].id,
-          workspaces[0].name,
+          oldLink.id,
+          oldLink.title,
+          oldLink.destination,
+          oldWorkspace.id,
+          oldWorkspace.name,
           "local@example.test",
         ].some((value) => telemetry.some((entry) => entry.includes(value))),
       ).toBe(false);

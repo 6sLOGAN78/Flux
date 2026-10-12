@@ -774,11 +774,12 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 				t.Fatal(terminalErr)
 			}
 		}
-		for index, forged := range []repository.DeliveryClaim{
+		forgedClaims := []repository.DeliveryClaim{
 			{WorkspaceID: foreignLease.WorkspaceID, InvitationID: current.InvitationID, DeliveryID: current.DeliveryID, Generation: current.Generation},
 			{WorkspaceID: current.WorkspaceID, InvitationID: foreignLease.InvitationID, DeliveryID: current.DeliveryID, Generation: current.Generation},
 			{WorkspaceID: current.WorkspaceID, InvitationID: current.InvitationID, DeliveryID: foreignLease.DeliveryID, Generation: current.Generation},
-		} {
+		}
+		for index, forged := range forgedClaims {
 			forgedTask, buildErr := job.NewInvitationTask(forged)
 			if buildErr != nil {
 				t.Fatal(buildErr)
@@ -830,6 +831,31 @@ func TestInvitationWorkerActualRedisPostgres(t *testing.T) {
 				info, readErr := inspector.GetTaskInfo("default", "forged-tuple-"+string(rune('0'+index)))
 				return readErr == nil && info.State == asynq.TaskStateCompleted
 			})
+		}
+		// Distinct task IDs force Redis to execute the same forged envelopes
+		// again after completion, rather than treating them as queue duplicates.
+		for index, forged := range forgedClaims {
+			forgedTask, buildErr := job.NewInvitationTask(forged)
+			if buildErr != nil {
+				t.Fatal(buildErr)
+			}
+			id := "forged-replay-" + string(rune('0'+index))
+			if _, buildErr = producer.Enqueue(forgedTask, asynq.TaskID(id), asynq.Retention(time.Minute)); buildErr != nil {
+				t.Fatal(buildErr)
+			}
+			waitInvitation(t, func() bool {
+				info, readErr := inspector.GetTaskInfo("default", id)
+				return readErr == nil && info.State == asynq.TaskStateCompleted
+			})
+			info, readErr := inspector.GetTaskInfo("default", id)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			for _, private := range []string{forged.WorkspaceID.String(), forged.InvitationID.String(), forged.DeliveryID.String(), "private-input-canary", "private-provider-response-canary"} {
+				if strings.Contains(info.LastErr, private) {
+					t.Fatal("forged envelope identifier persisted as retry error")
+				}
+			}
 		}
 		for _, id := range []string{"future-reference", "old-generation-reference", "revoked-reference", "accepted-reference", "expired-reference", "delivered-reference"} {
 			waitInvitation(t, func() bool {
