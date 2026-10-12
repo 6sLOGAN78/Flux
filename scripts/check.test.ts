@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { test } from "node:test";
@@ -9,6 +20,155 @@ import type { Stage } from "./check.ts";
 
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
+
+test("provider writer binds actual native fixture annotations to private validated records", async () => {
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  const temporary = await mkdtemp(join(tmpdir(), "flux-provider-writer-fixture-"));
+  try {
+    const { requiredProviderRows, manualProviderRows, validateAcceptance, configFingerprint } =
+      await import("../apps/frontend/tests/provider.config.ts");
+    const { saveProviderEvidence } = await load();
+    const directory = join(temporary, "private");
+    await mkdir(directory, { mode: 0o700 });
+    const env = { FLUX_PROVIDER_PRIVATE_DIR: directory };
+    const annotations = requiredProviderRows.map((id) => ({
+      type: "flux-provider-row",
+      description: JSON.stringify({
+        id,
+        status: id in manualProviderRows ? "human_pending" : "passed",
+      }),
+    }));
+    const module = join(repository, "apps/frontend/node_modules/@playwright/test/index.mjs");
+    await writeFile(
+      join(temporary, "fixture.spec.mjs"),
+      `import { test } from ${JSON.stringify(module)};\n` +
+        `test("protocol fixture only; no provider acceptance", async ({}, info) => { info.annotations.push(...${JSON.stringify(annotations)}); });\n`,
+    );
+    const config = join(temporary, "playwright.config.mjs");
+    await writeFile(
+      config,
+      'export default { testDir: ".", testMatch: "fixture.spec.mjs", reporter: "json", workers: 1, projects: [{ name: "provider" }] };',
+    );
+    const executed = spawnSync(
+      "node",
+      [
+        join(repository, "apps/frontend/node_modules/@playwright/test/cli.js"),
+        "test",
+        "--config",
+        config,
+      ],
+      {
+        cwd: temporary,
+        encoding: "utf8",
+        timeout: 30000,
+      },
+    );
+    assert.equal(executed.status, 0, "native protocol fixture must execute");
+    await saveProviderEvidence(repository, executed.stdout, env);
+    const names = await readdir(directory);
+    assert.equal(names.length, 2);
+    const proofName = names.find((name) => name.endsWith(".json"));
+    const recordName = names.find((name) => name.endsWith(".md"));
+    assert.ok(proofName && recordName);
+    const proof = JSON.parse(await readFile(join(directory, proofName), "utf8"));
+    const markdown = await readFile(join(directory, recordName), "utf8");
+    const structured = markdown.split("```json\n")[1]?.split("\n```")[0];
+    assert.ok(structured);
+    const record = JSON.parse(structured);
+    assert.equal(validateAcceptance(record, true, proof, configFingerprint(env)), true);
+    assert.equal(validateAcceptance(record, false, proof, configFingerprint(env)), false);
+    assert.equal(validateAcceptance(record, true, proof, "0".repeat(64)), false);
+    for (const name of names) assert.equal((await stat(join(directory, name))).mode & 0o777, 0o600);
+    for (const mutation of ["missing", "duplicate", "unknown", "failed"] as const) {
+      const report = JSON.parse(executed.stdout);
+      const native = report.suites[0].specs[0].tests[0];
+      if (mutation === "missing") native.annotations.pop();
+      if (mutation === "duplicate") native.annotations.push(native.annotations[0]);
+      if (mutation === "unknown")
+        native.annotations[0].description = JSON.stringify({ id: "unknown", status: "passed" });
+      if (mutation === "failed") native.results[0].status = "failed";
+      await assert.rejects(saveProviderEvidence(repository, JSON.stringify(report), env));
+      assert.deepEqual(await readdir(directory), names, "rejected evidence must not write files");
+    }
+    await chmod(directory, 0o755);
+    await assert.rejects(saveProviderEvidence(repository, executed.stdout, env));
+    assert.deepEqual(await readdir(directory), names);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("provider project forwarding preserves native collection and execution selectors", async () => {
+  await fixture(async (root) => {
+    const { runChecks, selectedBrowserProject } = await load();
+    assert.equal(selectedBrowserProject(), "local");
+    assert.equal(selectedBrowserProject(["--project=provider"]), "provider");
+    for (const args of [
+      ["--project=unknown"],
+      ["--project=provider", "--project=local"],
+      ["--project"],
+    ])
+      assert.throws(() => selectedBrowserProject(args));
+    const seen: Stage[] = [];
+    await runChecks({
+      root,
+      group: "test:e2e",
+      browserArgs: ["--project=provider"],
+      runner: async (stage) => {
+        seen.push(stage);
+        return { code: 0, stdout: successfulOutput(stage) };
+      },
+    });
+    assert.equal(seen[0]?.id, "provider:check");
+    const browsers = seen.filter((stage) => stage.browserList || stage.browserTests);
+    assert.equal(browsers.length, 2);
+    for (const stage of browsers) {
+      assert.equal(stage.command.at(-1), "--project=provider");
+      assert.equal(stage.env?.FLUX_PROVIDER_RUN, "1");
+      assert.equal(stage.env?.FLUX_BROWSER_FIXTURE, undefined);
+    }
+  });
+});
+
+test("provider prerequisite failure stops before collection or browser startup", async () => {
+  await fixture(async (root) => {
+    const { runChecks } = await load();
+    const seen: string[] = [];
+    await assert.rejects(
+      runChecks({
+        root,
+        group: "test:e2e",
+        browserArgs: ["--project=provider"],
+        runner: async (stage) => {
+          seen.push(stage.id);
+          return { code: stage.id === "provider:check" ? 1 : 0, stdout: successfulOutput(stage) };
+        },
+      }),
+      /provider:check/,
+    );
+    assert.deepEqual(seen, ["provider:check"]);
+  });
+});
+
+test("provider CLI rejects missing private configuration without values", () => {
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  for (const mode of ["--check-config", "--check-automated-acceptance", "--check-acceptance"]) {
+    const result = spawnSync(
+      "bun",
+      ["--no-env-file", "apps/frontend/tests/provider.config.ts", mode],
+      {
+        cwd: repository,
+        env: { PATH: process.env.PATH },
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Provider prerequisites missing or invalid/);
+    assert.match(result.stderr, /FLUX_AUTH.ISSUER/);
+    assert.equal(result.stdout, "");
+  }
+});
 
 test("root browser gate rejects a real successful report that omits a collected test", async () => {
   await fixture(async (root) => {

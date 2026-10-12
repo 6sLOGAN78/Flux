@@ -379,3 +379,140 @@ telemetry last. Partially allocated resources are released on startup failure,
 including an email adapter returned alongside an error. Existing welcome jobs,
 legacy retry/correlation migration, API-only optional producers, explicit
 migrators and independent redirectors keep their resource boundaries.
+
+## Phase 2 real-provider acceptance (plans 34–35)
+
+Local signed browser fixtures prove application boundaries. They do not prove
+real password factors, inbox verification, recovery, social authorization,
+production cookies or actual delivery. The separate `provider` Playwright
+project uses production Next, the production Go API/migrator/worker, and
+disposable PostgreSQL/Redis using the existing digest pins. It never mounts a
+backend dotenv file or replaces authentication transports. The default root
+`test:e2e` and full gate select only `local`; all 65 local cases remain required.
+
+Prepare private configuration before plan 35. Do not paste keys, passwords,
+cookies, inbox links or codes into chat. Use an external secret store or a
+mode-0600 environment file outside this checkout; existing ignored
+`apps/frontend/.env.local` can hold frontend configuration. The root process
+must receive the same values, for example with Bun's `--env-file` option.
+Do not commit private files or add scanner exceptions.
+
+Exact application settings:
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: development-instance publishable key.
+- `CLERK_SECRET_KEY` and `FLUX_AUTH.SECRET_KEY`: identical development-instance
+  backend key. Prerequisites compare real BAPI and issuer JWKS; prefixes alone
+  cannot establish instance identity.
+- `FLUX_AUTH.ISSUER`: exact HTTPS issuer encoded by the publishable key.
+- `FLUX_AUTH.AUTHORIZED_PARTIES=http://localhost:3000` and
+  `FLUX_API_ORIGIN=http://127.0.0.1:8080`: this dedicated test origin and rewrite.
+- `FLUX_INVITATIONS.ACTIVE_KEY_ID`, `FLUX_INVITATIONS.ENCRYPTION_KEYS`,
+  `FLUX_INVITATIONS.SENDER`, `FLUX_INVITATIONS.PUBLIC_ORIGIN` and
+  `FLUX_INTEGRATION.RESEND_API_KEY`: the production authorities described above.
+  Use an approved verified sender and fixed HTTPS public origin. The test ring
+  needs at least two distinct decoded 32-byte keys so old pending ciphertext and
+  rotated writes can both be tested; this does not change the production ring policy.
+- `FLUX_LINKS.MANAGED_HOST`, optional `FLUX_LINKS.BLOCKED_HOSTS` and
+  `FLUX_LINKS.CURSOR_KEY`: existing operator policies, never test fallback keys.
+
+Test-only settings:
+
+- `FLUX_PROVIDER_TEST_EMAIL` / `FLUX_PROVIDER_TEST_PASSWORD`: an existing
+  verified operator-controlled password account.
+- `FLUX_PROVIDER_INVITEE_EMAIL` / `FLUX_PROVIDER_INVITEE_PASSWORD`: a different
+  existing verified operator-controlled password account.
+- `FLUX_PROVIDER_SIGNUP_EMAIL` / `FLUX_PROVIDER_SIGNUP_PASSWORD`: a third
+  operator-controlled fresh signup identity. Passwords must be at least 12 characters.
+- `FLUX_PROVIDER_AUTHORIZED_RECIPIENTS`: the explicit comma-separated approved
+  inbox addresses, including all three identities. No address is inferred from
+  source, browser history or environment files.
+- `FLUX_PROVIDER_PRIVATE_DIR`: an existing owned mode-0700 absolute directory
+  outside the repository, without symlink components. Raw Playwright media and
+  traces remain disabled. Only sanitized evidence is retained there.
+
+In the Clerk development dashboard enable password signup/login, mandatory email
+verification, password recovery, Google and GitHub, and the default seven-day
+maximum session lifetime. Do not enable testing-email shortcuts as factor
+evidence. The suite uses real UI/password and real provider challenges; it does
+not substitute helper sign-in for factors. Google/GitHub buttons must actually
+reach their providers. Development factor challenges can still require the
+operator's authorized inbox/OAuth/MFA interaction.
+
+Only plan 35, after authorized inputs/recipients are confirmed, runs:
+
+```sh
+bun run provider:check
+bun run test:e2e:provider
+bun run provider:automated:check
+# After remaining human-only rows are verified:
+bun run provider:acceptance:check
+```
+
+Missing prerequisites return a safe nonzero error before browser collection or
+startup; they never become skipped tests. The dedicated harness builds static
+Go binaries, creates only its own pinned disposable containers/networks, runs
+migrations and starts the API. Next is built and started in production mode.
+The worker starts after an old-key intent is queued, with the rotated active key
+and the retained ring. After its single acknowledged invitation email, it stops.
+A second encrypted intent proves new-key writes and is revoked while the worker
+is stopped, so that proof sends no second invitation email. Cleanup removes
+only this run's ephemeral containers, networks and binaries. It cannot delete
+existing databases or unrelated Docker resources.
+
+For the actual invitation, an operator-authorized inbox integration must write
+`inbox.json` (mode 0600) inside the private directory with an
+`invitation_url` containing the real received invitation link. Keep this file
+out of reports. The suite checks the fixed configured public origin and bounded
+token fragment, then presents that fragment to the same production UI on its
+local test origin. Fresh production recipient verification and token-digest
+matching must succeed. A fabricated or stale link cannot count as acceptance.
+The executor can operate an already-authorized inbox integration; no unsolicited
+mail or unapproved recipient is allowed. The root test control endpoint is
+loopback-only, protected by a per-run random bearer and limited to closed,
+UUID-scoped assertions against this run's disposable database.
+
+The outage test detaches only the API's own provider-egress network, retains
+healthy PostgreSQL/Redis, requires a safe 503 within the production deadline,
+then reconnects and requires successful recovery. Production endpoints and
+timeouts are unchanged. Capacity evidence samples actual production API requests
+at 2 requests/second, requires success and p95 below two seconds, and records only
+this tested rate. Clerk currently documents a development BAPI ceiling of
+100 requests/10 seconds and production ceiling of 1000/10 seconds; this is not a
+production load claim. Reassess the expected deployment rate/quota before launch.
+See [Clerk rate limits](https://clerk.com/docs/guides/how-clerk-works/system-limits)
+and [session options](https://clerk.com/docs/guides/secure/session-options).
+
+Native collection and execution identities must match exactly, with positive
+single-pass results and no skips/retries/flaky cases. Successful provider
+execution prepares uniquely named `provider-proof-<run-id>.json` and
+`provider-acceptance-<run-id>.md` in the private directory. During plan 35 the
+executor promotes the sanitized Markdown to
+`.planning/phases/02-tenant-safe-link-control-plane/02-PROVIDER-ACCEPTANCE.md`
+and copies its matching proof to private `provider-proof.json`. These files
+contain no raw tokens, email addresses, passwords, request bodies or cookies.
+The record binds its digest/run to the successful provider execution, source
+revision, current instance/origin fingerprint and a maximum age of seven days.
+This is evidence integrity checking, not a cryptographic attestation against
+an operator who can edit both private files.
+
+Every required row must exist. Automated rows include signup/login, named owner,
+invited onboarding, last-used selection and membership-loss tabs, first Links,
+refresh/expiry/revocation/signout/max session, outage, measured capacity and actual
+delivery/encryption rotation. Only the following rows may remain
+`human_pending` in automated mode, each with its exact listed manual steps and
+`evidence_kind=human_only`:
+
+| Row | Allowed reason |
+| --- | --- |
+| email_verification, password_recovery | authorized_inbox_verification |
+| google_oauth, github_oauth | oauth_account_interaction or operator_mfa |
+| production_cookie_inspection | https_cookie_inspection |
+| provider_key_rotation | provider_dashboard_key_rotation |
+
+Those rows remain incomplete. HTTP development cookies cannot prove HTTPS
+Secure/SameSite/HttpOnly behavior; current JWKS cannot prove rotation. Only
+actual operator verification may change a human row to `human_verified`, with
+the exact steps and a fresh `verified_at`. The final strict mode rejects all
+pending rows. Positive SDK execution cannot satisfy a missing factor. The
+provider run does not complete Phase 2 until strict acceptance and the final
+phase audit pass.
