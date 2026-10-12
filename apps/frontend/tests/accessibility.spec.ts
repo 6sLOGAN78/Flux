@@ -582,3 +582,202 @@ test("accessibility held link creation keeps busy controls disabled and announce
     release?.();
   }
 });
+
+test("responsive native workspace reflows library, team and detail at 320, 768 and 1280", async ({
+  page,
+  request,
+}) => {
+  const { workspace, fixture, headers } = await accessibleWorkspace(page, request);
+  const destination = `https://example.com/${"long-path".repeat(80)}`;
+  const response = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
+    data: { destination, title: "Readable responsive link" },
+  });
+  expect(response.status()).toBe(201);
+  const { link } = await response.json();
+  for (const width of [1280, 768, 320]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`/workspaces/${workspace.id}/links`);
+    await expect(page.getByText("No more links.", { exact: true })).toBeVisible();
+    const main = page.getByRole("main");
+    const geometry = await main.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, width: rect.width, padding: getComputedStyle(element).paddingLeft };
+    });
+    if (width === 1280) {
+      expect(geometry.left).toBe(224);
+      expect(geometry.width).toBeGreaterThan(448);
+      expect(geometry.padding).toBe("24px");
+    } else if (width === 320) expect(geometry.padding).toBe("16px");
+    await expect(
+      page.getByRole(width < 768 ? "list" : "table", { name: "Links library", exact: true }),
+    ).toBeVisible();
+    await assertPageFits(page, width);
+    await page.goto(`/workspaces/${workspace.id}/team`);
+    await expect(page.getByText("No more members.", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole(width < 768 ? "list" : "table", { name: "Team members", exact: true }),
+    ).toBeVisible();
+    await assertPageFits(page, width);
+    await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
+    await expect(page.getByText(destination, { exact: true })).toBeVisible();
+    await assertPageFits(page, width);
+    await expect(
+      page.getByText(
+        "Link management is available. Redirects and analytics are not available yet.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(await page.locator("time").first().getAttribute("datetime")).toBeTruthy();
+    expect(await page.locator("time").first().textContent()).toMatch(/\d.*(?:UTC|GMT)/);
+  }
+});
+
+async function assertPageFits(page: Page, width: number) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    width,
+  );
+  const controls = await page
+    .getByRole("main")
+    .locator("button, input, select, a")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.getClientRects().length)
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        }),
+    );
+  expect(controls.length).toBeGreaterThan(0);
+  for (const control of controls) {
+    expect(control.height).toBeGreaterThanOrEqual(44);
+    expect(control.width).toBeGreaterThanOrEqual(44);
+  }
+}
+
+test("responsive native text enlargement and 400 percent equivalent retain scrollable keyboard dialogs", async ({
+  page,
+  request,
+}) => {
+  const { workspace, fixture, headers } = await accessibleWorkspace(page, request);
+  const response = await request.post(`${fixture.api}/api/v1/workspaces/${workspace.id}/links`, {
+    headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
+    data: { destination: "https://example.com/zoom", title: "Zoom keyboard link" },
+  });
+  expect(response.status()).toBe(201);
+  const { link } = await response.json();
+  await page.setViewportSize({ width: 320, height: 256 });
+  await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
+  await expect(page.getByRole("button", { name: "Suspend link", exact: true })).toBeEnabled();
+  await page.addStyleTag({ content: ":root { font-size: 200%; }" });
+  expect(await page.getByRole("main").evaluate((node) => getComputedStyle(node).fontSize)).toBe(
+    "32px",
+  );
+  await assertPageFits(page, 320);
+  const trigger = page.getByRole("button", { name: "Suspend link", exact: true });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Keep link", exact: true })).toBeFocused();
+  const geometry = await dialog.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    scroll: element.scrollHeight,
+    client: element.clientHeight,
+    overflow: getComputedStyle(element).overflowY,
+  }));
+  expect(geometry.height).toBeLessThanOrEqual(224);
+  expect(geometry.scroll).toBeGreaterThan(geometry.client);
+  expect(geometry.overflow).toBe("auto");
+  const focused = await page.evaluate(() => {
+    const rect = document.activeElement!.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom };
+  });
+  expect(focused.top).toBeGreaterThanOrEqual(0);
+  expect(focused.bottom).toBeLessThanOrEqual(256);
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
+test("responsive native computed contrast, forced colors and reduced motion retain visible focus", async ({
+  page,
+  request,
+}) => {
+  const { workspace } = await accessibleWorkspace(page, request);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.name));
+  await page.goto(`/workspaces/${workspace.id}/links/new`);
+  const submit = page.getByRole("button", { name: "Create link", exact: true });
+  await expect(submit).toBeEnabled();
+  await expect(page).toHaveTitle(/Flux/);
+  await expect(page.getByRole("heading", { name: "Create link", exact: true })).toBeVisible();
+  await expect(page.locator("nextjs-portal")).toHaveCount(0);
+  const colors = await submit.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { text: style.color, background: style.backgroundColor, border: style.borderColor };
+  });
+  expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(colors.border, "rgb(255, 255, 255)")).toBeGreaterThanOrEqual(3);
+  const body = await page
+    .getByRole("main")
+    .evaluate((node) => ({
+      text: getComputedStyle(node).color,
+      background: getComputedStyle(node).backgroundColor,
+    }));
+  expect(contrast(body.text, body.background)).toBeGreaterThanOrEqual(4.5);
+  await page.getByLabel("Destination URL", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  const focus = await page.getByLabel("Title", { exact: true }).evaluate((node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return {
+      color: style.outlineColor,
+      width: style.outlineWidth,
+      kind: style.outlineStyle,
+      top: rect.top,
+      bottom: rect.bottom,
+    };
+  });
+  expect(focus.width).toBe("2px");
+  expect(focus.kind).toBe("solid");
+  expect(contrast(focus.color, "rgb(255, 255, 255)")).toBeGreaterThanOrEqual(3);
+  expect(focus.top).toBeGreaterThanOrEqual(0);
+  expect(focus.bottom).toBeLessThanOrEqual(720);
+  await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+  expect(await page.evaluate(() => matchMedia("(forced-colors: active)").matches)).toBe(true);
+  const forced = await page.getByLabel("Title", { exact: true }).evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      outline: style.outlineStyle,
+      width: style.outlineWidth,
+      duration: style.transitionDuration,
+      animation: style.animationName,
+      scroll: style.scrollBehavior,
+      color: style.outlineColor,
+      background: style.backgroundColor,
+    };
+  });
+  expect(forced.outline).toBe("solid");
+  expect(forced.width).toBe("2px");
+  expect(forced.color).not.toBe(forced.background);
+  expect(forced.duration).toBe("0s");
+  expect(forced.animation).toBe("none");
+  expect(forced.scroll).toBe("auto");
+  expect(errors).toEqual([]);
+});
+
+function contrast(first: string, second: string) {
+  const luminance = (color: string) => {
+    const values = color
+      .match(/\d+(?:\.\d+)?/g)
+      ?.slice(0, 3)
+      .map((value) => {
+        const channel = Number(value) / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+    if (!values || values.length !== 3) throw new Error("Unsupported computed color");
+    return values[0]! * 0.2126 + values[1]! * 0.7152 + values[2]! * 0.0722;
+  };
+  const a = luminance(first),
+    b = luminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
