@@ -93,6 +93,12 @@ export function ConfirmDialog({
             value={restriction.reason}
             onChange={(event) => restriction.onReason(event.target.value)}
             aria-describedby="suspension-reason-helper"
+            aria-invalid={
+              restriction.reason.includes("\u0000") ||
+              [...normalizeLinkSearch(restriction.reason)].length < 1 ||
+              [...normalizeLinkSearch(restriction.reason)].length > 1000
+            }
+            required
           />
           <span id="suspension-reason-helper">Enter 1–1000 characters.</span>
         </div>
@@ -103,7 +109,7 @@ export function ConfirmDialog({
           new message.
         </p>
       )}
-      <button ref={stay} type="button" onClick={onStay}>
+      <button ref={stay} type="button" className="button-secondary" onClick={onStay}>
         {restriction
           ? restriction.clear
             ? "Keep suspension"
@@ -118,6 +124,7 @@ export function ConfirmDialog({
       </button>
       <button
         type="button"
+        className="button-destructive"
         onClick={onDiscard}
         disabled={
           !!restriction &&

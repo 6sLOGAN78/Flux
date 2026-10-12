@@ -14,6 +14,7 @@ import {
 import { WorkspaceRequests, resolveWorkspace } from "../lib/workspace";
 import { workspaceCapabilities } from "../lib/workspace";
 import { ConfirmDialog } from "./confirm-dialog";
+import { LoadingRows } from "./loading-rows";
 
 export function LinkDetail({
   workspaceId,
@@ -280,6 +281,7 @@ export function LinkDetail({
   };
   const copy = async () => {
     if (!link) return;
+    setCopied("");
     const request = requests.current.begin();
     try {
       await navigator.clipboard.writeText(link.shortUrl);
@@ -341,7 +343,21 @@ export function LinkDetail({
           Reload link
         </button>
       )}
-      {!link && !error && <p role="status">Loading link…</p>}
+      {!link && !error && (
+        <LoadingRows
+          label="Loading link…"
+          onCancel={() => {
+            requests.current.clear();
+            setBusy(false);
+            setError("We couldn't load this link. Try again.");
+          }}
+          onRetry={() => {
+            requests.current.clear();
+            setAttempt((value) => value + 1);
+          }}
+          retryLabel="Reload link"
+        />
+      )}
       {link && (
         <>
           {created && <p role="status">Link created.</p>}

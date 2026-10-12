@@ -7,6 +7,8 @@ import { ApiError, createAPI } from "../lib/api";
 import { canRemoveMember, removeMember } from "../lib/team";
 import { WorkspaceRequests } from "../lib/workspace";
 import { ConfirmDialog } from "./confirm-dialog";
+import { InlineNotice } from "./inline-notice";
+import { LoadingRows } from "./loading-rows";
 
 const roles = { owner: "Owner", admin: "Admin", member: "Member", viewer: "Viewer" };
 
@@ -198,12 +200,26 @@ export function TeamList({
     );
   const previousIndex = positions.current.indexOf(after) - 1;
   return (
-    <section aria-labelledby="team-title" aria-busy={loading}>
+    <section aria-labelledby="team-title" aria-busy={loading || changing}>
       <h2 id="team-title">Team</h2>
       <p>Inspect current workspace members and their roles.</p>
-      {loading && <p role="status">Loading team…</p>}
+      {loading && (
+        <LoadingRows
+          label="Loading team…"
+          onCancel={() => {
+            requests.current.clear();
+            setLoading(false);
+            setError("We couldn't load team. Try again.");
+          }}
+          onRetry={() => {
+            requests.current.clear();
+            setAttempt((value) => value + 1);
+          }}
+          retryLabel="Retry loading team"
+        />
+      )}
       {error && <p role="alert">{error}</p>}
-      {roleError && <p role="alert">{roleError}</p>}
+      {roleError && <InlineNotice blocking>{roleError}</InlineNotice>}
       {committed && <p role="status">Role changed.</p>}
       {removed && <p role="status">Member removed.</p>}
       {pendingRemoval && (
@@ -379,10 +395,10 @@ function RemoveDialog({
       <h2 id={title}>Remove member?</h2>
       <p>{email}</p>
       <p id={description}>This member will lose access to this workspace.</p>
-      <button ref={stay} type="button" onClick={onStay}>
+      <button ref={stay} type="button" className="button-secondary" onClick={onStay}>
         Keep member
       </button>
-      <button type="button" onClick={onRemove}>
+      <button type="button" className="button-destructive" onClick={onRemove}>
         Remove member
       </button>
     </dialog>
@@ -429,11 +445,19 @@ function RoleControl({
       </select>
       <button
         type="button"
+        aria-describedby={disabled || role === item.role ? `${id}-help` : undefined}
         disabled={disabled || role === item.role}
         onClick={() => onChange(role)}
       >
         Change role
       </button>
+      {(disabled || role === item.role) && (
+        <p id={`${id}-help`}>
+          {disabled
+            ? "Wait for the current request, or reload team after an error."
+            : "Choose a different role before changing it."}
+        </p>
+      )}
       {item.role === "owner" && <p>Promote another owner first</p>}
     </>
   );

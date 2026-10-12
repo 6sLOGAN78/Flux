@@ -7,6 +7,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, createAPI } from "../lib/api";
 import { blockedDestination, destinationSyntaxOK, invalidDestination } from "../lib/links";
 import { WorkspaceRequests, resolveWorkspace } from "../lib/workspace";
+import { Field } from "./field";
+import { LoadingRows } from "./loading-rows";
 
 export function LinkForm({
   workspaceId,
@@ -34,6 +36,7 @@ export function LinkForm({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [uncertain, setUncertain] = useState(false);
+  const [invalid, setInvalid] = useState<"destination" | "title" | "key">();
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     const request = requests.current.begin();
@@ -82,10 +85,12 @@ export function LinkForm({
     event.preventDefault();
     if (submitting.current || !host) return;
     if (!destinationSyntaxOK(destination)) {
+      setInvalid("destination");
       setError(invalidDestination);
       return;
     }
     if ([...title].length > 200) {
+      setInvalid("title");
       setError("Enter a title of at most 200 characters.");
       return;
     }
@@ -106,6 +111,7 @@ export function LinkForm({
           "admin",
         ].includes(customKey))
     ) {
+      setInvalid("key");
       setError("Enter a valid custom short key.");
       return;
     }
@@ -118,6 +124,7 @@ export function LinkForm({
     retry.current = draft;
     submitting.current = true;
     setBusy(true);
+    setInvalid(undefined);
     setError("");
     const request = requests.current.begin();
     const api = createAPI(getToken, { origin: window.location.origin });
@@ -156,6 +163,7 @@ export function LinkForm({
         if (!request.current()) return;
         setError("You don't have permission to do this. Ask a workspace owner or admin for help.");
       } else if (failure instanceof ApiError && failure.status === 409) {
+        if (failure.constraint === "KEY_UNAVAILABLE") setInvalid("key");
         setUncertain(false);
         setError(
           failure.constraint === "KEY_UNAVAILABLE"
@@ -163,6 +171,7 @@ export function LinkForm({
             : "This retry key was used for a different request. Change the submission and try again.",
         );
       } else if (failure instanceof ApiError && failure.status === 400) {
+        setInvalid(failure.constraint === "INVALID_CUSTOM_KEY" ? "key" : "destination");
         setUncertain(false);
         setError(
           failure.constraint === "INVALID_CUSTOM_KEY"
@@ -182,7 +191,23 @@ export function LinkForm({
     <section aria-labelledby="new-link-title">
       <h2 id="new-link-title">Create link</h2>
       <p>Link management is available. Redirects and analytics are not available yet.</p>
-      <p>Managed hostname: {host || "Loading…"}</p>
+      {host && <p>Managed hostname: {host}</p>}
+      {!host && !error && (
+        <div aria-busy="true">
+          <LoadingRows
+            label="Loading links…"
+            onCancel={() => {
+              requests.current.clear();
+              setError("Links could not be loaded. Try again.");
+            }}
+            onRetry={() => {
+              requests.current.clear();
+              setAttempt((value) => value + 1);
+            }}
+            retryLabel="Retry loading links"
+          />
+        </div>
+      )}
       {error && (
         <p ref={errorSummary} tabIndex={-1} role="alert">
           {error}
@@ -194,48 +219,64 @@ export function LinkForm({
         </button>
       )}
       <form onSubmit={(event) => void submit(event)} aria-busy={busy} noValidate>
-        <label htmlFor="link-destination">Destination URL</label>
-        <input
+        <Field
           id="link-destination"
+          label="Destination URL"
+          autoComplete="url"
+          hint="Enter a valid HTTP or HTTPS URL."
+          error={invalid === "destination" ? error : undefined}
           type="url"
           required
           value={destination}
           disabled={busy}
           onChange={(event) => {
             setDestination(event.target.value);
+            setInvalid(undefined);
             setUncertain(false);
           }}
         />
-        <label htmlFor="link-title">Title</label>
-        <input
+        <Field
           id="link-title"
+          label="Title"
+          autoComplete="off"
+          hint="Optional; at most 200 characters."
+          error={invalid === "title" ? error : undefined}
           value={title}
           disabled={busy}
           onChange={(event) => {
             setTitle(event.target.value);
+            setInvalid(undefined);
             setUncertain(false);
           }}
-          aria-describedby="link-title-help"
         />
-        <p id="link-title-help">Optional; at most 200 characters.</p>
-        <label htmlFor="link-custom-key">Custom short key</label>
-        <input
+        <Field
           id="link-custom-key"
+          label="Custom short key"
+          autoComplete="off"
+          hint="Leave blank to generate a key. Custom keys use 3–64 lowercase letters, numbers, hyphens or underscores and start with a letter or number."
+          error={invalid === "key" ? error : undefined}
           value={customKey}
           disabled={busy}
-          aria-describedby="link-key-help"
           onChange={(event) => {
             setCustomKey(event.target.value.replace(/[A-Z]/g, (value) => value.toLowerCase()));
+            setInvalid(undefined);
             setUncertain(false);
           }}
         />
-        <p id="link-key-help">
-          Leave blank to generate a key. Custom keys use 3–64 lowercase letters, numbers, hyphens or
-          underscores and start with a letter or number.
-        </p>
-        <button type="submit" disabled={busy || !host}>
+        <button
+          type="submit"
+          disabled={busy || !host}
+          aria-describedby={busy || !host ? "create-unavailable" : undefined}
+        >
           {busy ? "Creating link…" : uncertain ? "Retry creation" : "Create link"}
         </button>
+        {(busy || !host) && (
+          <p id="create-unavailable">
+            {busy
+              ? "Wait for link creation to finish before submitting again."
+              : "Wait for the managed hostname to load before creating a link."}
+          </p>
+        )}
       </form>
       <a href={`/workspaces/${workspaceId}/links`}>Back to links</a>
     </section>

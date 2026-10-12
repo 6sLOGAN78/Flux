@@ -425,7 +425,10 @@ test("accessibility native destructive and reason dialogs trap keyboard focus an
   expect(created.status()).toBe(201);
   const { link } = await created.json();
   await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
-  const archive = page.getByRole("button", { name: "Archive link", exact: true });
+  const archive = page
+    .getByRole("region", { name: "Link details", exact: true })
+    .locator('[aria-label="Lifecycle actions"]')
+    .getByRole("button", { name: "Archive link", exact: true });
   await archive.focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog");
@@ -446,7 +449,7 @@ test("accessibility native destructive and reason dialogs trap keyboard focus an
     "aria-invalid",
     "true",
   );
-  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
   await expect(dialog.getByLabel("Reason", { exact: true })).toBeFocused();
   await page.keyboard.type("Reviewed by keyboard");
   await page.keyboard.press("Tab");
@@ -468,6 +471,13 @@ test("accessibility workspace skip link and invitation form retain native labels
   request,
 }) => {
   const { workspace } = await accessibleWorkspace(page, request);
+  expect(
+    (
+      await request.post(
+        `${process.env.FLUX_BROWSER_FIXTURE}/restore-member?workspace=${workspace.id}`,
+      )
+    ).status(),
+  ).toBe(204);
   await page.goto(`/workspaces/${workspace.id}/team`);
   await expect(page.getByRole("button", { name: "Invite member", exact: true })).toBeEnabled();
   const skip = page.getByRole("link", { name: "Skip to main content", exact: true });
@@ -478,9 +488,34 @@ test("accessibility workspace skip link and invitation form retain native labels
     "aria-current",
     "page",
   );
+  const colleague = page.getByRole("row").filter({ hasText: "colleague@example.test" });
+  await colleague.getByLabel("New role").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Tab");
+  const change = colleague.getByRole("button", { name: "Change role", exact: true });
+  await expect(change).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Keep current role", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(change).toBeFocused();
+  const remove = colleague.getByRole("button", { name: "Remove member", exact: true });
+  await remove.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Keep member", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(remove).toBeFocused();
   await expect(page.getByLabel("Email address", { exact: true })).toHaveAttribute(
     "autocomplete",
     "email",
+  );
+  await page.getByRole("button", { name: "Invite member", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("region", { name: "Invitations", exact: true }).getByRole("alert"),
+  ).toBeFocused();
+  await expect(page.getByLabel("Email address", { exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
   );
   await page.getByLabel("Email address", { exact: true }).focus();
   await page.keyboard.type("keyboard@example.test");
@@ -500,4 +535,50 @@ test("accessibility workspace skip link and invitation form retain native labels
   await expect(page.getByRole("button", { name: "Keep invitation", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(revoke).toBeFocused();
+});
+
+test("accessibility held link creation keeps busy controls disabled and announces only committed success", async ({
+  page,
+  request,
+}) => {
+  const { workspace } = await accessibleWorkspace(page, request);
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let submitted = 0;
+  await page.route(`**/api/v1/workspaces/${workspace.id}/links`, async (route) => {
+    if (route.request().method() === "POST") {
+      submitted += 1;
+      await held;
+    }
+    await route.fallback();
+  });
+  try {
+    await page.goto(`/workspaces/${workspace.id}/links/new`);
+    await expect(page.getByRole("button", { name: "Create link", exact: true })).toBeEnabled();
+    await page.getByLabel("Destination URL", { exact: true }).focus();
+    await page.keyboard.type("https://example.com/held");
+    await page.keyboard.press("Enter");
+    const form = page.getByRole("region", { name: "Create link", exact: true }).locator("form");
+    await expect(form).toHaveAttribute("aria-busy", "true");
+    const submit = page.getByRole("button", { name: "Creating link…", exact: true });
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveAccessibleDescription(
+      "Wait for link creation to finish before submitting again.",
+    );
+    await expect(page.getByLabel("Destination URL", { exact: true })).toBeDisabled();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await expect.poll(() => submitted).toBe(1);
+    await expect(page.getByText("Link created.", { exact: true })).toHaveCount(0);
+    release?.();
+    await expect(page.getByText("Link created.", { exact: true })).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(submitted).toBe(1);
+  } finally {
+    release?.();
+  }
 });

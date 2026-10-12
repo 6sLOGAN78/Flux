@@ -7,6 +7,9 @@ import { ApiError, createAPI } from "../lib/api";
 import { WorkspaceRequests } from "../lib/workspace";
 import { invitationPage, queuedInvitation, invitationStatus, invitationTime } from "../lib/team";
 import { ConfirmDialog } from "./confirm-dialog";
+import { InlineNotice } from "./inline-notice";
+import { LoadingRows } from "./loading-rows";
+import { Field } from "./field";
 
 export function InvitationPanel({
   workspaceId,
@@ -30,6 +33,7 @@ export function InvitationPanel({
   const reload = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef<(() => boolean) | null>(null);
   const [email, setEmail] = useState("");
+  const [invalidEmail, setInvalidEmail] = useState(false);
   const [role, setRole] = useState("member");
   const [items, setItems] = useState<InvitationsResponse["items"]>([]);
   const [after, setAfter] = useState<string>();
@@ -106,9 +110,16 @@ export function InvitationPanel({
     const timer = window.setTimeout(() => setAttempt((value) => value + 1), 2000);
     return () => window.clearTimeout(timer);
   }, [items, refreshing, busy, requiresReload]);
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting.current) return;
+    const field = event.currentTarget.elements.namedItem("email");
+    if (!(field instanceof HTMLInputElement) || !field.validity.valid) {
+      setInvalidEmail(true);
+      setError("Enter a valid email address.");
+      return;
+    }
+    setInvalidEmail(false);
     submitting.current = true;
     setBusy(true);
     setQueued(false);
@@ -206,18 +217,25 @@ export function InvitationPanel({
     }
   };
   return (
-    <section aria-label="Invitations">
+    <section aria-label="Invitations" aria-busy={loading || refreshing || busy}>
       <h2>Invitations</h2>
-      <form aria-label="Invite member" onSubmit={submit}>
-        <label htmlFor="invite-email">Email address</label>
-        <input
+      <form aria-label="Invite member" onSubmit={submit} aria-busy={busy} noValidate>
+        <Field
           id="invite-email"
+          label="Email address"
+          name="email"
           type="email"
+          autoComplete="email"
+          hint="Use the recipient's email address. They must verify it to accept."
+          error={invalidEmail ? "Enter a valid email address." : undefined}
           maxLength={254}
           required
           value={email}
           disabled={busy}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setInvalidEmail(false);
+          }}
         />
         <label htmlFor="invite-role">Role</label>
         <select
@@ -230,17 +248,39 @@ export function InvitationPanel({
           <option value="member">Member</option>
           <option value="viewer">Viewer</option>
         </select>
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy} aria-describedby={busy ? "invite-busy" : undefined}>
           {busy ? "Queuing invitation…" : "Invite member"}
         </button>
+        {busy && (
+          <p id="invite-busy">
+            Wait for this invitation request to finish before submitting again.
+          </p>
+        )}
       </form>
       {queued && <p role="status">Invitation queued</p>}
       {revoked && <p role="status">Invitation revoked</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <InlineNotice blocking={error !== "We couldn't load invitations. Try again."}>
+          {error}
+        </InlineNotice>
+      )}
       {loading ? (
-        <p>Loading invitations…</p>
+        <LoadingRows
+          label="Loading invitations…"
+          onCancel={() => {
+            reads.current.clear();
+            setLoading(false);
+            setRefreshing(false);
+            setError("We couldn't load invitations. Try again.");
+          }}
+          onRetry={() => {
+            reads.current.clear();
+            setAttempt((value) => value + 1);
+          }}
+          retryLabel="Reload invitations"
+        />
       ) : items.length === 0 ? (
-        <p>No pending invitations. Invite a member to collaborate in this workspace.</p>
+        !error && <p>No pending invitations. Invite a member to collaborate in this workspace.</p>
       ) : (
         <ul aria-label="Workspace invitations">
           {items.map((item) => (
