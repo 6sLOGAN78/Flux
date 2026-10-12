@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-30-PLAN.md
-last_updated: "2026-10-12T14:18:04.612Z"
+stopped_at: Completed 02-31-PLAN.md
+last_updated: "2026-10-12T15:02:24.856Z"
 last_activity: 2026-10-12
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 52
+  completed_plans: 53
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 31 of 35
+Plan: 32 of 35
 Status: Ready to execute
 Last activity: 2026-10-12
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -104,6 +104,7 @@ Progress: [█████████░] 91%
 | Phase 2 P28 | 15min 33s | 2 tasks | 5 files |
 | Phase 2 P29 | 37min 01s | 2 tasks | 16 files |
 | Phase 2 P30 | 74min 13s | 2 tasks | 6 files |
+| Phase 2 P31 | 37min 56s | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Suspension reasons use shared Unicode White_Space normalization, codepoint limits and explicit NUL rejection; known commits remain known while fresh SQL capabilities control subsequent actions. — Keep storage validation consistent and remove revoked management controls without inventing mutation uncertainty.
 - [Phase 2]: Verification-only tenant coverage can pass immediately when delivered behavior is secure; fixture and infrastructure failures are not business RED.
 - [Phase 2]: Two-tab privacy proofs verify unchanged initial request-route metadata and fresh authorized selector choices separately from protected returned DTO fields.
+- [Phase 2]: Preserve native modal behavior and existing request generations, mutation idempotency and fresh permission refresh.
+- [Phase 2]: Keep the workspace h1 and focus the current main screen heading on pathname changes.
 
 ### Pending Todos
 
@@ -241,6 +244,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-12T14:18:04.600Z
-Stopped at: Completed 02-30-PLAN.md
+Last session: 2026-10-12T15:02:24.845Z
+Stopped at: Completed 02-31-PLAN.md
 Resume file: None
