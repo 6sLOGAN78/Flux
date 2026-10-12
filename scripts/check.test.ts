@@ -10,6 +10,82 @@ import type { Stage } from "./check.ts";
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
 
+test("root browser gate rejects a real successful report that omits a collected test", async () => {
+  await fixture(async (root) => {
+    const frontend = join(root, "apps/frontend");
+    await mkdir(join(frontend, "tests"), { recursive: true });
+    await writeFile(
+      join(frontend, "package.json"),
+      JSON.stringify({
+        name: "@flux/frontend",
+        scripts: Object.fromEntries(commands.map((command) => [command, "true"])),
+      }),
+    );
+    const repository = fileURLToPath(new URL("../", import.meta.url));
+    const playwright = join(repository, "apps/frontend/node_modules/@playwright/test/cli.js");
+    const module = join(repository, "apps/frontend/node_modules/@playwright/test/index.mjs");
+    await writeFile(
+      join(frontend, "tests/proof.spec.ts"),
+      `import { test, expect } from ${JSON.stringify(module)};\n` +
+        'test("included", () => expect(1).toBe(1));\n' +
+        'test("omitted", () => expect(2).toBe(2));\n',
+    );
+    const config = join(frontend, "playwright.config.mjs");
+    await writeFile(config, 'export default { testDir: "./tests", reporter: "json", workers: 1 };');
+    const native = (args: string[]) => {
+      const result = spawnSync("node", [playwright, "test", "--config", config, ...args], {
+        cwd: frontend,
+        encoding: "utf8",
+        timeout: 30000,
+      });
+      assert.equal(result.status, 0, "native Playwright must collect/execute successfully");
+      return result.stdout;
+    };
+    const listed = native(["--list"]);
+    const omitted = native(["--grep", "included"]);
+    const { runChecks, assertBrowserReport } = await load();
+    assert.equal(assertBrowserReport(omitted), 1, "the omitted report is internally consistent");
+    await assert.rejects(
+      runChecks({
+        root,
+        group: "test:e2e",
+        runner: async (stage) => ({
+          code: 0,
+          stdout: stage.browserTests
+            ? omitted
+            : stage.id.endsWith(":browser-discovery")
+              ? listed
+              : successfulOutput(stage),
+        }),
+      }),
+      /Browser test manifest mismatch/,
+    );
+  });
+});
+
+test("successful top-level Go tests cannot conceal skipped or failed subtests", async () => {
+  for (const action of ["skip", "fail"]) {
+    await fixture(async (root) => {
+      const { runChecks } = await load();
+      await assert.rejects(
+        runChecks({
+          root,
+          mode: "fast",
+          runner: async (stage) => ({
+            code: 0,
+            stdout:
+              successfulOutput(stage) +
+              (stage.expectedTests
+                ? `\n${JSON.stringify({ Action: action, Test: `${stage.expectedTests[0]}/case` })}`
+                : ""),
+          }),
+        }),
+        /Unsuccessful Go test/,
+      );
+    });
+  }
+});
+
 test("final secret scan removes generated Next keys while preserving source and refusing unrelated output", async () => {
   const root = await mkdtemp(join(tmpdir(), "flux-next-output-"));
   const { cleanFrontendBuild } = await load();
