@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-31-PLAN.md
-last_updated: "2026-10-12T15:02:24.856Z"
+stopped_at: Completed 02-32-PLAN.md
+last_updated: "2026-10-12T19:35:53.341Z"
 last_activity: 2026-10-12
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 53
+  completed_plans: 54
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 32 of 35
+Plan: 33 of 35
 Status: Ready to execute
 Last activity: 2026-10-12
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -105,6 +105,7 @@ Progress: [█████████░] 93%
 | Phase 2 P29 | 37min 01s | 2 tasks | 16 files |
 | Phase 2 P30 | 74min 13s | 2 tasks | 6 files |
 | Phase 2 P31 | 37min 56s | 2 tasks | 11 files |
+| Phase 2 P32 | 43min 09s | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,8 @@ Recent decisions affecting current work:
 - [Phase 2]: Two-tab privacy proofs verify unchanged initial request-route metadata and fresh authorized selector choices separately from protected returned DTO fields.
 - [Phase 2]: Preserve native modal behavior and existing request generations, mutation idempotency and fresh permission refresh.
 - [Phase 2]: Keep the workspace h1 and focus the current main screen heading on pathname changes.
+- [Phase 2]: Preserve exact destination accessible names and show the new-tab notice adjacent to each destination. — Existing library regressions and visible disclosure both remain valid.
+- [Phase 2]: Change control colors immediately and animate only opacity for 120ms, disabled for reduced motion. — Native animation-frame measurements found interpolated colors below required text contrast.
 
 ### Pending Todos
 
@@ -244,6 +247,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-12T15:02:24.845Z
-Stopped at: Completed 02-31-PLAN.md
+Last session: 2026-10-12T19:35:53.329Z
+Stopped at: Completed 02-32-PLAN.md
 Resume file: None
