@@ -353,7 +353,8 @@ export function TeamList({
         th, td { text-align: left; vertical-align: top; padding: var(--space-sm); overflow-wrap: anywhere; }
         .mobile-team { display: none; }
         dd { margin: 0 0 1rem; overflow-wrap: anywhere; }
-        @media (max-width: 767px) { .desktop-team { display: none; } .mobile-team { display: block; padding-left: var(--space-lg); } }
+        @media (max-width: 767px) { .desktop-team { display: none; } .mobile-team { display: block; list-style: none; padding: 0; } }
+        li { padding: var(--space-md); border: 1px solid var(--divider); border-radius: 8px; margin-bottom: var(--space-md); }
       `}</style>
     </section>
   );

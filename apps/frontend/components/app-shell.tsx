@@ -31,10 +31,10 @@ export function AppShell({
       <a className="skip-link" href="#workspace-main">
         Skip to main content
       </a>
-      <header className="auth-panel">
+      <header className="workspace-sidebar">
         <p className="wordmark">Flux</p>
         <h1>{workspace.name}</h1>
-        {switcher}
+        <div className="workspace-switcher">{switcher}</div>
         <nav aria-label="Workspace">
           <a
             href={`/workspaces/${workspace.id}/links`}
@@ -57,9 +57,12 @@ export function AppShell({
         ref={main}
         id="workspace-main"
         tabIndex={-1}
-        className="auth-panel"
+        className="workspace-main"
         aria-label={section}
       >
+        <div className="workspace-page-header" aria-hidden="true">
+          {section}
+        </div>
         {children}
       </main>
     </>

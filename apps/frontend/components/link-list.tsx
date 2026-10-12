@@ -94,9 +94,12 @@ export function LinkList({
   );
   const destination = (item: LinksResponse["items"][number]) =>
     destinationSyntaxOK(item.destination) ? (
-      <a href={item.destination} target="_blank" rel="noreferrer noopener">
-        {item.destination}
-      </a>
+      <>
+        <a href={item.destination} target="_blank" rel="noreferrer noopener">
+          {item.destination}
+        </a>
+        <span> (opens in a new tab)</span>
+      </>
     ) : (
       <span>{item.destination}</span>
     );
@@ -275,13 +278,16 @@ export function LinkList({
       )}
       <style jsx>{`
         table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-        th, td { text-align: left; vertical-align: top; padding: 0.5rem; overflow-wrap: anywhere; }
+        tr { min-height: 64px; height: 64px; }
+        thead { background: var(--shell); }
+        th, td { text-align: left; vertical-align: top; padding: var(--space-sm); overflow-wrap: anywhere; }
         .mobile-library { display: none; }
         dd { margin: 0 0 1rem; overflow-wrap: anywhere; }
-        @media (max-width: 640px) {
+        @media (max-width: 767px) {
           .desktop-library { display: none; }
-          .mobile-library { display: block; padding-left: 1.25rem; }
+          .mobile-library { display: block; list-style: none; padding: 0; }
         }
+        li { padding: var(--space-md); border: 1px solid var(--divider); border-radius: 8px; margin-bottom: var(--space-md); }
       `}</style>
     </section>
   );
