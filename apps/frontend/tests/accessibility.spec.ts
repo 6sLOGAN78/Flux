@@ -613,15 +613,21 @@ test("responsive native workspace reflows library, team and detail at 320, 768 a
       page.getByRole(width < 768 ? "list" : "table", { name: "Links library", exact: true }),
     ).toBeVisible();
     await assertPageFits(page, width);
+    if (process.env.FLUX_PLAN32_VISUAL_DIR)
+      await page.screenshot({ path: `${process.env.FLUX_PLAN32_VISUAL_DIR}/library-${width}.png` });
     await page.goto(`/workspaces/${workspace.id}/team`);
     await expect(page.getByText("No more members.", { exact: true })).toBeVisible();
     await expect(
       page.getByRole(width < 768 ? "list" : "table", { name: "Team members", exact: true }),
     ).toBeVisible();
     await assertPageFits(page, width);
+    if (process.env.FLUX_PLAN32_VISUAL_DIR)
+      await page.screenshot({ path: `${process.env.FLUX_PLAN32_VISUAL_DIR}/team-${width}.png` });
     await page.goto(`/workspaces/${workspace.id}/links/${link.id}`);
     await expect(page.getByText(destination, { exact: true })).toBeVisible();
     await assertPageFits(page, width);
+    if (process.env.FLUX_PLAN32_VISUAL_DIR)
+      await page.screenshot({ path: `${process.env.FLUX_PLAN32_VISUAL_DIR}/detail-${width}.png` });
     await expect(
       page.getByText(
         "Link management is available. Redirects and analytics are not available yet.",
@@ -694,6 +700,8 @@ test("responsive native text enlargement and 400 percent equivalent retain scrol
   });
   expect(focused.top).toBeGreaterThanOrEqual(0);
   expect(focused.bottom).toBeLessThanOrEqual(256);
+  if (process.env.FLUX_PLAN32_VISUAL_DIR)
+    await page.screenshot({ path: `${process.env.FLUX_PLAN32_VISUAL_DIR}/zoom-dialog.png` });
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
 });
@@ -703,26 +711,78 @@ test("responsive native computed contrast, forced colors and reduced motion reta
   request,
 }) => {
   const { workspace } = await accessibleWorkspace(page, request);
+  await page.addInitScript(() => {
+    const samples: { text: string; background: string }[] = [];
+    (window as Window & { fluxResponsiveContrast?: typeof samples }).fluxResponsiveContrast =
+      samples;
+    const sampled = new WeakSet<HTMLButtonElement>();
+    const observe = (button: HTMLButtonElement) => {
+      if (button.disabled || button.textContent?.trim() !== "Create link" || sampled.has(button))
+        return;
+      sampled.add(button);
+      let frames = 0;
+      const sample = () => {
+        const style = getComputedStyle(button);
+        samples.push({ text: style.color, background: style.backgroundColor });
+        frames += 1;
+        if (
+          button.isConnected &&
+          frames < 32 &&
+          button.getAnimations().some((animation) => animation.playState === "running")
+        )
+          requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    };
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.target instanceof HTMLButtonElement) observe(record.target);
+        if (record.type === "childList")
+          for (const node of record.addedNodes)
+            if (node instanceof Element) {
+              if (node instanceof HTMLButtonElement) observe(node);
+              for (const button of node.querySelectorAll("button")) observe(button);
+            }
+      }
+    }).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["disabled"],
+    });
+  });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.name));
+  page.on("console", (message) => {
+    if (
+      ["error", "warn"].includes(message.type()) &&
+      !message.text().startsWith("Clerk: Clerk has been loaded with development keys.")
+    )
+      errors.push(message.type());
+  });
   await page.goto(`/workspaces/${workspace.id}/links/new`);
   const submit = page.getByRole("button", { name: "Create link", exact: true });
   await expect(submit).toBeEnabled();
-  await expect(page).toHaveTitle(/Flux/);
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${workspace.id}/links/new$`));
+  await expect(page.getByText("Flux", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Create link", exact: true })).toBeVisible();
-  await expect(page.locator("nextjs-portal")).toHaveCount(0);
+  // The normal development indicator shares this portal with errors. Check
+  // actual error surfaces rather than treating the indicator as a failure.
+  await expect(
+    page.locator("[data-nextjs-error-overlay-nav], [data-nextjs-dialog-overlay]"),
+  ).toHaveCount(0);
   const colors = await submit.evaluate((node) => {
     const style = getComputedStyle(node);
     return { text: style.color, background: style.backgroundColor, border: style.borderColor };
   });
-  expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(colors.text, colors.background), JSON.stringify(colors)).toBeGreaterThanOrEqual(
+    4.5,
+  );
   expect(contrast(colors.border, "rgb(255, 255, 255)")).toBeGreaterThanOrEqual(3);
-  const body = await page
-    .getByRole("main")
-    .evaluate((node) => ({
-      text: getComputedStyle(node).color,
-      background: getComputedStyle(node).backgroundColor,
-    }));
+  const body = await page.getByRole("main").evaluate((node) => ({
+    text: getComputedStyle(node).color,
+    background: getComputedStyle(node).backgroundColor,
+  }));
   expect(contrast(body.text, body.background)).toBeGreaterThanOrEqual(4.5);
   await page.getByLabel("Destination URL", { exact: true }).focus();
   await page.keyboard.press("Tab");
@@ -762,6 +822,18 @@ test("responsive native computed contrast, forced colors and reduced motion reta
   expect(forced.duration).toBe("0s");
   expect(forced.animation).toBe("none");
   expect(forced.scroll).toBe("auto");
+  const samples = await page.evaluate(
+    () =>
+      (window as Window & { fluxResponsiveContrast?: { text: string; background: string }[] })
+        .fluxResponsiveContrast ?? [],
+  );
+  expect(samples.length).toBeGreaterThan(0);
+  for (const sample of samples)
+    expect(contrast(sample.text, sample.background), JSON.stringify(sample)).toBeGreaterThanOrEqual(
+      4.5,
+    );
+  if (process.env.FLUX_PLAN32_VISUAL_DIR)
+    await page.screenshot({ path: `${process.env.FLUX_PLAN32_VISUAL_DIR}/forced-colors.png` });
   expect(errors).toEqual([]);
 });
 
