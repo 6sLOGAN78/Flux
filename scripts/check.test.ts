@@ -135,9 +135,11 @@ const browserReport = () => ({
       suites: [],
       specs: [
         {
+          id: "test-spec",
           ok: true,
           tests: [
             {
+              projectId: "local",
               expectedStatus: "passed",
               status: "expected",
               results: [{ status: "passed", retry: 0, errors: [] }],
@@ -160,7 +162,15 @@ test("browser output is private OS temporary storage rather than a scanned repos
 });
 
 test("root browser command failure, zero, skip, malformed and inconsistent reports fail closed", async () => {
-  for (const failure of ["command", "zero", "skip", "json", "count"]) {
+  for (const failure of [
+    "command",
+    "zero",
+    "skip",
+    "json",
+    "count",
+    "discovery-command",
+    "discovery-json",
+  ]) {
     await fixture(async (root) => {
       const frontend = join(root, "apps/frontend");
       await mkdir(join(frontend, "tests"), { recursive: true });
@@ -178,6 +188,8 @@ test("root browser command failure, zero, skip, malformed and inconsistent repor
           root,
           group: "test:e2e",
           runner: async (stage) => {
+            if (stage.browserList && failure.startsWith("discovery-"))
+              return { code: failure === "discovery-command" ? 1 : 0, stdout: "{}" };
             if (!stage.browserTests) return { code: 0, stdout: successfulOutput(stage) };
             const report = browserReport();
             if (failure === "zero") report.stats.expected = 0;
@@ -189,7 +201,7 @@ test("root browser command failure, zero, skip, malformed and inconsistent repor
             };
           },
         }),
-        /Check failed: @flux\/frontend:test:e2e|No successful browser tests/,
+        /Check failed: @flux\/frontend:(?:test:e2e|browser-discovery)|No successful browser tests|Invalid browser test manifest/,
       );
     });
   }
@@ -217,6 +229,36 @@ test("browser gate requires positive complete non-skipped nonflaky JSON results"
     JSON.stringify(browserReport()).replace('"retry":0', '"retry":1'),
   ])
     assert.throws(() => assertBrowserReport(output), /No successful browser tests/);
+});
+
+test("browser manifests reject empty, malformed, duplicate and substituted test identities", async () => {
+  const { browserTestIds, assertBrowserReport } = await load();
+  const report = browserReport();
+  const ids = browserTestIds(JSON.stringify(report));
+  assert.equal(assertBrowserReport(JSON.stringify(report), ids), 1);
+  const substituted = browserReport();
+  const spec = substituted.suites[0]?.specs[0];
+  assert.ok(spec);
+  spec.id = "different-test";
+  assert.throws(() => assertBrowserReport(JSON.stringify(substituted), ids), /manifest mismatch/);
+  const duplicate = browserReport();
+  const suite = duplicate.suites[0];
+  assert.ok(suite);
+  suite.specs.push(structuredClone(suite.specs[0]) as typeof spec);
+  duplicate.stats.expected = 2;
+  assert.throws(
+    () => assertBrowserReport(JSON.stringify(duplicate), ids),
+    /Invalid browser test manifest/,
+  );
+  for (const value of [
+    "",
+    "null",
+    "{}",
+    JSON.stringify({ ...report, errors: [{}] }),
+    JSON.stringify({ ...report, suites: [] }),
+    JSON.stringify(report).replace('"id":"test-spec"', '"id":null'),
+  ])
+    assert.throws(() => browserTestIds(value), /Invalid browser test manifest/);
 });
 
 test("browser stage forwards selectors without overriding the JSON reporter", async () => {
@@ -346,6 +388,16 @@ test("real full and fast root checks reject initial drift before any mutation", 
   }
 });
 const successfulOutput = (stage: Stage) => {
+  if (stage.browserList) {
+    const report = browserReport();
+    report.stats.expected = 0;
+    report.stats.skipped = 1;
+    const test = report.suites[0]?.specs[0]?.tests[0];
+    assert.ok(test);
+    test.results = [];
+    test.status = "skipped";
+    return JSON.stringify(report);
+  }
   if (stage.listedTests)
     return Object.entries(stage.listedTests)
       .flatMap(([Package, names]) =>
@@ -465,6 +517,13 @@ test("missing scripts, omitted backend and zero workspace tests fail discovery",
   }
 });
 
+test("removing the delivered frontend workspace fails root discovery", async () => {
+  await fixture(async (root) => {
+    const { discover } = await load();
+    await assert.rejects(discover(root), /Omitted workspace: apps\/frontend/);
+  });
+});
+
 test("all Go tests belong to exactly one group and absent or newly renamed integration tests fail", async () => {
   await fixture(async (root) => {
     const { discover } = await load();
@@ -527,7 +586,7 @@ test("zero executed or skipped Go tests and zero executed Bun tests fail even wi
             return { code: 0, stdout };
           },
         }),
-        /No successful tests|Missing successful Go test|Go test manifest mismatch/,
+        /No successful tests|Missing successful Go test|Go test manifest mismatch|Unsuccessful Go test/,
       );
     });
   }
