@@ -1,8 +1,9 @@
 # Development
 
-Flux's foundation has four Go process roles and three implemented TypeScript
-workspaces: `@flux/zod`, `@flux/openapi`, and `@flux/emails`. Product link routing,
-tenant entities, and a dashboard belong to later phases.
+Flux has four Go process roles and four implemented TypeScript workspaces:
+`@flux/zod`, `@flux/openapi`, `@flux/emails`, and the Next.js `@flux/frontend`.
+The control plane manages tenant-scoped teams and links. Actual redirects and
+analytics belong to later phases; live provider acceptance remains a separate gate.
 
 ## Acceptance contract
 
@@ -304,13 +305,24 @@ Clerk verification, recovery and social factors remain the final provider gate.
 Playwright output lives in a private OS temporary directory and is removed on
 normal process exit. Traces, screenshots and video are disabled. Root checks
 capture reports privately and require positive completed JSON results, zero
-skips/retries/flaky cases, and matching aggregate counts. Never save signed
+skips/retries/flaky cases, and matching aggregate counts. Before execution the
+root collects the same native selection with `--list`; unique spec/project IDs
+must match the executed report exactly. A self-consistent report that omits or
+substitutes a collected test fails. Discovery command/report failures also fail.
+Go execution rejects skipped or failed subtests even if their parent passes.
+The delivered frontend is mandatory in workspace discovery. Never save signed
 fixture responses or browser reports in the repository, including ignored `tmp`.
 
 Generation stages the complete authored schema/contract package sources, including
-identity, without reading stale `dist` authority. All four manifest artifacts
+identity, without reading stale `dist` authority. All five manifest artifacts
 must exist and be nonempty before any publication. Health aliases and generated
 bytes are preserved; identity consumers use the generated transport names.
+The manifest includes both OpenAPI copies, Go transport, welcome HTML and
+invitation HTML. Root stages invoke checks and builds directly, without Turbo
+test/build cache acceptance. Git-ignored cache/test paths remain subject to
+worktree and full-history secret scanning. After browser execution, rebuild the
+frontend and use the validated `cleanFrontendBuild` cleanup before a separate
+final scan; never add a secret-scanner exclusion for generated deployment keys.
 
 The API also requires private `FLUX_LINKS.CURSOR_KEY`: standard Base64 of exactly
 32 random bytes (`openssl rand -base64 32`). Provision the same secret to all API

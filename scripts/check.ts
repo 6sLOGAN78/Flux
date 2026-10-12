@@ -44,7 +44,7 @@ export const cleanFrontendBuild = async (root: string): Promise<void> => {
 };
 // Validate the complete JSON tree as well as aggregate stats. Retries, skips,
 // empty selection and infrastructure errors must never produce green evidence.
-export const assertBrowserReport = (output: string): number => {
+export const assertBrowserReport = (output: string, expected?: string[]): number => {
   const fail = (): never => {
     throw new Error("No successful browser tests");
   };
@@ -103,7 +103,76 @@ export const assertBrowserReport = (output: string): number => {
   };
   visit(report.suites);
   if (completed !== stats.expected) return fail();
+  if (expected && JSON.stringify(browserTestIds(output)) !== JSON.stringify(expected))
+    throw new Error("Browser test manifest mismatch");
   return completed;
+};
+
+// Native --list and execution reports share spec IDs and project IDs. A report
+// with consistent totals is insufficient if it omits or substitutes a test.
+export const browserTestIds = (output: string, listing = false): string[] => {
+  const fail = (): never => {
+    throw new Error("Invalid browser test manifest");
+  };
+  let report: Record<string, unknown>;
+  try {
+    report = JSON.parse(output);
+  } catch {
+    return fail();
+  }
+  if (
+    !report ||
+    typeof report !== "object" ||
+    !Array.isArray(report.errors) ||
+    report.errors.length
+  )
+    return fail();
+  const ids: string[] = [];
+  const visit = (suites: unknown): void => {
+    if (!Array.isArray(suites)) fail();
+    for (const suite of suites as Record<string, unknown>[]) {
+      if (
+        !suite ||
+        typeof suite !== "object" ||
+        (suite.specs !== undefined && !Array.isArray(suite.specs))
+      )
+        fail();
+      for (const spec of (suite.specs ?? []) as Record<string, unknown>[]) {
+        if (
+          !spec ||
+          typeof spec.id !== "string" ||
+          !spec.id ||
+          !Array.isArray(spec.tests) ||
+          !spec.tests.length
+        )
+          fail();
+        for (const test of spec.tests as Record<string, unknown>[]) {
+          if (
+            !test ||
+            typeof test.projectId !== "string" ||
+            test.expectedStatus !== "passed" ||
+            (listing && (!Array.isArray(test.results) || test.results.length))
+          )
+            fail();
+          ids.push(JSON.stringify([spec.id, test.projectId]));
+        }
+      }
+      visit(suite.suites ?? []);
+    }
+  };
+  visit(report.suites);
+  if (!ids.length || new Set(ids).size !== ids.length) return fail();
+  if (listing) {
+    const stats = report.stats as Record<string, unknown> | undefined;
+    if (
+      stats?.expected !== 0 ||
+      stats.skipped !== ids.length ||
+      stats.unexpected !== 0 ||
+      stats.flaky !== 0
+    )
+      return fail();
+  }
+  return ids.sort();
 };
 const requiredCommands = ["format:check", "lint", "typecheck", "test", "build"] as const;
 type Group =
@@ -128,6 +197,7 @@ export type Stage = {
   listedTests?: Record<string, string[]>;
   bunTests?: boolean;
   browserTests?: boolean;
+  browserList?: boolean;
   env?: Record<string, string>;
   emptyOutput?: boolean;
 };
@@ -215,7 +285,7 @@ export const discover = async (root = repositoryRoot): Promise<Context> => {
       workspaces.push({ path, name: pkg.name, dependencies: Object.keys(pkg.dependencies ?? {}) });
     }
   }
-  for (const path of ["packages/zod", "packages/openapi", "packages/emails"]) {
+  for (const path of ["packages/zod", "packages/openapi", "packages/emails", "apps/frontend"]) {
     if (!workspaces.some((workspace) => workspace.path === path))
       throw new Error(`Omitted workspace: ${path}`);
   }
@@ -369,6 +439,13 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
       "test:e2e",
       ["bun", "run", "browser:install"],
       join(root, workspace.path),
+    );
+    add(
+      `${workspace.name}:browser-discovery`,
+      "test:e2e",
+      ["bun", "run", "test:e2e", "--list"],
+      join(root, workspace.path),
+      { browserList: true },
     );
     add(
       `${workspace.name}:test:e2e`,
@@ -635,8 +712,9 @@ export const runChecks = async (
       )
     : all;
   if (!stages.some((stage) => stage.group !== "tools")) throw new Error("No stages selected");
+  let browserManifest: string[] | undefined;
   for (const stage of stages) {
-    if (stage.browserTests) stage.command.push(...(options.browserArgs ?? []));
+    if (stage.browserTests || stage.browserList) stage.command.push(...(options.browserArgs ?? []));
     options.progress?.(stage.id);
     if (stage.id === "scan") await cleanFrontendBuild(context.root);
     const fixture =
@@ -657,8 +735,10 @@ export const runChecks = async (
     }
     if (stage.bunTests && !/[1-9]\d* pass\b/.test(result.stdout))
       throw new Error(`No successful tests: ${stage.id}`);
+    if (stage.browserList) browserManifest = browserTestIds(result.stdout, true);
     if (stage.browserTests) {
-      const completed = assertBrowserReport(result.stdout);
+      if (!browserManifest) throw new Error("Invalid browser test manifest");
+      const completed = assertBrowserReport(result.stdout, browserManifest);
       options.browserCompleted?.(completed);
     }
     if (stage.listedTests) {
@@ -693,8 +773,12 @@ export const runChecks = async (
         if (!line.trim()) continue;
         try {
           const event = JSON.parse(line);
+          if (event.Action === "skip" || event.Action === "fail")
+            throw new Error(`Unsuccessful Go test: ${stage.id}`);
           if (event.Action === "pass" && typeof event.Test === "string") passed.add(event.Test);
-        } catch {
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("Unsuccessful Go test:"))
+            throw error;
           throw new Error(`Invalid Go test output: ${stage.id}`);
         }
       }
@@ -744,7 +828,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
   } catch (error) {
     console.error(
       error instanceof Error &&
-        /^(Check failed:|Missing |No |Invalid Go test output:|Go test manifest mismatch:|Omitted |Unsupported |Workspace |Duplicate |Usage:)/.test(
+        /^(Check failed:|Missing |No |Invalid browser test manifest|Browser test manifest mismatch|Unsuccessful Go test:|Invalid Go test output:|Go test manifest mismatch:|Omitted |Unsupported |Workspace |Duplicate |Usage:)/.test(
           error.message,
         )
         ? error.message

@@ -328,6 +328,69 @@ test("real pinned Gitleaks catches runtime worktree and deleted history secrets 
   });
 });
 
+test("Git-ignored frontend cache and test paths cannot hide worktree or historical credentials", async () => {
+  await fixture(async (root) => {
+    const { capture, runScans } = await load();
+    const secret = ["ghp", randomBytes(30).toString("hex").slice(0, 40)].join("_");
+    const lines: string[] = [];
+    await writeFile(join(root, ".gitignore"), ".next/\ntest-results/\n");
+    const paths = ["apps/frontend/.next/cache/input.ts", "apps/frontend/test-results/fixture.ts"];
+    for (const path of paths) {
+      await mkdir(join(root, path, ".."), { recursive: true });
+      await writeFile(join(root, path), `access_token = ${secret}\n`);
+    }
+    const scan = () =>
+      runScans({
+        root,
+        mode: "secrets",
+        ci: false,
+        verify: async () => {},
+        emit: (line) => lines.push(line),
+      });
+    assert.equal(await scan(), 1);
+    assert.match(lines.join("\n"), /Secrets worktree: github-pat/);
+    assert.doesNotMatch(lines.join("\n"), new RegExp(secret));
+    for (const args of [
+      ["init", "-q"],
+      ["add", "-f", ...paths],
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "-qm",
+        "fixture",
+      ],
+    ])
+      assert.equal((await capture({ tool: "git", args, cwd: root })).code, 0);
+    for (const path of paths) await writeFile(join(root, path), "removed\n");
+    assert.equal(
+      (
+        await capture({
+          tool: "git",
+          args: [
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "commit",
+            "-qam",
+            "remove fixture",
+          ],
+          cwd: root,
+        })
+      ).code,
+      0,
+    );
+    lines.length = 0;
+    assert.equal(await scan(), 1);
+    assert.match(lines.join("\n"), /Secrets worktree: clean/);
+    assert.match(lines.join("\n"), /Secrets history: github-pat/);
+    assert.doesNotMatch(lines.join("\n"), new RegExp(secret));
+  });
+});
+
 test("real CLI rejects invalid invocation safely", async () => {
   const { capture } = await load();
   const result = await capture({

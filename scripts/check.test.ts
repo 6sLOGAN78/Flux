@@ -388,6 +388,7 @@ test("real full and fast root checks reject initial drift before any mutation", 
   }
 });
 const successfulOutput = (stage: Stage) => {
+  if (stage.browserTests) return JSON.stringify(browserReport());
   if (stage.browserList) {
     const report = browserReport();
     report.stats.expected = 0;
@@ -420,16 +421,17 @@ const fixture = async (run: (root: string) => Promise<void>) => {
   try {
     await put("package.json", JSON.stringify({ workspaces: ["apps/*", "packages/*"] }));
     await put("apps/backend/go.mod", "module fixture\n");
-    for (const name of ["zod", "openapi", "emails"]) {
+    for (const name of ["zod", "openapi", "emails", "frontend"]) {
+      const path = name === "frontend" ? "apps/frontend" : `packages/${name}`;
       await put(
-        `packages/${name}/package.json`,
+        `${path}/package.json`,
         JSON.stringify({
           name: `@flux/${name}`,
           scripts: Object.fromEntries(commands.map((command) => [command, "true"])),
         }),
       );
       await put(
-        `packages/${name}/src/behavior.test.ts`,
+        `${path}/src/behavior.test.ts`,
         'import { test } from "node:test"; test("behavior", () => {});',
       );
     }
@@ -474,11 +476,13 @@ test("full manifest dispatches every Go/workspace stage and uncached generation 
       "scan",
     ])
       assert.ok(seen.includes(id), `Missing ${id}`);
-    for (const workspace of ["zod", "openapi", "emails"]) {
+    for (const workspace of ["zod", "openapi", "emails", "frontend"]) {
       for (const command of commands) assert.ok(seen.includes(`@flux/${workspace}:${command}`));
     }
     assert.ok(seen.some((id) => id.startsWith("backend:unit:")));
     assert.ok(seen.some((id) => id.startsWith("backend:integration:")));
+    assert.ok(seen.includes("@flux/frontend:browser-discovery"));
+    assert.ok(seen.includes("@flux/frontend:test:e2e"));
   });
 });
 
@@ -520,6 +524,7 @@ test("missing scripts, omitted backend and zero workspace tests fail discovery",
 test("removing the delivered frontend workspace fails root discovery", async () => {
   await fixture(async (root) => {
     const { discover } = await load();
+    await rm(join(root, "apps/frontend"), { recursive: true });
     await assert.rejects(discover(root), /Omitted workspace: apps\/frontend/);
   });
 });
