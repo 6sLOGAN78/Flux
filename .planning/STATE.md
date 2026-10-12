@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-33-PLAN.md
-last_updated: "2026-10-12T20:34:30.187Z"
+stopped_at: Completed 02-34-PLAN.md
+last_updated: "2026-10-12T21:27:37.143Z"
 last_activity: 2026-10-12
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 55
+  completed_plans: 56
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-05)
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
-Plan: 34 of 35
+Plan: 35 of 35
 Status: Ready to execute
 Last activity: 2026-10-12
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -107,6 +107,7 @@ Progress: [██████████] 96%
 | Phase 2 P31 | 37min 56s | 2 tasks | 11 files |
 | Phase 2 P32 | 43min 09s | 2 tasks | 5 files |
 | Phase 2 P33 | 17min 18s | 2 tasks | 4 files |
+| Phase 2 P34 | 41min 02s | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -230,6 +231,9 @@ Recent decisions affecting current work:
 - [Phase 2]: Change control colors immediately and animate only opacity for 120ms, disabled for reduced motion. — Native animation-frame measurements found interpolated colors below required text contrast.
 - [Phase 2]: Require native Playwright collection identities to match execution and the delivered frontend to remain in root discovery.
 - [Phase 2]: Reject every Go skip or fail event, including nested subtests beneath passing parents; preserve full private scanner and generation gates.
+- [Phase 2]: Keep live provider execution separate from 65 local cases and fail missing configuration before collection.
+- [Phase 2]: Require closed native provider evidence; only six exact human-only rows may remain pending in automated mode, and strict final mode rejects every pending row.
+- [Phase 2]: Test actual provider timeout by detaching only owned API egress while PostgreSQL and Redis remain healthy.
 
 ### Pending Todos
 
@@ -250,6 +254,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-12T20:34:21.654Z
-Stopped at: Completed 02-33-PLAN.md
+Last session: 2026-10-12T21:27:37.131Z
+Stopped at: Completed 02-34-PLAN.md
 Resume file: None
