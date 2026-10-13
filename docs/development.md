@@ -466,6 +466,16 @@ out of reports. The suite checks the fixed configured public origin and bounded
 token fragment, then presents that fragment to the same production UI on its
 local test origin. Fresh production recipient verification and token-digest
 matching must succeed. A fabricated or stale link cannot count as acceptance.
+Password sign-in may also require Clerk Device Trust on a fresh browser. The
+suite writes a mode-0600 `verification-request-<request-id>.json` in the private
+directory containing `request_id`, the authorized `email`, and `requested_at`.
+The authorized inbox integration must read the actual new verification email and
+write `verification-response-<request-id>.json` (mode 0600) containing the same
+`request_id`, a fresh ISO `received_at`, and its six-digit `code`. The suite checks
+request identity and freshness, enters that code through Clerk's UI, and removes
+both files after consumption or timeout. Do not use Clerk testing codes or disable
+Device Trust to satisfy this check. Keep the integration and all codes outside
+the repository and reports.
 The executor can operate an already-authorized inbox integration; no unsolicited
 mail or unapproved recipient is allowed. The root test control endpoint is
 loopback-only, protected by a per-run random bearer and limited to closed,

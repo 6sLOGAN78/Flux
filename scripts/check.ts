@@ -753,7 +753,7 @@ const startProviderFixture = async (root: string) => {
         "--label",
         `flux.provider-run=${runID}`,
         "--network",
-        internal,
+        egress,
         "--publish",
         "127.0.0.1::5432",
         "--tmpfs",
@@ -769,6 +769,7 @@ const startProviderFixture = async (root: string) => {
       { POSTGRES_PASSWORD: password },
     );
     containers.push(postgres);
+    await docker("network", "connect", "--alias", postgresName, internal, postgres);
     const redisName = `flux-provider-redis-${runID}`;
     const redis = await docker(
       "run",
@@ -778,12 +779,13 @@ const startProviderFixture = async (root: string) => {
       "--label",
       `flux.provider-run=${runID}`,
       "--network",
-      internal,
+      egress,
       "--publish",
       "127.0.0.1::6379",
       redisImage,
     );
     containers.push(redis);
+    await docker("network", "connect", "--alias", redisName, internal, redis);
     const mapped = (output: string) => {
       const match = output.match(/^127\.0\.0\.1:(\d+)$/);
       if (!match?.[1]) throw new Error("Invalid owned container port");

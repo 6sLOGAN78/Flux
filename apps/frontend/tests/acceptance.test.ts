@@ -13,6 +13,7 @@ import {
   validateAcceptance,
   validateProviderConfig,
   verifyProviderInstance,
+  validateProviderInboxCode,
   type ProviderAcceptance,
   type ProviderProof,
 } from "./provider.config";
@@ -136,6 +137,24 @@ describe("provider evidence cannot conceal incomplete required boundaries", () =
     expect(validateAcceptance(fixture().record, true)).toBe(false);
   });
 });
+test("private device verification only consumes fresh code for the exact request", () => {
+  const since = Date.now();
+  const request = randomUUID();
+  const response = {
+    request_id: request,
+    received_at: new Date(since).toISOString(),
+    code: "123456",
+  };
+  expect(validateProviderInboxCode(response, request, since)).toBe("123456");
+  for (const change of [
+    { request_id: randomUUID() },
+    { code: "12345" },
+    { code: "code=123456" },
+    { received_at: "2000-01-01T00:00:00Z" },
+    { received_at: new Date(since + 60000).toISOString() },
+  ])
+    expect(validateProviderInboxCode({ ...response, ...change }, request, since)).toBe(null);
+});
 const configuration = () => {
   const secret = ["sk", "test", "syntheticOnly"].join("_");
   return {
@@ -225,6 +244,21 @@ describe("private provider configuration", () => {
     const errors = validateProviderConfig({});
     expect(errors.length).toBeGreaterThan(10);
     expect(errors.every((name) => /^[A-Z_.]+$/.test(name))).toBe(true);
+  });
+  test("invitation origin precheck rejects authorities the production Go API rejects", () => {
+    for (const authority of [
+      "localhost",
+      "localhost:3443",
+      "127.0.0.1",
+      "app.local",
+      "app.example.test:443",
+    ])
+      expect(
+        validateProviderConfig({
+          ...configuration(),
+          "FLUX_INVITATIONS.PUBLIC_ORIGIN": `https://${authority}`,
+        }).includes("FLUX_INVITATIONS.PUBLIC_ORIGIN"),
+      ).toBe(true);
   });
   test("mismatched instances/secrets, unauthorized recipients and malformed AES maps fail", () => {
     for (const change of [

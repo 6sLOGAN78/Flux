@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -158,7 +158,11 @@ export const validateProviderConfig = (env: ProviderEnvironment): string[] => {
     value("FLUX_AUTH.AUTHORIZED_PARTIES") === "http://localhost:3000",
   );
   reject("FLUX_API_ORIGIN", value("FLUX_API_ORIGIN") === "http://127.0.0.1:8080");
-  reject("FLUX_INVITATIONS.PUBLIC_ORIGIN", origin(value("FLUX_INVITATIONS.PUBLIC_ORIGIN"), true));
+  const publicOrigin = value("FLUX_INVITATIONS.PUBLIC_ORIGIN");
+  reject(
+    "FLUX_INVITATIONS.PUBLIC_ORIGIN",
+    origin(publicOrigin, true) && host(publicOrigin.slice("https://".length)),
+  );
   reject("FLUX_INVITATIONS.SENDER", email(value("FLUX_INVITATIONS.SENDER")));
   reject(
     "FLUX_INTEGRATION.RESEND_API_KEY",
@@ -237,11 +241,11 @@ export const verifyProviderInstance = async (
     const backend = await fetcher("https://api.clerk.com/v1/jwks", {
       headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` },
       redirect: "error",
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(10000),
     });
     const frontend = await fetcher(`${env["FLUX_AUTH.ISSUER"]}/.well-known/jwks.json`, {
       redirect: "error",
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!backend.ok || !frontend.ok) return false;
     const keys = (value: unknown) => {
@@ -532,6 +536,68 @@ export const providerToken = (page: import("@playwright/test").Page) =>
     if (!token) throw new Error("Real provider session unavailable");
     return token;
   });
+export const validateProviderInboxCode = (
+  value: unknown,
+  request: string,
+  since: number,
+): string | null => {
+  if (!value || typeof value !== "object") return null;
+  const item = value as { request_id?: unknown; received_at?: unknown; code?: unknown };
+  const received = typeof item.received_at === "string" ? Date.parse(item.received_at) : NaN;
+  return item.request_id === request &&
+    typeof item.code === "string" &&
+    /^\d{6}$/.test(item.code) &&
+    Number.isFinite(received) &&
+    received >= since &&
+    received <= Date.now()
+    ? item.code
+    : null;
+};
+const completeProviderDeviceTrust = async (
+  page: import("@playwright/test").Page,
+  account: "TEST" | "INVITEE",
+) => {
+  await page.getByRole("button", { name: /resend/i }).click({ timeout: 35000 });
+  const directory = await privateProviderDirectory(
+    process.env,
+    fileURLToPath(new URL("../../../", import.meta.url)),
+  );
+  const request = randomUUID();
+  const since = Date.now();
+  const input = resolve(directory, `verification-request-${request}.json`);
+  const output = resolve(directory, `verification-response-${request}.json`);
+  await writeFile(
+    input,
+    JSON.stringify({
+      request_id: request,
+      email: process.env[`FLUX_PROVIDER_${account}_EMAIL`],
+      requested_at: new Date(since).toISOString(),
+    }),
+    { mode: 0o600, flag: "wx" },
+  );
+  try {
+    const deadline = since + 30000;
+    while (Date.now() < deadline) {
+      let code: string | null = null;
+      try {
+        code = validateProviderInboxCode(await readPrivateJSON(output), request, since);
+      } catch {
+        /* The authorized inbox integration has not responded yet. */
+      }
+      if (code) {
+        await page
+          .getByRole("textbox", { name: "Enter verification code", exact: true })
+          .fill(code);
+        return;
+      }
+      await new Promise((done) => setTimeout(done, 250));
+    }
+    throw new Error("Authorized device verification inbox handoff unavailable");
+  } finally {
+    await rm(input, { force: true });
+    await rm(output, { force: true });
+  }
+};
 export const providerLogin = async (
   page: import("@playwright/test").Page,
   account: "TEST" | "INVITEE" = "TEST",
@@ -540,9 +606,23 @@ export const providerLogin = async (
   await page.getByLabel(/email address/i).fill(process.env[`FLUX_PROVIDER_${account}_EMAIL`]!);
   await page.getByRole("button", { name: /continue/i, exact: true }).click();
   await page
-    .getByLabel(/password/i, { exact: true })
+    .getByLabel("Password", { exact: true })
     .fill(process.env[`FLUX_PROVIDER_${account}_PASSWORD`]!);
   await page.getByRole("button", { name: /continue/i, exact: true }).click();
+  await page.waitForFunction(() => {
+    const clerk = (
+      window as unknown as {
+        Clerk?: { session?: unknown; client?: { signIn?: { status?: string } } };
+      }
+    ).Clerk;
+    return !!clerk?.session || clerk?.client?.signIn?.status === "needs_client_trust";
+  });
+  const needsTrust = await page.evaluate(
+    () =>
+      (window as unknown as { Clerk?: { client?: { signIn?: { status?: string } } } }).Clerk?.client
+        ?.signIn?.status === "needs_client_trust",
+  );
+  if (needsTrust) await completeProviderDeviceTrust(page, account);
   await page.getByText("Your account is signed in.", { exact: true }).waitFor();
   return providerToken(page);
 };

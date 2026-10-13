@@ -24,7 +24,7 @@ export default defineConfig({
   testDir: "./tests",
   outputDir: browserOutput,
   timeout: 45000,
-  globalTimeout: 240000,
+  globalTimeout: providerRun ? 540000 : 240000,
   retries: 0,
   workers: 1,
   reporter: "json",
@@ -44,6 +44,7 @@ export default defineConfig({
     },
     {
       name: "provider",
+      timeout: 90000,
       testMatch: /provider-(auth|session|invitation)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:3000" },
     },

@@ -54,7 +54,7 @@ test("real provider recovery control reaches authorized inbox challenge", async 
   await page.goto("/sign-in");
   await page.getByLabel(/email address/i).fill(process.env.FLUX_PROVIDER_TEST_EMAIL!);
   await page.getByRole("button", { name: /^continue$/i }).click();
-  await page.getByRole("button", { name: /forgot password/i }).click();
+  await page.getByRole("link", { name: /forgot password/i }).click();
   const send = page.getByRole("button", { name: /send|continue|reset/i }).first();
   await send.click();
   await expect(
