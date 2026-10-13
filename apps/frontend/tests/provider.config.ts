@@ -134,12 +134,13 @@ export const validateProviderConfig = (env: ProviderEnvironment): string[] => {
     if (!valid && !errors.includes(name)) errors.push(name);
   };
   const encoded =
-    value("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY").match(/^pk_test_([A-Za-z0-9+/=]+)$/)?.[1] ?? "";
+    value("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY").match(/^pk_test_([A-Za-z0-9+/]+={0,2})$/)?.[1] ?? "";
   const domain = Buffer.from(encoded, "base64").toString("utf8");
+  const canonical = Buffer.from(domain).toString("base64");
   reject(
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     !!encoded &&
-      Buffer.from(domain).toString("base64") === encoded &&
+      (canonical === encoded || canonical.replace(/=+$/, "") === encoded) &&
       domain.endsWith(".clerk.accounts.dev$"),
   );
   reject(

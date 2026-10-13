@@ -183,6 +183,44 @@ describe("private provider configuration", () => {
   });
   test("complete coherent development configuration passes shape validation", () =>
     expect(validateProviderConfig(configuration())).toEqual([]));
+  test("Clerk unpadded development keys pass without weakening issuer binding", () => {
+    for (const domain of ["unit", "units", "unitss"]) {
+      const issuer = `https://${domain}.clerk.accounts.dev`;
+      const encoded = Buffer.from(`${domain}.clerk.accounts.dev$`).toString("base64");
+      for (const suffix of [encoded, encoded.replace(/=+$/, "")]) {
+        const config = {
+          ...configuration(),
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: `pk_test_${suffix}`,
+          "FLUX_AUTH.ISSUER": issuer,
+        };
+        expect(validateProviderConfig(config)).toEqual([]);
+        expect(
+          validateProviderConfig({
+            ...config,
+            "FLUX_AUTH.ISSUER": "https://other.clerk.accounts.dev",
+          }).includes("FLUX_AUTH.ISSUER"),
+        ).toBe(true);
+      }
+    }
+  });
+  test("noncanonical padding and malformed publishable-key encodings fail", () => {
+    const encoded = Buffer.from("unit.clerk.accounts.dev$").toString("base64");
+    const unpadded = encoded.replace(/=+$/, "");
+    for (const suffix of [
+      `${encoded}=`,
+      `${unpadded}===`,
+      `${unpadded} `,
+      `${unpadded}!`,
+      `${unpadded.slice(0, -1)}B`,
+      Buffer.from("unit.clerk.accounts.dev").toString("base64"),
+    ])
+      expect(
+        validateProviderConfig({
+          ...configuration(),
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: `pk_test_${suffix}`,
+        }).includes("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
+      ).toBe(true);
+  });
   test("missing configuration yields safe variable names only", () => {
     const errors = validateProviderConfig({});
     expect(errors.length).toBeGreaterThan(10);
