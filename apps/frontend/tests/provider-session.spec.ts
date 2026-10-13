@@ -3,7 +3,7 @@ import {
   providerAPI,
   providerBAPI,
   providerControl,
-  providerLogin,
+  providerSession,
   providerRow,
   providerToken,
 } from "./provider.config";
@@ -18,7 +18,7 @@ const claims = (token: string) =>
 
 test("real SDK refresh and old signed token expiry", async ({ page }, info) => {
   test.setTimeout(120000);
-  const old = await providerLogin(page);
+  const old = await providerSession(page);
   const decoded = claims(old);
   expect(decoded.iss === process.env["FLUX_AUTH.ISSUER"]).toBe(true);
   const wait = decoded.exp * 1000 - Date.now() + 1000;
@@ -35,7 +35,7 @@ test("real SDK refresh and old signed token expiry", async ({ page }, info) => {
 });
 
 test("real active session revocation rejects the still-signed token", async ({ page }, info) => {
-  const old = await providerLogin(page);
+  const old = await providerSession(page);
   expect((await providerAPI(page, "/me", "GET", undefined, old)).status).toBe(200);
   await providerBAPI(`/v1/sessions/${claims(old).sid}/revoke`, "POST");
   expect((await providerAPI(page, "/me", "GET", undefined, old)).status).toBe(401);
@@ -43,7 +43,7 @@ test("real active session revocation rejects the still-signed token", async ({ p
 });
 
 test("real provider signout invalidates the prior bearer", async ({ page }, info) => {
-  const old = await providerLogin(page);
+  const old = await providerSession(page);
   await page.evaluate(async () =>
     (window as unknown as { Clerk: { signOut(): Promise<void> } }).Clerk.signOut(),
   );
@@ -54,7 +54,7 @@ test("real provider signout invalidates the prior bearer", async ({ page }, info
 test("real session maximum and measured control-plane provider capacity", async ({
   page,
 }, info) => {
-  const token = await providerLogin(page);
+  const token = await providerSession(page);
   const session = await providerBAPI(`/v1/sessions/${claims(token).sid}`);
   const maximum = Number(session.expire_at) - Number(session.created_at);
   expect(Math.abs(maximum - 7 * 86400000) < 60000).toBe(true);
@@ -74,7 +74,7 @@ test("real session maximum and measured control-plane provider capacity", async 
 });
 
 test("production Go fails closed during owned provider egress outage", async ({ page }, info) => {
-  const token = await providerLogin(page);
+  const token = await providerSession(page);
   expect((await providerAPI(page, "/me", "GET", undefined, token)).status).toBe(200);
   try {
     const readiness = await providerControl("disconnect-provider");
@@ -92,7 +92,7 @@ test("production Go fails closed during owned provider egress outage", async ({ 
 test("real cookies and signing-key controls keep production inspection explicit", async ({
   page,
 }, info) => {
-  const token = await providerLogin(page);
+  const token = await providerSession(page);
   expect((await providerAPI(page, "/me", "GET", undefined, token)).status).toBe(200);
   const jwks = await providerBAPI("/v1/jwks");
   expect(Array.isArray(jwks.keys) && jwks.keys.length > 0).toBe(true);

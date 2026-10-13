@@ -8,7 +8,7 @@ import {
 import {
   providerAPI,
   providerControl,
-  providerLogin,
+  providerSession,
   providerRow,
   readProviderInvitation,
 } from "./provider.config";
@@ -18,7 +18,7 @@ test("real provider named owner, encrypted rotation, one delivery and invited te
   browser,
 }, info) => {
   test.setTimeout(120000);
-  await providerLogin(page);
+  await providerSession(page);
   await page.goto("/onboarding");
   await page.getByLabel("Workspace name", { exact: true }).fill("Provider acceptance workspace");
   const created = page.waitForResponse(
@@ -103,7 +103,7 @@ test("real provider named owner, encrypted rotation, one delivery and invited te
   const invited = await browser.newContext({ baseURL: "http://localhost:3000" });
   try {
     const first = await invited.newPage();
-    await providerLogin(first, "INVITEE");
+    await providerSession(first, "INVITEE");
     await first.goto(`/invitations${hash}`);
     await expect(
       first.getByRole("button", { name: "Accept invitation", exact: true }),

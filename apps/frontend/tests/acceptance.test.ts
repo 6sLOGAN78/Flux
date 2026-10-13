@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const expect = (actual: unknown) => ({
   toBe: (expected: unknown) => assert.equal(actual, expected),
   toEqual: (expected: unknown) => assert.deepEqual(actual, expected),
@@ -14,9 +17,77 @@ import {
   validateProviderConfig,
   verifyProviderInstance,
   validateProviderInboxCode,
+  providerLogin,
   type ProviderAcceptance,
   type ProviderProof,
 } from "./provider.config";
+
+test("device trust consumes the first emailed code without sending a resend", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "flux-device-trust-unit-"));
+  const names = [
+    "FLUX_PROVIDER_PRIVATE_DIR",
+    "FLUX_PROVIDER_TEST_EMAIL",
+    "FLUX_PROVIDER_TEST_PASSWORD",
+  ];
+  const previous = names.map((name) => process.env[name]);
+  process.env.FLUX_PROVIDER_PRIVATE_DIR = directory;
+  process.env.FLUX_PROVIDER_TEST_EMAIL = "owner@example.test";
+  process.env.FLUX_PROVIDER_TEST_PASSWORD = "synthetic-only-password";
+  let resends = 0;
+  let submitted = "";
+  let evaluations = 0;
+  let responding = false;
+  const inbox = setInterval(async () => {
+    if (responding) return;
+    try {
+      const name = (await readdir(directory)).find((entry) =>
+        entry.startsWith("verification-request-"),
+      );
+      if (!name) return;
+      responding = true;
+      const request = JSON.parse(await readFile(join(directory, name), "utf8"));
+      await writeFile(
+        join(directory, `verification-response-${request.request_id}.json`),
+        JSON.stringify({
+          request_id: request.request_id,
+          received_at: new Date().toISOString(),
+          code: "123456",
+        }),
+        { mode: 0o600 },
+      );
+    } catch {
+      responding = false;
+    }
+  }, 10);
+  const page = {
+    goto: async () => {},
+    getByLabel: () => ({ fill: async () => {} }),
+    getByRole: (_role: string, options: { name: string | RegExp }) => ({
+      click: async () => {
+        if (String(options.name).includes("resend")) resends++;
+      },
+      fill: async (value: string) => {
+        submitted = value;
+      },
+    }),
+    waitForFunction: async () => {},
+    evaluate: async () => (++evaluations === 1 ? true : "synthetic-session-token"),
+    getByText: () => ({ waitFor: async () => {} }),
+  } as unknown as import("@playwright/test").Page;
+  try {
+    await providerLogin(page);
+    assert.equal(submitted, "123456");
+    assert.equal(resends, 0, "a fresh provider challenge already sent its first email");
+    assert.deepEqual(await readdir(directory), [], "consumed private handoff files are erased");
+  } finally {
+    clearInterval(inbox);
+    for (const [index, name] of names.entries()) {
+      if (previous[index] === undefined) delete process.env[name];
+      else process.env[name] = previous[index];
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 const fixture = () => {
   const proof: ProviderProof = {

@@ -14,12 +14,56 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { connect, createServer } from "node:net";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { Stage } from "./check.ts";
 
 const load = () => import("./check.ts");
 const commands = ["format:check", "lint", "typecheck", "test", "build"];
+
+test("owned provider ingress forwards bytes, follows API replacement and closes active sockets", async () => {
+  const { startProviderIngress } = await load();
+  const first = createServer((socket) => socket.on("data", (bytes) => socket.write(bytes)));
+  const second = createServer((socket) =>
+    socket.on("data", (bytes) => socket.write(Buffer.concat([Buffer.from("new:"), bytes]))),
+  );
+  for (const server of [first, second])
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let target = {
+    host: "127.0.0.1",
+    port: (first.address() as import("node:net").AddressInfo).port,
+  };
+  const ingress = await startProviderIngress(() => target, 0);
+  const exchange = () =>
+    new Promise<Buffer>((resolve, reject) => {
+      const client = connect({ host: "127.0.0.1", port: ingress.port });
+      client.once("error", reject);
+      client.once("data", (bytes) => {
+        client.destroy();
+        resolve(bytes);
+      });
+      client.once("connect", () => client.write(Buffer.from([0, 128, 255])));
+    });
+  try {
+    assert.deepEqual(await exchange(), Buffer.from([0, 128, 255]));
+    target = { host: "127.0.0.1", port: (second.address() as import("node:net").AddressInfo).port };
+    assert.deepEqual(await exchange(), Buffer.from([110, 101, 119, 58, 0, 128, 255]));
+    const active = connect({ host: "127.0.0.1", port: ingress.port });
+    await new Promise<void>((resolve, reject) => {
+      active.once("connect", resolve);
+      active.once("error", reject);
+    });
+    const closed = new Promise<void>((resolve) => active.once("close", resolve));
+    await ingress.stop();
+    await closed;
+    await assert.rejects(exchange(), { code: "ECONNREFUSED" });
+  } finally {
+    await ingress.stop();
+    for (const server of [first, second])
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 
 test("provider writer binds actual native fixture annotations to private validated records", async () => {
   const repository = fileURLToPath(new URL("../", import.meta.url));
@@ -483,7 +527,9 @@ test("root subprocesses find the pinned Task when the host PATH has none", async
 });
 
 test("real full and fast root checks reject initial drift before any mutation", {
-  timeout: 180000,
+  // Twenty isolated generator executions plus the authored-schema regression
+  // exceed three minutes on a cold runner; each child remains bounded at 60s.
+  timeout: 360000,
 }, async () => {
   const repository = fileURLToPath(new URL("../", import.meta.url));
   const root = await mkdtemp(join(tmpdir(), "flux-root-drift-"));

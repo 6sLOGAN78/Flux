@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
 import { lstat, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { connect, createServer as createTCPServer, isIP, type Socket } from "node:net";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -461,7 +462,10 @@ export const createStages = (context: Context, mode: "fast" | "full"): Stage[] =
     );
   }
   if (scriptTests.length)
-    add("scripts:test", "test:unit", ["bun", "test", ...scriptTests], root, { bunTests: true });
+    add("scripts:test", "test:unit", ["bun", "test", ...scriptTests], root, {
+      bunTests: true,
+      timeoutMs: 600000,
+    });
   add("tools:self-test", "test:unit", ["bun", "scripts/install-tools.ts", "--self-test"]);
   for (const pkg of goTests) {
     if (pkg.unit.length)
@@ -618,6 +622,44 @@ export const selectedBrowserProject = (args: string[] = []): "local" | "provider
 
 // Every resource below belongs to this one acceptance run. No provider transport,
 // auth implementation, production endpoint or host network is replaced.
+export const startProviderIngress = async (
+  target: () => { host: string; port: number } | undefined,
+  port = 8080,
+) => {
+  const sockets = new Set<Socket>();
+  const server = createTCPServer((client) => {
+    const endpoint = target();
+    if (!endpoint) {
+      client.destroy();
+      return;
+    }
+    const upstream = connect(endpoint);
+    for (const socket of [client, upstream]) {
+      sockets.add(socket);
+      socket.on("error", () => socket.destroy());
+      socket.once("close", () => {
+        sockets.delete(socket);
+        client.destroy();
+        upstream.destroy();
+      });
+    }
+    client.pipe(upstream).pipe(client);
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  let stopping: Promise<void> | undefined;
+  return {
+    port: (server.address() as import("node:net").AddressInfo).port,
+    stop: () =>
+      (stopping ??= new Promise<void>((resolve) => {
+        for (const socket of sockets) socket.destroy();
+        server.close(() => resolve());
+      })),
+  };
+};
+
 const startProviderFixture = async (root: string) => {
   const { validateProviderConfig, privateProviderDirectory } = await import(
     "../apps/frontend/tests/provider.config.ts"
@@ -630,6 +672,8 @@ const startProviderFixture = async (root: string) => {
   const containers: string[] = [];
   const networks: string[] = [];
   let api = "";
+  let apiAddress: { host: string; port: number } | undefined;
+  let ingress: Awaited<ReturnType<typeof startProviderIngress>> | undefined;
   let worker: ReturnType<typeof spawn> | undefined;
   let control: ReturnType<typeof createServer> | undefined;
   const controlKey = randomBytes(32).toString("hex");
@@ -687,6 +731,7 @@ const startProviderFixture = async (root: string) => {
       errors.push(error);
     }
     await new Promise<void>((done) => (control ? control.close(() => done()) : done()));
+    await ingress?.stop();
     for (const id of [...containers].reverse()) {
       try {
         await removeContainer(id);
@@ -850,6 +895,7 @@ const startProviderFixture = async (root: string) => {
     const rotatedKey = Object.keys(ring).find((id) => id !== originalKey);
     if (!originalKey || !rotatedKey) throw new Error("Provider rotation keys unavailable");
     const startAPI = async (active: string) => {
+      apiAddress = undefined;
       if (api) await removeContainer(api);
       base["FLUX_INVITATIONS.ACTIVE_KEY_ID"] = active;
       const containerEnv = {
@@ -865,8 +911,6 @@ const startProviderFixture = async (root: string) => {
         `flux.provider-run=${runID}`,
         "--network",
         internal,
-        "--publish",
-        "127.0.0.1:8080:8080",
         "--workdir",
         "/app",
         "--user",
@@ -887,6 +931,16 @@ const startProviderFixture = async (root: string) => {
       containers.push(api);
       await docker("network", "connect", egress, api);
       await docker("start", api);
+      const attachments = JSON.parse(
+        await docker("inspect", "--format", "{{json .NetworkSettings.Networks}}", api),
+      ) as Record<string, { NetworkID: string; IPAddress: string }>;
+      const address = Object.values(attachments).find((item) => item.NetworkID === internal);
+      if (!address || isIP(address.IPAddress) !== 4)
+        throw new Error("Owned provider internal address unavailable");
+      apiAddress = { host: address.IPAddress, port: 8080 };
+      // Docker removes published ports when the last external network is
+      // detached. Keep loopback ingress on the owned internal address instead.
+      ingress ??= await startProviderIngress(() => apiAddress);
       await ready("http://127.0.0.1:8080/ready");
     };
     await startAPI(originalKey);

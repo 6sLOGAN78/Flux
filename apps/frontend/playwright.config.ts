@@ -26,6 +26,7 @@ export default defineConfig({
   timeout: 45000,
   globalTimeout: providerRun ? 540000 : 240000,
   retries: 0,
+  maxFailures: providerRun ? 1 : 0,
   workers: 1,
   reporter: "json",
   expect: { timeout: 20000 },

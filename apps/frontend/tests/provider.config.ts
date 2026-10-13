@@ -557,7 +557,6 @@ const completeProviderDeviceTrust = async (
   page: import("@playwright/test").Page,
   account: "TEST" | "INVITEE",
 ) => {
-  await page.getByRole("button", { name: /resend/i }).click({ timeout: 35000 });
   const directory = await privateProviderDirectory(
     process.env,
     fileURLToPath(new URL("../../../", import.meta.url)),
@@ -625,6 +624,36 @@ export const providerLogin = async (
   if (needsTrust) await completeProviderDeviceTrust(page, account);
   await page.getByText("Your account is signed in.", { exact: true }).waitFor();
   return providerToken(page);
+};
+
+let providerTestingSetup: Promise<void> | undefined;
+// Bootstrap unrelated state tests with a separate real Clerk session. Factor
+// acceptance must continue to call providerLogin and the actual provider UI.
+export const providerSession = async (
+  page: import("@playwright/test").Page,
+  account: "TEST" | "INVITEE" = "TEST",
+) => {
+  const emailAddress = process.env[`FLUX_PROVIDER_${account}_EMAIL`];
+  const recipients = process.env.FLUX_PROVIDER_AUTHORIZED_RECIPIENTS?.split(",").map((entry) =>
+    entry.trim().toLowerCase(),
+  );
+  if (!emailAddress || !recipients?.includes(emailAddress.toLowerCase()))
+    throw new Error("Authorized provider session account unavailable");
+  try {
+    const { clerk, clerkSetup } = await import("@clerk/testing/playwright");
+    providerTestingSetup ??= clerkSetup({
+      dotenv: false,
+      publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
+    await providerTestingSetup;
+    await page.goto("/sign-in");
+    await clerk.signIn({ page, emailAddress });
+    await page.getByText("Your account is signed in.", { exact: true }).waitFor();
+    return await providerToken(page);
+  } catch {
+    throw new Error("Authorized provider session setup failed");
+  }
 };
 export const providerAPI = async (
   page: import("@playwright/test").Page,

@@ -467,7 +467,13 @@ token fragment, then presents that fragment to the same production UI on its
 local test origin. Fresh production recipient verification and token-digest
 matching must succeed. A fabricated or stale link cannot count as acceptance.
 Password sign-in may also require Clerk Device Trust on a fresh browser. The
-suite writes a mode-0600 `verification-request-<request-id>.json` in the private
+dedicated password-login test consumes its initial real challenge email and
+never clicks Resend automatically. Unrelated session/workspace tests bootstrap
+separate real Clerk sessions with the official `clerk.signIn({ emailAddress })`
+helper, avoiding repeated password challenges. Helper setup is not factor
+evidence; signup, password login, recovery and OAuth keep their real UI flows.
+The provider run stops at the first failed test and never retries tests.
+The suite writes a mode-0600 `verification-request-<request-id>.json` in the private
 directory containing `request_id`, the authorized `email`, and `requested_at`.
 The authorized inbox integration must read the actual new verification email and
 write `verification-response-<request-id>.json` (mode 0600) containing the same
@@ -484,7 +490,9 @@ UUID-scoped assertions against this run's disposable database.
 The outage test detaches only the API's own provider-egress network, retains
 healthy PostgreSQL/Redis, requires a safe 503 within the production deadline,
 then reconnects and requires successful recovery. Production endpoints and
-timeouts are unchanged. Capacity evidence samples actual production API requests
+timeouts are unchanged. A run-owned TCP relay binds only loopback and forwards
+bytes to the API's internal Docker address, preserving API ingress while Docker
+removes published ports during egress isolation. Capacity evidence samples actual production API requests
 at 2 requests/second, requires success and p95 below two seconds, and records only
 this tested rate. Clerk currently documents a development BAPI ceiling of
 100 requests/10 seconds and production ceiling of 1000/10 seconds; this is not a
