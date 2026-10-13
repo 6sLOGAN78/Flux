@@ -43,8 +43,13 @@ test("real provider password signup and mandatory verification boundary", async 
 });
 
 test("real provider password login reaches production Go identity", async ({ page }, info) => {
-  await providerLogin(page);
-  expect((await providerAPI(page, "/me")).status).toBe(200);
+  const token = await providerLogin(page);
+  const identity = await providerAPI(page, "/me", "GET", undefined, token);
+  info.annotations.push({
+    type: "flux-provider-api-status",
+    description: JSON.stringify({ endpoint: "identity", status: identity.status }),
+  });
+  expect(identity.status).toBe(200);
   providerRow(info, "password_login");
 });
 

@@ -61,15 +61,28 @@ test("real session maximum and measured control-plane provider capacity", async 
   providerRow(info, "session_maximum");
   // 2 requests/s leaves headroom below Clerk's documented development ceiling
   // of 100 BAPI requests/10s; each Go request rechecks active provider state.
-  const durations: number[] = [];
-  for (let sample = 0; sample < 10; sample++) {
-    const start = Date.now();
-    expect((await providerAPI(page, "/me")).status).toBe(200);
-    durations.push(Date.now() - start);
-    await new Promise((done) => setTimeout(done, Math.max(0, 500 - (Date.now() - start))));
-  }
+  const requests = await Promise.allSettled(
+    Array.from({ length: 10 }, async (_, sample) => {
+      await new Promise((done) => setTimeout(done, sample * 500));
+      const start = Date.now();
+      const result = await providerAPI(page, "/me", "GET", undefined, token);
+      return { status: result.status, duration: Date.now() - start };
+    }),
+  );
+  expect(requests.every((request) => request.status === "fulfilled")).toBe(true);
+  const samples = requests.map((request) => {
+    if (request.status !== "fulfilled") throw new Error("Real provider capacity request failed");
+    return request.value;
+  });
+  const durations = samples.map((sample) => sample.duration);
   durations.sort((a, b) => a - b);
-  expect(durations[Math.ceil(durations.length * 0.95) - 1]! < 2000).toBe(true);
+  const p95 = durations[Math.ceil(durations.length * 0.95) - 1]!;
+  info.annotations.push({
+    type: "flux-provider-metric",
+    description: JSON.stringify({ samples: samples.length, targetRps: 2, p95Ms: p95 }),
+  });
+  for (const sample of samples) expect(sample.status).toBe(200);
+  expect(p95 < 2000).toBe(true);
   providerRow(info, "provider_quota_latency");
 });
 
