@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 35 Task 2 resumed: private configuration and authorized inbox handoff restored; provider precheck and generated-artifact gate passed; complete native provider run in progress"
-last_updated: "2026-10-13T19:18:54.790Z"
+stopped_at: "Plan 35 Task 2: stopped email-triggering tests after operator reported excessive verification messages; isolated real password login passed; full provider run failed and remains undiagnosed; no provider proof promoted"
+last_updated: "2026-10-13T19:45:43.409Z"
 last_activity: 2026-10-12
 progress:
   total_phases: 6
@@ -254,6 +254,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-13T19:18:54.776Z
-Stopped at: Plan 35 Task 2 resumed: private configuration and authorized inbox handoff restored; provider precheck and generated-artifact gate passed; complete native provider run in progress
+Last session: 2026-10-13T19:45:43.396Z
+Stopped at: Plan 35 Task 2: stopped email-triggering tests after operator reported excessive verification messages; isolated real password login passed; full provider run failed and remains undiagnosed; no provider proof promoted
 Resume file: .planning/phases/02-tenant-safe-link-control-plane/02-35-PLAN.md
