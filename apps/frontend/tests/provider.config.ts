@@ -575,7 +575,9 @@ const completeProviderDeviceTrust = async (
     { mode: 0o600, flag: "wx" },
   );
   try {
-    const deadline = since + 30000;
+    // Delivery plus the authorized browser inbox handoff can outlive 30 seconds.
+    // Keep one bounded wait; never turn a slow initial email into another send.
+    const deadline = since + 60000;
     while (Date.now() < deadline) {
       let code: string | null = null;
       try {
