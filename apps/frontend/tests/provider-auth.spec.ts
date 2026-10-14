@@ -65,18 +65,20 @@ test("real provider recovery control reaches authorized inbox challenge", async 
   await expect(
     page.getByRole("textbox", { name: "Enter verification code", exact: true }),
   ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            Clerk?: {
-              client?: { signIn?: { firstFactorVerification?: { strategy?: string } } };
-            };
-          }
-        ).Clerk?.client?.signIn?.firstFactorVerification?.strategy,
-    ),
-  ).toBe("reset_password_email_code");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              Clerk?: {
+                client?: { signIn?: { firstFactorVerification?: { strategy?: string } } };
+              };
+            }
+          ).Clerk?.client?.signIn?.firstFactorVerification?.strategy,
+      ),
+    )
+    .toBe("reset_password_email_code");
   expect(
     await page.evaluate(
       () => !(window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session,
