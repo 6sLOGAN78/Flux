@@ -60,11 +60,23 @@ test("real provider recovery control reaches authorized inbox challenge", async 
   await page.getByLabel(/email address/i).fill(process.env.FLUX_PROVIDER_TEST_EMAIL!);
   await page.getByRole("button", { name: /^continue$/i }).click();
   await page.getByRole("link", { name: /forgot password/i }).click();
-  const send = page.getByRole("button", { name: /send|continue|reset/i }).first();
-  await send.click();
+  await page.getByRole("button", { name: "Reset your password", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Reset password", exact: true })).toBeVisible();
   await expect(
-    page.getByText(/check your email|reset your password|verification code/i).first(),
+    page.getByRole("textbox", { name: "Enter verification code", exact: true }),
   ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            Clerk?: {
+              client?: { signIn?: { firstFactorVerification?: { strategy?: string } } };
+            };
+          }
+        ).Clerk?.client?.signIn?.firstFactorVerification?.strategy,
+    ),
+  ).toBe("reset_password_email_code");
   expect(
     await page.evaluate(
       () => !(window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session,
