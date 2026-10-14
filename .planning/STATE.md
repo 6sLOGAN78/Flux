@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Plan 35 Task 2: operator authorized email-limited resumption; 47 frontend and 70 script tests plus no-email native outage passed; complete provider run in progress with no automatic resends and first-failure stop"
-last_updated: "2026-10-13T20:09:19.843Z"
-last_activity: 2026-10-12
+status: blocked
+stopped_at: "Phase 3 planning verified: 11 plans/10 waves, 9 requirements covered; execution waits for unfinished Phase 2 plan 35 provider acceptance. No provider tests or inbox worker running."
+last_updated: "2026-10-14T06:44:08Z"
+last_activity: 2026-10-14 -- Phase 3 planning complete
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 57
+  total_plans: 68
   completed_plans: 56
   percent: 17
 ---
@@ -21,16 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-05)
 
 **Core value:** A marketer can create a link, send a visitor through a fast and reliable redirect, record the click asynchronously, attribute a later conversion and revenue to that click, and see the result in analytics.
-**Current focus:** Phase 2 — Tenant-Safe Link Control Plane
+**Current focus:** Phase 3 planning complete; execution waits on Phase 2 acceptance
 
 ## Current Position
 
-Phase: 2 (Tenant-Safe Link Control Plane) — EXECUTING
+Phase: 2 (Tenant-Safe Link Control Plane) — ACCEPTANCE INCOMPLETE
 Plan: 35 of 35
-Status: Ready to execute
-Last activity: 2026-10-12
+Status: Phase 2 acceptance incomplete; Phase 3 planned and waiting
+Last activity: 2026-10-14 -- Phase 3 planning complete
 
 Progress: [██████████] 98%
+
+### Phase 3 planning checkpoint
+
+- Fast Managed-Domain Redirects: 11 plans in 10 waves; 0 executed. Research, UI contract, source audit, inline review and structural validation complete; all 9 requirement IDs covered.
+- Entry remains blocked by ROADMAP dependency on Phase 2. No Phase 3 implementation, runtime tests or verification-pass claim was made.
+- Strict cache correctness uses a mandatory current primary version/status guard. Cached primary outage returns503; latency acceptance must measure the guard enabled.
+- Resume Phase 3 execution only after Phase 2 acceptance/verification is actually complete: `$gsd-execute-phase 3 --auto --no-transition`.
 
 ## Performance Metrics
 
@@ -241,6 +248,8 @@ None yet.
 
 ### Blockers/Concerns
 
+- [Phase 2 -> Phase 3]: 02-35 task2 remains incomplete; no full-provider acceptance proof promoted. Latest full run passed signup verification and actual password login/Go `/me`, then stopped on a recovery heading locator. Six native session tests passed separately; separate runs do not constitute full-suite acceptance. No automatic email resumption is authorized by Phase 3 planning.
+
 - [Phase 4]: Click-loss SLO and durable handoff/storage model must be decided and failure-tested during planning.
 - [Phase 6]: Validate PostgreSQL-first analytics against expected load before adopting ClickHouse.
 
@@ -254,6 +263,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-13T20:09:19.831Z
-Stopped at: Plan 35 Task 2: operator authorized email-limited resumption; 47 frontend and 70 script tests plus no-email native outage passed; complete provider run in progress with no automatic resends and first-failure stop
+Last session: 2026-10-14T06:44:08Z
+Stopped at: Phase 3 planning verified: 11 plans/10 waves, 9 requirements covered; execution waits for unfinished Phase 2 plan 35 provider acceptance. No provider tests or inbox worker running.
 Resume file: .planning/phases/02-tenant-safe-link-control-plane/02-35-PLAN.md

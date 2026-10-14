@@ -57,7 +57,54 @@ Flux v1 progresses from a stable brownfield foundation to one complete, trustwor
   2. Redis cache-aside resolution and PostgreSQL fallback use one canonical host/path identity, and version-aware outbox invalidation makes link edits visible within the bounded interval without stale messages restoring an older destination.
   3. Redirects continue to work when analytics storage, consumers, webhooks, or email fail, and trusted-proxy configuration prevents arbitrary forwarding headers from controlling client identity.
   4. Representative load tests demonstrate cached p95 below 30 ms and uncached p95 below 100 ms in the documented environment, with telemetry exposing latency, traffic, cache, fallback, error, and event-handoff outcomes.
-**Plans:** TBD
+**Plans:** 0/11 executed; planning verified (10 waves). Execution waits for Phase 2 acceptance.
+**UI hint:** yes (destination/title editing; reuse existing detail UI)
+
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Serve the real managed-domain visitor journey
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Edit a destination and title through the existing detail screen
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — Keep edit retries, conflicts and workspace changes safe
+- [ ] 03-04-PLAN.md — Resolve through Redis with an authoritative state guard
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-05-PLAN.md — Invalidate committed mutations through a transactional outbox
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-06-PLAN.md — Run invalidation independently of email and drain it safely
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 03-07-PLAN.md — Make proxy identity and admission rules explicit
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 03-08-PLAN.md — Prove mutation races and dependency failures through public HTTP
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 03-09-PLAN.md — Expose bounded redirect metrics and an honest handoff boundary
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 03-10-PLAN.md — Measure cached and uncached latency on the real role
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 03-11-PLAN.md — Close the public journey and operational acceptance gates
+
+Cross-cutting constraints:
+
+- PostgreSQL is authoritative; a cached target requires current primary version/status authorization.
+- Analytics, email, webhooks and telemetry cannot become synchronous redirect dependencies.
 
 ### Phase 4: Durable Click Tracking & Privacy
 **Goal:** Every eligible redirect can produce a privacy-conscious click fact that survives and recovers within a measured durability contract without delaying the visitor.
@@ -108,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation Stability & System Boundaries | 22/22 | Complete    | 2026-10-08 |
 | 2. Tenant-Safe Link Control Plane | 34/35 | In Progress|  |
-| 3. Fast Managed-Domain Redirects | 0/TBD | Not started | - |
+| 3. Fast Managed-Domain Redirects | 0/11 | Planned; awaiting Phase 2 | - |
 | 4. Durable Click Tracking & Privacy | 0/TBD | Not started | - |
 | 5. Idempotent Conversion Attribution | 0/TBD | Not started | - |
 | 6. Trusted Analytics & Complete Setup Journey | 0/TBD | Not started | - |
