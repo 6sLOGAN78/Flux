@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: blocked
-stopped_at: "Phase 3 planning verified: 11 plans/10 waves, 9 requirements covered; execution waits for unfinished Phase 2 plan 35 provider acceptance. No provider tests or inbox worker running."
-last_updated: "2026-10-14T06:44:08Z"
+status: executing
+stopped_at: "Plan35 task2: recovery heading and async preparation corrected; 47 frontend units/type/format/lint pass. Final bounded run stopped at password sign-in after code handoff; no full proof. Automated email tests and inbox reader stopped. Manual Flux sign-in open at localhost3000 with test password prefilled, not submitted; Go ready200. Await operator Continue and actual code entry."
+last_updated: "2026-10-14T09:27:21Z"
 last_activity: 2026-10-14 -- Phase 3 planning complete
 progress:
   total_phases: 6
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-05)
 
 **Core value:** A marketer can create a link, send a visitor through a fast and reliable redirect, record the click asynchronously, attribute a later conversion and revenue to that click, and see the result in analytics.
-**Current focus:** Phase 3 planning complete; execution waits on Phase 2 acceptance
+**Current focus:** Complete Phase 2 plan35 provider acceptance; Phase 3 plans remain ready after prerequisite completion
 
 ## Current Position
 
 Phase: 2 (Tenant-Safe Link Control Plane) — ACCEPTANCE INCOMPLETE
 Plan: 35 of 35
-Status: Phase 2 acceptance incomplete; Phase 3 planned and waiting
+Status: Awaiting manual Flux code entry; automated email tests stopped
 Last activity: 2026-10-14 -- Phase 3 planning complete
 
 Progress: [██████████] 98%
@@ -263,6 +263,6 @@ Items acknowledged and carried forward from the v1 scope boundary:
 
 ## Session Continuity
 
-Last session: 2026-10-14T06:44:08Z
-Stopped at: Phase 3 planning verified: 11 plans/10 waves, 9 requirements covered; execution waits for unfinished Phase 2 plan 35 provider acceptance. No provider tests or inbox worker running.
+Last session: 2026-10-14T09:27:21Z
+Stopped at: Plan35 task2: recovery heading and async preparation corrected; 47 frontend units/type/format/lint pass. Final bounded run stopped at password sign-in after code handoff; no full proof. Automated email tests and inbox reader stopped. Manual Flux sign-in open at localhost3000 with test password prefilled, not submitted; Go ready200. Await operator Continue and actual code entry.
 Resume file: .planning/phases/02-tenant-safe-link-control-plane/02-35-PLAN.md
